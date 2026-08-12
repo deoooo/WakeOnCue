@@ -49,10 +49,11 @@ WakeOnCue 不实现通用 Agent，也不代替 OpenClaw、Pi Agent 等运行时�
 
 ## 本地开发
 
-要求 Node.js 24 LTS 与 pnpm 10：
+当前工程基线为 Node.js 26 与 pnpm 10：
 
 ~~~bash
 corepack enable
+# 可选：需要覆盖默认本地配置或接真实 Adapter 时再复制
 cp .env.example .env
 pnpm install --frozen-lockfile
 pnpm db:migrate

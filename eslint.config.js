@@ -7,6 +7,12 @@ export default tseslint.config(
   { ignores: ["dist/**", "coverage/**", "playwright-report/**", "test-results/**"] },
   eslint.configs.recommended,
   {
+    files: ["**/*.{js,mjs}"],
+    languageOptions: {
+      globals: { ...globals.node, fetch: "readonly" },
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {

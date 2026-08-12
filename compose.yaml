@@ -2,7 +2,9 @@ services:
   api:
     build: .
     command: ["pnpm", "start:api"]
-    env_file: [.env]
+    env_file:
+      - path: .env
+        required: false
     environment:
       WAKEONCUE_HOST: 0.0.0.0
       WAKEONCUE_DATABASE_PATH: /data/wakeoncue.sqlite
@@ -22,7 +24,9 @@ services:
   worker:
     build: .
     command: ["pnpm", "start:worker"]
-    env_file: [.env]
+    env_file:
+      - path: .env
+        required: false
     environment:
       WAKEONCUE_DATABASE_PATH: /data/wakeoncue.sqlite
     volumes: ["wakeoncue-data:/data"]
