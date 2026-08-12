@@ -45,7 +45,44 @@ WakeOnCue 不实现通用 Agent，也不代替 OpenClaw、Pi Agent 等运行时�
 
 ## 项目状态
 
-当前处于架构与 MVP 定义阶段。仓库暂为私有，尚未承诺稳定 API。
+工程 MVP 正在按 `docs/implementation-status.md` 中的可运行 checkpoint 推进。仓库暂为私有，尚未承诺稳定 API；生产 Live Wake 默认关闭。
+
+## 本地开发
+
+要求 Node.js 24 LTS 与 pnpm 10：
+
+~~~bash
+corepack enable
+cp .env.example .env
+pnpm install --frozen-lockfile
+pnpm db:migrate
+pnpm dev
+~~~
+
+默认地址：API `http://127.0.0.1:4310`，Console `http://127.0.0.1:4173`。健康检查：
+
+~~~bash
+curl --fail http://127.0.0.1:4310/health
+curl --fail http://127.0.0.1:4310/ready
+~~~
+
+质量门：
+
+~~~bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+~~~
+
+Compose 路径：
+
+~~~bash
+docker compose up --build
+~~~
+
+当前实际验证、证据与剩余项见 [工程 MVP 实现状态](docs/implementation-status.md)。
 
 ## 名称
 

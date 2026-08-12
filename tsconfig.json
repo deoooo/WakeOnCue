@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@wakeoncue/contracts": ["packages/contracts/src/index.ts"],
+      "@wakeoncue/core": ["packages/core/src/index.ts"],
+      "@wakeoncue/notify-sdk": ["packages/notify-sdk/src/index.ts"],
+      "@wakeoncue/policy": ["packages/policy/src/index.ts"],
+      "@wakeoncue/runtime-openclaw": ["packages/runtime-openclaw/src/index.ts"],
+      "@wakeoncue/runtime-sdk": ["packages/runtime-sdk/src/index.ts"],
+      "@wakeoncue/runtime-webhook": ["packages/runtime-webhook/src/index.ts"],
+      "@wakeoncue/source-omi": ["packages/source-omi/src/index.ts"],
+      "@wakeoncue/source-sdk": ["packages/source-sdk/src/index.ts"],
+      "@wakeoncue/source-webhook": ["packages/source-webhook/src/index.ts"],
+      "@wakeoncue/storage": ["packages/storage/src/index.ts"],
+      "@wakeoncue/storage-sqlite": ["packages/storage-sqlite/src/index.ts"],
+      "@wakeoncue/testing": ["packages/testing/src/index.ts"]
+    }
+  },
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

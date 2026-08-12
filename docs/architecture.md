@@ -480,8 +480,8 @@ One notification adapter
 
 推荐参考技术栈：
 
-- TypeScript + Node.js 22；
-- Fastify + JSON Schema/Zod；
+- TypeScript strict + Node.js 24 LTS；
+- Fastify + TypeBox/AJV，以公开 JSON Schema 为契约事实来源；
 - SQLite + repository abstraction，后续切 PostgreSQL；
 - DB-backed queue/outbox，不先引入 Kafka；
 - React/Vite 的轻量任务时间线；
