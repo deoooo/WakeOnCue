@@ -1,7 +1,9 @@
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
 
 const Id = (prefix: string) => Type.String({ pattern: `^${prefix}_[A-Za-z0-9_-]+$` });
-const Timestamp = Type.String({ format: "date-time" });
+const Timestamp = Type.String({
+  pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$",
+});
 const EvidenceRefSchema = Type.Object(
   {
     uri: Type.String({ minLength: 1 }),

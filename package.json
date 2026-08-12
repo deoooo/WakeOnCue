@@ -19,9 +19,12 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
+    "replay": "tsx packages/testing/src/replay-cli.ts",
+    "smoke:webhook": "node scripts/smoke-webhook.mjs",
     "start:api": "tsx apps/api/src/main.ts",
     "start:worker": "tsx apps/worker/src/main.ts",
     "test": "vitest run",
+    "test:replay": "vitest run packages/core/src/replay.test.ts packages/testing/src/replay-golden.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

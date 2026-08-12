@@ -1,0 +1,95 @@
+{
+  "corpusVersion": "wakeoncue.replay-corpus/v1",
+  "name": "deadline-change-and-duplicate",
+  "events": [
+    {
+      "specVersion": "wakeoncue.event/v1",
+      "eventId": "evt_golden_first",
+      "type": "conversation.commitment.detected",
+      "source": {
+        "adapter": "webhook",
+        "sourceId": "fixture-webhook",
+        "providerRef": "golden-first"
+      },
+      "subject": "fixture-user",
+      "occurredAt": "2026-08-12T10:00:00.000Z",
+      "receivedAt": "2026-08-12T10:00:01.000Z",
+      "correlationId": "fixture-conversation",
+      "confidence": 0.97,
+      "data": {
+        "commitment": "发送最终报价",
+        "deadline": "2026-08-14"
+      },
+      "evidenceRefs": [
+        {
+          "uri": "fixture://conversation/segment-1",
+          "mediaType": "text/plain",
+          "classification": "private"
+        }
+      ],
+      "privacy": { "purpose": ["attention"], "retention": "P7D" },
+      "idempotencyKey": "fixture:golden-first:v1"
+    },
+    {
+      "specVersion": "wakeoncue.event/v1",
+      "eventId": "evt_golden_changed",
+      "type": "conversation.commitment.deadline_changed",
+      "source": {
+        "adapter": "webhook",
+        "sourceId": "fixture-webhook",
+        "providerRef": "golden-changed"
+      },
+      "subject": "fixture-user",
+      "occurredAt": "2026-08-12T10:05:00.000Z",
+      "receivedAt": "2026-08-12T10:05:01.000Z",
+      "correlationId": "fixture-conversation",
+      "confidence": 0.99,
+      "data": {
+        "deadline": "2026-08-15"
+      },
+      "evidenceRefs": [
+        {
+          "uri": "fixture://conversation/segment-2",
+          "mediaType": "text/plain",
+          "classification": "private"
+        }
+      ],
+      "privacy": { "purpose": ["attention"], "retention": "P7D" },
+      "idempotencyKey": "fixture:golden-changed:v1"
+    },
+    {
+      "specVersion": "wakeoncue.event/v1",
+      "eventId": "evt_golden_first",
+      "type": "conversation.commitment.detected",
+      "source": {
+        "adapter": "webhook",
+        "sourceId": "fixture-webhook",
+        "providerRef": "golden-first"
+      },
+      "subject": "fixture-user",
+      "occurredAt": "2026-08-12T10:00:00.000Z",
+      "receivedAt": "2026-08-12T10:00:01.000Z",
+      "correlationId": "fixture-conversation",
+      "confidence": 0.97,
+      "data": {
+        "commitment": "发送最终报价",
+        "deadline": "2026-08-14"
+      },
+      "evidenceRefs": [
+        {
+          "uri": "fixture://conversation/segment-1",
+          "mediaType": "text/plain",
+          "classification": "private"
+        }
+      ],
+      "privacy": { "purpose": ["attention"], "retention": "P7D" },
+      "idempotencyKey": "fixture:golden-first:v1"
+    }
+  ],
+  "expected": {
+    "eventCount": 2,
+    "duplicateCount": 1,
+    "episodeCount": 1,
+    "deadlineHistory": ["2026-08-14", "2026-08-15"]
+  }
+}

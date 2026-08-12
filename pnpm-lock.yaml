@@ -92,7 +92,17 @@ importers:
 
   packages/contracts: {}
 
+  packages/core: {}
+
+  packages/source-sdk: {}
+
+  packages/source-webhook: {}
+
+  packages/storage: {}
+
   packages/storage-sqlite: {}
+
+  packages/testing: {}
 
 packages:
   "@babel/code-frame@7.29.7":

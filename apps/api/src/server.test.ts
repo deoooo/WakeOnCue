@@ -1,14 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { signWebhook } from "@wakeoncue/source-webhook";
+
 import { buildServer } from "./server.ts";
 
 describe("API bootstrap", () => {
   beforeEach(() => {
     process.env["WAKEONCUE_DATABASE_PATH"] = ":memory:";
+    process.env["WAKEONCUE_WEBHOOK_SECRET"] = "test-only-webhook-secret";
+    process.env["WAKEONCUE_LOG_LEVEL"] = "silent";
   });
 
   afterEach(() => {
     delete process.env["WAKEONCUE_DATABASE_PATH"];
+    delete process.env["WAKEONCUE_WEBHOOK_SECRET"];
+    delete process.env["WAKEONCUE_LOG_LEVEL"];
   });
 
   it("reports health and migration readiness", async () => {
@@ -33,6 +39,99 @@ describe("API bootstrap", () => {
           "wakeoncue.notification/v1",
         ]),
       );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("authenticates, validates, stores, deduplicates, and replays a signed webhook", async () => {
+    const server = await buildServer();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payload = JSON.stringify({
+      specVersion: "wakeoncue.source.webhook/v1",
+      providerEventId: "provider-api-1",
+      type: "business.anomaly.detected",
+      subject: "user-api",
+      occurredAt: new Date(timestamp * 1000).toISOString(),
+      correlationId: "anomaly-api-1",
+      confidence: 0.98,
+      data: { status: "open" },
+      evidenceRefs: [
+        {
+          uri: "fixture://api/provider-api-1",
+          mediaType: "application/json",
+          classification: "private",
+        },
+      ],
+      privacy: { purpose: ["attention"], retention: "P7D" },
+    });
+    const headers = {
+      "content-type": "application/json",
+      "idempotency-key": "api-request-1",
+      "x-wakeoncue-timestamp": String(timestamp),
+      "x-wakeoncue-signature": signWebhook(payload, timestamp, "test-only-webhook-secret"),
+    };
+    try {
+      const accepted = await server.inject({
+        method: "POST",
+        url: "/v1/sources/webhook/source-api",
+        headers,
+        payload,
+      });
+      expect(accepted.statusCode).toBe(202);
+      const acceptedBody = accepted.json<{ event: { eventId: string }; inserted: boolean }>();
+      expect(acceptedBody.inserted).toBe(true);
+
+      const duplicate = await server.inject({
+        method: "POST",
+        url: "/v1/sources/webhook/source-api",
+        headers,
+        payload,
+      });
+      expect(duplicate.statusCode).toBe(200);
+      expect(duplicate.json()).toMatchObject({ inserted: false, status: "duplicate" });
+
+      const stored = await server.inject({
+        method: "GET",
+        url: `/v1/events/${acceptedBody.event.eventId}`,
+      });
+      expect(stored.statusCode).toBe(200);
+      expect(stored.json()).toMatchObject({ event: { source: { adapter: "webhook" } } });
+
+      const replay = await server.inject({
+        method: "POST",
+        url: "/v1/replays",
+        headers: { "content-type": "application/json", "idempotency-key": "replay-api-1" },
+        payload: JSON.stringify({ eventIds: [acceptedBody.event.eventId] }),
+      });
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json()).toMatchObject({ replay: { eventCount: 1, duplicateCount: 0 } });
+
+      const unauthorized = await server.inject({
+        method: "POST",
+        url: "/v1/sources/webhook/source-api",
+        headers: { ...headers, "x-wakeoncue-signature": "v1=invalid" },
+        payload,
+      });
+      expect(unauthorized.statusCode).toBe(401);
+
+      const invalidPayload = JSON.stringify({ specVersion: "wakeoncue.source.webhook/v1" });
+      const invalid = await server.inject({
+        method: "POST",
+        url: "/v1/sources/webhook/source-api",
+        headers: {
+          ...headers,
+          "idempotency-key": "api-invalid-1",
+          "x-wakeoncue-signature": signWebhook(
+            invalidPayload,
+            timestamp,
+            "test-only-webhook-secret",
+          ),
+        },
+        payload: invalidPayload,
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toMatchObject({ status: "quarantined", code: "SCHEMA_INVALID" });
     } finally {
       await server.close();
     }
