@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@wakeoncue/contracts": packageSource("./packages/contracts/src/index.ts"),
+      "@wakeoncue/attention": packageSource("./packages/attention/src/index.ts"),
       "@wakeoncue/core": packageSource("./packages/core/src/index.ts"),
       "@wakeoncue/notify-sdk": packageSource("./packages/notify-sdk/src/index.ts"),
       "@wakeoncue/policy": packageSource("./packages/policy/src/index.ts"),

@@ -3,8 +3,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { AttentionEngine, AttentionEvaluation, SourceMode } from "@wakeoncue/attention";
 import type { CueEvent } from "@wakeoncue/contracts";
-import { canonicalJson, replayCueEvents, sha256, type EpisodeProjection } from "@wakeoncue/core";
+import {
+  canonicalJson,
+  deterministicId,
+  replayCueEvents,
+  sha256,
+  type EpisodeProjection,
+} from "@wakeoncue/core";
 import type { AppendEventResult, EventStore, IngressErrorRecord } from "@wakeoncue/storage";
 
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +74,69 @@ interface OutboxProjectionRow {
   outbox_id: string;
   aggregate_id: string;
   idempotency_key: string;
+}
+
+interface AttentionOutboxRow {
+  outbox_id: string;
+  aggregate_id: string;
+  payload_json: string;
+}
+
+export interface SourceModeGateEvidence {
+  shadowDays?: number;
+  explicitCommitmentPrecision?: number;
+  falseWakeRatePerUserDay?: number;
+  privacyViolationCount?: number;
+  evidenceRef?: string;
+  userExplicitlyEnabled?: boolean;
+  runtimeIdempotencyPassed?: boolean;
+  pepConformancePassed?: boolean;
+  authorizationAttackSuitePassed?: boolean;
+  sourcePauseAvailable?: boolean;
+}
+
+export interface SourceModeRecord {
+  sourceId: string;
+  cueType: string;
+  mode: SourceMode;
+  gateEvidence: SourceModeGateEvidence;
+  updatedAt: string;
+}
+
+export class SourceModeGateError extends Error {
+  constructor(readonly missingRequirements: string[]) {
+    super(`Source mode gate is not satisfied: ${missingRequirements.join(", ")}`);
+    this.name = "SourceModeGateError";
+  }
+}
+
+function validateModeGate(mode: SourceMode, evidence: SourceModeGateEvidence): void {
+  if (mode === "SHADOW") return;
+  const missing = [
+    ...(typeof evidence.shadowDays === "number" && evidence.shadowDays >= 7
+      ? []
+      : ["SHADOW_DAYS_7"]),
+    ...(typeof evidence.explicitCommitmentPrecision === "number" &&
+    evidence.explicitCommitmentPrecision >= 0.9
+      ? []
+      : ["PRECISION_0_90"]),
+    ...(typeof evidence.falseWakeRatePerUserDay === "number" &&
+    evidence.falseWakeRatePerUserDay <= 0.2
+      ? []
+      : ["FALSE_WAKE_RATE_0_20"]),
+    ...(evidence.privacyViolationCount === 0 ? [] : ["PRIVACY_VIOLATIONS_ZERO"]),
+    ...(evidence.evidenceRef ? [] : ["SHADOW_EVIDENCE_REF"]),
+  ];
+  if (mode === "WAKE") {
+    missing.push(
+      ...(evidence.userExplicitlyEnabled ? [] : ["USER_EXPLICIT_ENABLE"]),
+      ...(evidence.runtimeIdempotencyPassed ? [] : ["RUNTIME_IDEMPOTENCY"]),
+      ...(evidence.pepConformancePassed ? [] : ["PEP_CONFORMANCE"]),
+      ...(evidence.authorizationAttackSuitePassed ? [] : ["AUTHORIZATION_ATTACK_SUITE"]),
+      ...(evidence.sourcePauseAvailable ? [] : ["SOURCE_PAUSE_AVAILABLE"]),
+    );
+  }
+  if (missing.length > 0) throw new SourceModeGateError(missing);
 }
 
 function idempotencyPayloadHash(event: CueEvent): string {
@@ -238,12 +308,388 @@ export class SqliteWakeStore implements EventStore {
             now,
             now,
           );
+        const attentionKey = `attention:${projection.episodeId}:${projection.eventIds.length}:v1`;
+        this.database
+          .prepare(
+            `INSERT INTO outbox(
+              outbox_id, topic, aggregate_id, idempotency_key, payload_json, status, available_at
+            ) VALUES (?, 'episode.attention', ?, ?, ?, 'PENDING', ?)
+            ON CONFLICT(idempotency_key) DO NOTHING`,
+          )
+          .run(
+            `outbox_attention_${sha256(attentionKey).slice(0, 26)}`,
+            projection.episodeId,
+            attentionKey,
+            canonicalJson({
+              episodeId: projection.episodeId,
+              eventIds: projection.eventIds,
+              sourceId: event.source.sourceId,
+              cueType: event.type,
+            }),
+            now,
+          );
         this.database
           .prepare("UPDATE outbox SET status = 'COMPLETED', completed_at = ? WHERE outbox_id = ?")
           .run(now, row.outbox_id);
       })();
     }
     return rows.length;
+  }
+
+  getSourceMode(sourceId: string, cueType: string): SourceMode {
+    const row = this.database
+      .prepare("SELECT mode FROM source_modes WHERE source_id = ? AND cue_type = ?")
+      .get(sourceId, cueType) as { mode: SourceMode } | undefined;
+    return row?.mode ?? "SHADOW";
+  }
+
+  getSourceModeRecord(sourceId: string, cueType: string): SourceModeRecord {
+    const row = this.database
+      .prepare(
+        `SELECT source_id, cue_type, mode, gate_evidence_json, updated_at
+         FROM source_modes WHERE source_id = ? AND cue_type = ?`,
+      )
+      .get(sourceId, cueType) as
+      | {
+          source_id: string;
+          cue_type: string;
+          mode: SourceMode;
+          gate_evidence_json: string;
+          updated_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          sourceId: row.source_id,
+          cueType: row.cue_type,
+          mode: row.mode,
+          gateEvidence: JSON.parse(row.gate_evidence_json) as SourceModeGateEvidence,
+          updatedAt: row.updated_at,
+        }
+      : {
+          sourceId,
+          cueType,
+          mode: "SHADOW",
+          gateEvidence: {},
+          updatedAt: "",
+        };
+  }
+
+  setSourceMode(sourceId: string, cueType: string, mode: SourceMode): SourceModeRecord {
+    const evidenceRow = this.database
+      .prepare(
+        `SELECT evidence_json FROM source_gate_evidence
+         WHERE source_id = ? AND cue_type = ?`,
+      )
+      .get(sourceId, cueType) as { evidence_json: string } | undefined;
+    const gateEvidence = evidenceRow
+      ? (JSON.parse(evidenceRow.evidence_json) as SourceModeGateEvidence)
+      : {};
+    validateModeGate(mode, gateEvidence);
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO source_modes(source_id, cue_type, mode, gate_evidence_json, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(source_id, cue_type) DO UPDATE SET
+           mode = excluded.mode,
+           gate_evidence_json = excluded.gate_evidence_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(sourceId, cueType, mode, canonicalJson(gateEvidence), now);
+    return this.getSourceModeRecord(sourceId, cueType);
+  }
+
+  recordSourceGateEvidence(
+    sourceId: string,
+    cueType: string,
+    evidence: SourceModeGateEvidence,
+    calculatedAt = new Date().toISOString(),
+  ): void {
+    this.database
+      .prepare(
+        `INSERT INTO source_gate_evidence(source_id, cue_type, evidence_json, calculated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(source_id, cue_type) DO UPDATE SET
+           evidence_json = excluded.evidence_json,
+           calculated_at = excluded.calculated_at`,
+      )
+      .run(sourceId, cueType, canonicalJson(evidence), calculatedAt);
+  }
+
+  listSourceModes(): SourceModeRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT source_id, cue_type, mode, gate_evidence_json, updated_at
+         FROM source_modes ORDER BY source_id, cue_type`,
+      )
+      .all() as Array<{
+      source_id: string;
+      cue_type: string;
+      mode: SourceMode;
+      gate_evidence_json: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => ({
+      sourceId: row.source_id,
+      cueType: row.cue_type,
+      mode: row.mode,
+      gateEvidence: JSON.parse(row.gate_evidence_json) as SourceModeGateEvidence,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  async processAttentionOutbox(engine: AttentionEngine, limit = 20): Promise<number> {
+    const rows = this.database
+      .prepare(
+        `SELECT outbox_id, aggregate_id, payload_json
+         FROM outbox
+         WHERE topic = 'episode.attention' AND status = 'PENDING' AND available_at <= ?
+         ORDER BY available_at, outbox_id
+         LIMIT ?`,
+      )
+      .all(new Date().toISOString(), limit) as AttentionOutboxRow[];
+
+    let processed = 0;
+    for (const row of rows) {
+      const episode = this.getEpisode(row.aggregate_id);
+      if (!episode)
+        throw new Error(`Attention outbox references missing episode ${row.aggregate_id}`);
+      const payload = JSON.parse(row.payload_json) as {
+        eventIds: string[];
+        sourceId: string;
+        cueType: string;
+      };
+      const events = this.getEvents(payload.eventIds);
+      const evaluationTime = events.at(-1)?.receivedAt ?? episode.lastOccurredAt;
+      const usageDate = evaluationTime.slice(0, 10);
+      const usage = this.database
+        .prepare(
+          `SELECT wake_count, notification_count FROM attention_daily_usage
+           WHERE subject = ? AND usage_date = ?`,
+        )
+        .get(episode.subject, usageDate) as
+        { wake_count: number; notification_count: number } | undefined;
+      const cooldownRows = this.database
+        .prepare(
+          `SELECT DISTINCT cooldown_key FROM decisions
+           WHERE subject = ? AND cooldown_key IS NOT NULL AND expires_at > ?
+             AND decision = 'WAKE_AGENT'`,
+        )
+        .all(episode.subject, evaluationTime) as Array<{ cooldown_key: string }>;
+      const evaluation = await engine.decide({
+        episode,
+        events,
+        sourceId: payload.sourceId,
+        cueType: payload.cueType,
+        mode: this.getSourceMode(payload.sourceId, payload.cueType),
+        evaluationTime,
+        timezoneOffsetMinutes: Number(process.env["WAKEONCUE_TIMEZONE_OFFSET_MINUTES"] ?? "480"),
+        quietHours: {
+          startHour: Number(process.env["WAKEONCUE_QUIET_START_HOUR"] ?? "22"),
+          endHour: Number(process.env["WAKEONCUE_QUIET_END_HOUR"] ?? "7"),
+        },
+        dailyBudget: {
+          wakeLimit: Number(process.env["WAKEONCUE_DAILY_WAKE_LIMIT"] ?? "3"),
+          notifyLimit: Number(process.env["WAKEONCUE_DAILY_NOTIFICATION_LIMIT"] ?? "5"),
+          wakesUsed: usage?.wake_count ?? 0,
+          notificationsUsed: usage?.notification_count ?? 0,
+        },
+        activeCooldownKeys: cooldownRows.map((entry) => entry.cooldown_key),
+      });
+
+      this.database.transaction(() => {
+        const inserted = this.database
+          .prepare(
+            `INSERT OR IGNORE INTO decisions(
+              decision_id, episode_id, decision, reason_codes_json, evidence_refs_json,
+              strategy_version, model_ref, record_json, created_at, subject, source_id,
+              cue_type, mode, disposition, cooldown_key, expires_at, episode_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            evaluation.decision.decisionId,
+            episode.episodeId,
+            evaluation.decision.decision,
+            canonicalJson(evaluation.decision.reasonCodes),
+            canonicalJson(evaluation.decision.evidenceRefs),
+            evaluation.decision.strategyVersion,
+            evaluation.decision.modelRef ?? null,
+            canonicalJson(evaluation),
+            evaluationTime,
+            episode.subject,
+            payload.sourceId,
+            payload.cueType,
+            evaluation.mode,
+            evaluation.disposition,
+            evaluation.decision.cooldownKey,
+            evaluation.decision.expiresAt,
+            episode.eventIds.length,
+          ).changes;
+
+        if (inserted > 0 && evaluation.disposition === "WAKE_QUEUED") {
+          this.incrementAttentionUsage(episode.subject, usageDate, "wake_count", evaluationTime);
+          this.enqueueAttentionEffect("wake.activate", evaluation, evaluationTime);
+        } else if (inserted > 0 && evaluation.disposition === "NOTIFICATION_QUEUED") {
+          this.incrementAttentionUsage(
+            episode.subject,
+            usageDate,
+            "notification_count",
+            evaluationTime,
+          );
+          this.enqueueAttentionEffect("attention.notify", evaluation, evaluationTime);
+        }
+        if (inserted > 0 && evaluation.observationRequest) {
+          const observation = evaluation.observationRequest;
+          this.database
+            .prepare(
+              `INSERT OR IGNORE INTO observation_requests(
+                observation_id, episode_id, capability, purpose, scope_json,
+                budget_json, expires_at, status
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+            )
+            .run(
+              deterministicId("observation", evaluation.decision.decisionId),
+              episode.episodeId,
+              observation.capability,
+              observation.purpose,
+              canonicalJson({ dataScope: observation.dataScope }),
+              canonicalJson({ maxCost: observation.maxCost, retention: observation.retention }),
+              new Date(
+                new Date(evaluationTime).getTime() + observation.ttlSeconds * 1_000,
+              ).toISOString(),
+            );
+        }
+        if (inserted > 0) {
+          this.upsertExtractedEntities(episode.episodeId, evaluation, evaluationTime);
+        }
+        this.database
+          .prepare("UPDATE outbox SET status = 'COMPLETED', completed_at = ? WHERE outbox_id = ?")
+          .run(evaluationTime, row.outbox_id);
+      })();
+      processed += 1;
+    }
+    return processed;
+  }
+
+  private incrementAttentionUsage(
+    subject: string,
+    usageDate: string,
+    field: "wake_count" | "notification_count",
+    now: string,
+  ): void {
+    this.database
+      .prepare(
+        `INSERT INTO attention_daily_usage(subject, usage_date, ${field}, updated_at)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT(subject, usage_date) DO UPDATE SET
+           ${field} = ${field} + 1,
+           updated_at = excluded.updated_at`,
+      )
+      .run(subject, usageDate, now);
+  }
+
+  private upsertExtractedEntities(
+    episodeId: string,
+    evaluation: AttentionEvaluation,
+    now: string,
+  ): void {
+    const entities = [
+      ["commitment", evaluation.signals.commitment],
+      ["deadline", evaluation.signals.deadline],
+      ["recipient", evaluation.signals.recipient],
+    ] as const;
+    for (const [type, value] of entities) {
+      if (!value) continue;
+      this.database
+        .prepare(
+          `INSERT INTO entities(entity_id, episode_id, entity_type, value_json, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(entity_id) DO UPDATE SET
+             value_json = excluded.value_json,
+             updated_at = excluded.updated_at`,
+        )
+        .run(
+          deterministicId("entity", `${episodeId}:${type}`),
+          episodeId,
+          type,
+          canonicalJson({ value }),
+          now,
+        );
+    }
+  }
+
+  private enqueueAttentionEffect(
+    topic: "attention.notify" | "wake.activate",
+    evaluation: AttentionEvaluation,
+    now: string,
+  ): void {
+    const key = `${topic}:${evaluation.decision.decisionId}`;
+    this.database
+      .prepare(
+        `INSERT INTO outbox(
+          outbox_id, topic, aggregate_id, idempotency_key, payload_json, status, available_at
+        ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+        ON CONFLICT(idempotency_key) DO NOTHING`,
+      )
+      .run(
+        `outbox_effect_${sha256(key).slice(0, 26)}`,
+        topic,
+        evaluation.decision.decisionId,
+        key,
+        canonicalJson({ decisionId: evaluation.decision.decisionId }),
+        now,
+      );
+  }
+
+  getDecision(decisionId: string): AttentionEvaluation | undefined {
+    const row = this.database
+      .prepare("SELECT record_json FROM decisions WHERE decision_id = ?")
+      .get(decisionId) as { record_json: string } | undefined;
+    return row ? (JSON.parse(row.record_json) as AttentionEvaluation) : undefined;
+  }
+
+  listEpisodes(): Array<{ episode: EpisodeProjection; latestDecision?: AttentionEvaluation }> {
+    const rows = this.database
+      .prepare("SELECT state_json FROM episodes ORDER BY updated_at DESC, episode_id")
+      .all() as Array<{ state_json: string }>;
+    return rows.map((row) => {
+      const episode = JSON.parse(row.state_json) as EpisodeProjection;
+      const decisionRow = this.database
+        .prepare(
+          `SELECT record_json FROM decisions WHERE episode_id = ?
+           ORDER BY created_at DESC, decision_id DESC LIMIT 1`,
+        )
+        .get(episode.episodeId) as { record_json: string } | undefined;
+      return {
+        episode,
+        ...(decisionRow
+          ? { latestDecision: JSON.parse(decisionRow.record_json) as AttentionEvaluation }
+          : {}),
+      };
+    });
+  }
+
+  getEpisodeTimeline(episodeId: string):
+    | {
+        episode: EpisodeProjection;
+        cues: CueEvent[];
+        decisions: AttentionEvaluation[];
+      }
+    | undefined {
+    const episode = this.getEpisode(episodeId);
+    if (!episode) return undefined;
+    const decisionRows = this.database
+      .prepare(
+        `SELECT record_json FROM decisions WHERE episode_id = ?
+         ORDER BY created_at, decision_id`,
+      )
+      .all(episodeId) as Array<{ record_json: string }>;
+    return {
+      episode,
+      cues: this.getEvents(episode.eventIds),
+      decisions: decisionRows.map((row) => JSON.parse(row.record_json) as AttentionEvaluation),
+    };
   }
 
   getEpisode(episodeId: string): EpisodeProjection | undefined {

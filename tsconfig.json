@@ -18,6 +18,7 @@
     "baseUrl": ".",
     "paths": {
       "@wakeoncue/contracts": ["packages/contracts/src/index.ts"],
+      "@wakeoncue/attention": ["packages/attention/src/index.ts"],
       "@wakeoncue/core": ["packages/core/src/index.ts"],
       "@wakeoncue/notify-sdk": ["packages/notify-sdk/src/index.ts"],
       "@wakeoncue/policy": ["packages/policy/src/index.ts"],

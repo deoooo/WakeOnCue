@@ -2,6 +2,7 @@ import type { CueEvent } from "@wakeoncue/contracts";
 
 export interface SourceAdapterContext {
   sourceId: string;
+  subject?: string;
   receivedAt: string;
   idempotencyKey?: string;
 }

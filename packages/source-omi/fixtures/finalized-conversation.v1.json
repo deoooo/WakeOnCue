@@ -1,0 +1,49 @@
+{
+  "id": "conversation_fixture_001",
+  "created_at": "2026-08-12T10:05:02+08:00",
+  "started_at": "2026-08-12T10:00:00+08:00",
+  "finished_at": "2026-08-12T10:05:00+08:00",
+  "source": "omi",
+  "language": "zh",
+  "status": "completed",
+  "discarded": false,
+  "transcript_segments": [
+    {
+      "id": "segment_fixture_001",
+      "text": "我周五之前把最终报价发给张三。",
+      "speaker": "SPEAKER_00",
+      "speakerId": 0,
+      "speaker_name": "设备所有者",
+      "is_user": true,
+      "start": 10,
+      "end": 13.2
+    },
+    {
+      "id": "segment_fixture_002",
+      "text": "好的，我等你消息。",
+      "speaker": "SPEAKER_01",
+      "speakerId": 1,
+      "speaker_name": "对话参与者",
+      "is_user": false,
+      "start": 13.5,
+      "end": 15.1
+    }
+  ],
+  "structured": {
+    "title": "报价跟进",
+    "overview": "设备所有者承诺在周五前发送报价。",
+    "emoji": "📄",
+    "category": "work",
+    "action_items": [
+      {
+        "description": "周五前把最终报价发给张三",
+        "completed": false,
+        "due_at": "2026-08-14T18:00:00+08:00"
+      }
+    ],
+    "events": []
+  },
+  "apps_response": [],
+  "folder_id": "folder_fixture_work",
+  "folder_name": "工作"
+}

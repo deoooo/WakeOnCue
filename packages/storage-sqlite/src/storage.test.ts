@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { CueEvent } from "@wakeoncue/contracts";
+import { AttentionEngine } from "@wakeoncue/attention";
 
 import {
   IdempotencyConflictError,
   migrateDatabase,
   openDatabase,
+  SourceModeGateError,
   SqliteWakeStore,
 } from "./index.ts";
 
@@ -34,7 +36,11 @@ describe("SQLite migrations", () => {
     const directory = mkdtempSync(join(tmpdir(), "wakeoncue-storage-"));
     const database = openDatabase(join(directory, "test.sqlite"));
     try {
-      expect(migrateDatabase(database)).toEqual(["001_initial.sql", "002_replay_first.sql"]);
+      expect(migrateDatabase(database)).toEqual([
+        "001_initial.sql",
+        "002_replay_first.sql",
+        "003_conversation_attention.sql",
+      ]);
       expect(migrateDatabase(database)).toEqual([]);
       const tables = database
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -90,6 +96,63 @@ describe("SQLite migrations", () => {
           .prepare("UPDATE events SET event_type = 'tampered' WHERE event_id = ?")
           .run(first.eventId),
       ).toThrowError("events are append-only");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("projects conversation cues into explainable Shadow decisions and enforces mode gates", async () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database);
+    const store = new SqliteWakeStore(database);
+    try {
+      const event = cueEvent({
+        type: "conversation.finalized",
+        data: {
+          conversation: {
+            segments: [
+              {
+                text: "我周五之前把最终报价发给张三。",
+                speakerRef: "subject",
+                isSubject: true,
+                startSeconds: 0,
+                endSeconds: 3,
+              },
+            ],
+            actionItems: [],
+          },
+        },
+      });
+      store.appendEvent(event);
+      expect(store.processProjectionOutbox()).toBe(1);
+      expect(await store.processAttentionOutbox(new AttentionEngine())).toBe(1);
+      const item = store.listEpisodes()[0];
+      expect(item?.latestDecision).toMatchObject({
+        mode: "SHADOW",
+        disposition: "SHADOW_RECORDED",
+        decision: { decision: "WAKE_AGENT" },
+      });
+      const entities = database
+        .prepare("SELECT entity_type FROM entities ORDER BY entity_type")
+        .all()
+        .map((row) => (row as { entity_type: string }).entity_type);
+      expect(entities).toEqual(["commitment", "deadline", "recipient"]);
+      expect(() => store.setSourceMode("source-local", event.type, "NOTIFY")).toThrowError(
+        SourceModeGateError,
+      );
+      store.recordSourceGateEvidence(
+        "source-local",
+        event.type,
+        {
+          shadowDays: 7,
+          explicitCommitmentPrecision: 0.95,
+          falseWakeRatePerUserDay: 0.1,
+          privacyViolationCount: 0,
+          evidenceRef: "fixture://gate/verified-synthetic-evidence",
+        },
+        "2026-08-12T10:05:00.000Z",
+      );
+      expect(store.setSourceMode("source-local", event.type, "NOTIFY").mode).toBe("NOTIFY");
     } finally {
       database.close();
     }

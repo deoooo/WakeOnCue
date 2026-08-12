@@ -1,10 +1,12 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { schemaRegistry } from "@wakeoncue/contracts";
 import { deterministicId, sha256 } from "@wakeoncue/core";
+import { OmiFinalizedConversationAdapter } from "@wakeoncue/source-omi";
 import {
   GenericWebhookAdapter,
   verifyWebhookSignature,
@@ -15,6 +17,7 @@ import {
   migrateDatabase,
   openDatabase,
   resolveDatabasePath,
+  SourceModeGateError,
   SqliteWakeStore,
 } from "@wakeoncue/storage-sqlite";
 
@@ -26,6 +29,17 @@ function parseJson(rawBody: string): unknown {
   return JSON.parse(rawBody) as unknown;
 }
 
+function bearerMatches(authorization: string | undefined, expected: string): boolean {
+  const received = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  const receivedDigest = Buffer.from(sha256(received), "hex");
+  const expectedDigest = Buffer.from(sha256(expected), "hex");
+  return timingSafeEqual(receivedDigest, expectedDigest);
+}
+
+function isLoopbackAddress(address: string): boolean {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 export async function buildServer(): Promise<FastifyInstance> {
   const databasePath = resolveDatabasePath();
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -33,6 +47,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   const appliedMigrations = migrateDatabase(database);
   const store = new SqliteWakeStore(database);
   const webhookAdapter = new GenericWebhookAdapter();
+  const omiAdapter = new OmiFinalizedConversationAdapter();
   const server = Fastify({
     logger: {
       level: process.env["WAKEONCUE_LOG_LEVEL"] ?? "info",
@@ -47,6 +62,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await server.register(cors, {
     origin: [process.env["WAKEONCUE_CONSOLE_URL"] ?? "http://127.0.0.1:4173"],
+    methods: ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
   server.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => {
@@ -159,6 +175,62 @@ export async function buildServer(): Promise<FastifyInstance> {
     },
   );
 
+  server.post<{ Params: { sourceId: string }; Body: string }>(
+    "/v1/sources/omi/:sourceId",
+    async (request, reply) => {
+      const token = process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"];
+      const subject = process.env["WAKEONCUE_OMI_SUBJECT"];
+      if (!token || !subject) {
+        return reply.code(503).send({ code: "OMI_SOURCE_NOT_CONFIGURED", status: "error" });
+      }
+      if (!bearerMatches(headerValue(request.headers.authorization), token)) {
+        return reply.code(401).send({ code: "SOURCE_AUTH_INVALID", status: "error" });
+      }
+
+      const receivedAt = new Date().toISOString();
+      const bodyDigest = `sha256:${sha256(request.body)}`;
+      let parsed: unknown;
+      try {
+        parsed = parseJson(request.body);
+      } catch {
+        store.recordIngressError({
+          errorId: deterministicId("ingress_error", `${request.params.sourceId}:${bodyDigest}:omi`),
+          sourceId: request.params.sourceId,
+          bodyDigest,
+          reasonCode: "INVALID_JSON",
+          details: ["Request body is not valid JSON"],
+          createdAt: receivedAt,
+        });
+        return reply.code(400).send({ code: "INVALID_JSON", status: "quarantined" });
+      }
+      if (!omiAdapter.validate(parsed)) {
+        const details = omiAdapter.validationErrors(parsed);
+        store.recordIngressError({
+          errorId: deterministicId("ingress_error", `${request.params.sourceId}:${bodyDigest}:omi`),
+          sourceId: request.params.sourceId,
+          bodyDigest,
+          reasonCode: "SCHEMA_INVALID",
+          details,
+          createdAt: receivedAt,
+        });
+        return reply.code(400).send({ code: "SCHEMA_INVALID", details, status: "quarantined" });
+      }
+      const [event] = omiAdapter.ingest(parsed, {
+        sourceId: request.params.sourceId,
+        subject,
+        receivedAt,
+      });
+      if (!event) return reply.code(400).send({ code: "NO_CUE_EVENT", status: "error" });
+      const result = store.appendEvent(event);
+      return reply.code(result.inserted ? 202 : 200).send({
+        event: result.event,
+        inserted: result.inserted,
+        mode: store.getSourceMode(request.params.sourceId, event.type),
+        status: result.inserted ? "accepted" : "duplicate",
+      });
+    },
+  );
+
   server.get<{ Params: { eventId: string } }>("/v1/events/:eventId", async (request, reply) => {
     const event = store.getEvent(request.params.eventId);
     return event
@@ -173,6 +245,80 @@ export async function buildServer(): Promise<FastifyInstance> {
       return episode
         ? reply.send({ episode })
         : reply.code(404).send({ code: "EPISODE_NOT_FOUND", status: "error" });
+    },
+  );
+
+  server.get("/v1/episodes", () => ({ episodes: store.listEpisodes() }));
+
+  server.get<{ Params: { episodeId: string } }>(
+    "/v1/episodes/:episodeId/timeline",
+    async (request, reply) => {
+      const timeline = store.getEpisodeTimeline(request.params.episodeId);
+      return timeline
+        ? reply.send({ timeline })
+        : reply.code(404).send({ code: "EPISODE_NOT_FOUND", status: "error" });
+    },
+  );
+
+  server.get<{ Params: { decisionId: string } }>(
+    "/v1/decisions/:decisionId",
+    async (request, reply) => {
+      const decision = store.getDecision(request.params.decisionId);
+      return decision
+        ? reply.send({ decision })
+        : reply.code(404).send({ code: "DECISION_NOT_FOUND", status: "error" });
+    },
+  );
+
+  server.get<{ Params: { sourceId: string; cueType: string } }>(
+    "/v1/source-modes/:sourceId/:cueType",
+    (request) => ({
+      sourceMode: store.getSourceModeRecord(request.params.sourceId, request.params.cueType),
+    }),
+  );
+
+  server.get("/v1/source-modes", () => ({ sourceModes: store.listSourceModes() }));
+
+  server.put<{ Params: { sourceId: string; cueType: string }; Body: string }>(
+    "/v1/source-modes/:sourceId/:cueType",
+    async (request, reply) => {
+      if (!isLoopbackAddress(request.ip)) {
+        return reply.code(403).send({ code: "LOCAL_ADMIN_ONLY", status: "error" });
+      }
+      let body: unknown;
+      try {
+        body = parseJson(request.body);
+      } catch {
+        return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+      }
+      if (typeof body !== "object" || body === null) {
+        return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+      }
+      const record = body as Record<string, unknown>;
+      const mode = record["mode"];
+      if (
+        !["SHADOW", "NOTIFY", "WAKE"].includes(String(mode)) ||
+        Object.keys(record).some((key) => key !== "mode")
+      ) {
+        return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+      }
+      try {
+        const sourceMode = store.setSourceMode(
+          request.params.sourceId,
+          request.params.cueType,
+          mode as "SHADOW" | "NOTIFY" | "WAKE",
+        );
+        return reply.send({ sourceMode });
+      } catch (error) {
+        if (error instanceof SourceModeGateError) {
+          return reply.code(422).send({
+            code: "SOURCE_MODE_GATE_NOT_SATISFIED",
+            missingRequirements: error.missingRequirements,
+            status: "error",
+          });
+        }
+        throw error;
+      }
     },
   );
 

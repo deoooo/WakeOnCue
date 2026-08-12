@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { signWebhook } from "@wakeoncue/source-webhook";
 
@@ -9,12 +11,16 @@ describe("API bootstrap", () => {
     process.env["WAKEONCUE_DATABASE_PATH"] = ":memory:";
     process.env["WAKEONCUE_WEBHOOK_SECRET"] = "test-only-webhook-secret";
     process.env["WAKEONCUE_LOG_LEVEL"] = "silent";
+    process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"] = "test-only-omi-token";
+    process.env["WAKEONCUE_OMI_SUBJECT"] = "omi-test-subject";
   });
 
   afterEach(() => {
     delete process.env["WAKEONCUE_DATABASE_PATH"];
     delete process.env["WAKEONCUE_WEBHOOK_SECRET"];
     delete process.env["WAKEONCUE_LOG_LEVEL"];
+    delete process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"];
+    delete process.env["WAKEONCUE_OMI_SUBJECT"];
   });
 
   it("reports health and migration readiness", async () => {
@@ -132,6 +138,78 @@ describe("API bootstrap", () => {
       });
       expect(invalid.statusCode).toBe(400);
       expect(invalid.json()).toMatchObject({ status: "quarantined", code: "SCHEMA_INVALID" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("ingests an authenticated finalized Omi fixture in default Shadow mode", async () => {
+    const server = await buildServer();
+    const payload = readFileSync(
+      resolve("packages/source-omi/fixtures/finalized-conversation.v1.json"),
+      "utf8",
+    );
+    try {
+      const unauthorized = await server.inject({
+        method: "POST",
+        url: "/v1/sources/omi/omi-local",
+        headers: { authorization: "Bearer wrong", "content-type": "application/json" },
+        payload,
+      });
+      expect(unauthorized.statusCode).toBe(401);
+
+      const accepted = await server.inject({
+        method: "POST",
+        url: "/v1/sources/omi/omi-local",
+        headers: {
+          authorization: "Bearer test-only-omi-token",
+          "content-type": "application/json",
+        },
+        payload,
+      });
+      expect(accepted.statusCode).toBe(202);
+      expect(accepted.json()).toMatchObject({
+        inserted: true,
+        mode: "SHADOW",
+        event: {
+          type: "conversation.finalized",
+          subject: "omi-test-subject",
+          source: { adapter: "omi-finalized-conversation" },
+        },
+      });
+
+      const rejectedMode = await server.inject({
+        method: "PUT",
+        url: "/v1/source-modes/omi-local/conversation.finalized",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ mode: "NOTIFY" }),
+      });
+      expect(rejectedMode.statusCode).toBe(422);
+      expect(rejectedMode.json()).toMatchObject({ code: "SOURCE_MODE_GATE_NOT_SATISFIED" });
+
+      const forgedEvidence = await server.inject({
+        method: "PUT",
+        url: "/v1/source-modes/omi-local/conversation.finalized",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({
+          mode: "WAKE",
+          gateEvidence: {
+            shadowDays: 99,
+            explicitCommitmentPrecision: 1,
+            falseWakeRatePerUserDay: 0,
+          },
+        }),
+      });
+      expect(forgedEvidence.statusCode).toBe(400);
+
+      const shadow = await server.inject({
+        method: "PUT",
+        url: "/v1/source-modes/omi-local/conversation.finalized",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ mode: "SHADOW" }),
+      });
+      expect(shadow.statusCode).toBe(200);
+      expect(shadow.json()).toMatchObject({ sourceMode: { mode: "SHADOW" } });
     } finally {
       await server.close();
     }

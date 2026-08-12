@@ -1,4 +1,5 @@
 import type { CueEvent } from "@wakeoncue/contracts";
+import type { AttentionEngine, AttentionEvaluation, SourceMode } from "@wakeoncue/attention";
 import type { EpisodeProjection, ReplayProjection } from "@wakeoncue/core";
 
 export interface AppendEventResult {
@@ -24,4 +25,7 @@ export interface EventStore {
   processProjectionOutbox(limit?: number): number;
   getEpisode(episodeId: string): EpisodeProjection | undefined;
   replay(eventIds?: readonly string[]): ReplayProjection;
+  getSourceMode(sourceId: string, cueType: string): SourceMode;
+  processAttentionOutbox(engine: AttentionEngine, limit?: number): Promise<number>;
+  getDecision(decisionId: string): AttentionEvaluation | undefined;
 }
