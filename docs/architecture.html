@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="WakeOnCue architecture — real-world cues wake the right agent at the right time.">
+  <title>WakeOnCue · System Architecture</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b10;
+      --surface: #0f141c;
+      --surface-2: #141b25;
+      --surface-3: #1a2431;
+      --line: #2d3948;
+      --line-strong: #53647a;
+      --text: #edf2f7;
+      --muted: #94a3b8;
+      --cyan: #49d6c8;
+      --cyan-soft: rgba(73, 214, 200, 0.13);
+      --amber: #f6c85f;
+      --amber-soft: rgba(246, 200, 95, 0.13);
+      --blue: #6aa9ff;
+      --blue-soft: rgba(106, 169, 255, 0.13);
+      --rose: #ff7d96;
+      --rose-soft: rgba(255, 125, 150, 0.13);
+      --violet: #b69cff;
+      --violet-soft: rgba(182, 156, 255, 0.13);
+      --green: #7fe0a3;
+      --green-soft: rgba(127, 224, 163, 0.13);
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 8% 3%, rgba(73, 214, 200, 0.08), transparent 28rem),
+        radial-gradient(circle at 92% 12%, rgba(106, 169, 255, 0.07), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1500px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 56px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 6vw, 64px);
+      font-weight: 650;
+      letter-spacing: -0.045em;
+      line-height: 0.96;
+    }
+
+    .hero-copy {
+      max-width: 680px;
+    }
+
+    .subtitle {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: clamp(14px, 2vw, 18px);
+    }
+
+    .hero-rule {
+      width: min(420px, 36vw);
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      background: rgba(15, 20, 28, 0.72);
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .hero-rule strong {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .view-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .view-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 13px;
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .view-btn:hover,
+    .view-btn:focus-visible {
+      border-color: var(--line-strong);
+      color: var(--text);
+      outline: none;
+    }
+
+    .view-btn[aria-pressed="true"] {
+      border-color: var(--cyan);
+      background: var(--cyan-soft);
+      color: var(--text);
+    }
+
+    .canvas {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        rgba(15, 20, 28, 0.84);
+      background-size: 24px 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .stage {
+      position: relative;
+      padding: 28px;
+    }
+
+    .boundary {
+      position: relative;
+      padding: 22px;
+      border: 1px dashed var(--line-strong);
+      background: rgba(8, 11, 16, 0.4);
+    }
+
+    .boundary + .boundary {
+      margin-top: 20px;
+    }
+
+    .boundary-label {
+      position: absolute;
+      top: -10px;
+      left: 18px;
+      padding: 1px 8px;
+      background: var(--surface);
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .boundary-label strong {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .source-grid,
+    .flow-grid,
+    .runtime-grid,
+    .outcome-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .source-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .flow-grid {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      align-items: stretch;
+    }
+
+    .runtime-grid {
+      grid-template-columns: 1fr 1.25fr 1fr 1fr 1.1fr;
+      align-items: stretch;
+    }
+
+    .outcome-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .node {
+      position: relative;
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-2);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .node:hover,
+    .node:focus-visible {
+      transform: translateY(-2px);
+      border-color: var(--line-strong);
+      outline: none;
+    }
+
+    .node-kicker {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .node-title {
+      display: block;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    .node-meta {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .node.source {
+      min-height: 76px;
+      background: linear-gradient(145deg, var(--surface-2), rgba(73, 214, 200, 0.07));
+    }
+
+    .node.cue {
+      border-color: rgba(73, 214, 200, 0.38);
+    }
+
+    .node.attention {
+      border-color: rgba(246, 200, 95, 0.52);
+      background: linear-gradient(145deg, var(--surface-2), var(--amber-soft));
+    }
+
+    .node.wake {
+      border-color: rgba(73, 214, 200, 0.58);
+      background: linear-gradient(145deg, var(--surface-2), var(--cyan-soft));
+    }
+
+    .node.runtime {
+      border-color: rgba(106, 169, 255, 0.44);
+      background: linear-gradient(145deg, var(--surface-2), var(--blue-soft));
+    }
+
+    .node.safety {
+      border-color: rgba(255, 125, 150, 0.5);
+      background: linear-gradient(145deg, var(--surface-2), var(--rose-soft));
+    }
+
+    .node.outcome {
+      border-color: rgba(127, 224, 163, 0.4);
+      background: linear-gradient(145deg, var(--surface-2), var(--green-soft));
+    }
+
+    .node.trace {
+      border-color: rgba(182, 156, 255, 0.42);
+      background: linear-gradient(145deg, var(--surface-2), var(--violet-soft));
+    }
+
+    .flow-connector {
+      display: grid;
+      place-items: center;
+      min-height: 44px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .flow-connector strong {
+      display: inline-block;
+      margin: 0 8px;
+      color: var(--cyan);
+      font-size: 18px;
+    }
+
+    .decision-lane {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .decision {
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .decision:nth-child(2) {
+      border-color: rgba(246, 200, 95, 0.45);
+      color: var(--amber);
+    }
+
+    .decision:nth-child(3) {
+      border-color: rgba(73, 214, 200, 0.45);
+      color: var(--cyan);
+    }
+
+    .auth-lane {
+      display: grid;
+      grid-template-columns: 1.2fr auto 1fr auto 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 12px;
+      border: 1px solid rgba(255, 125, 150, 0.34);
+      background: rgba(255, 125, 150, 0.04);
+    }
+
+    .auth-box {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .auth-box strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .auth-arrow {
+      color: var(--rose);
+      font-size: 17px;
+    }
+
+    .cross-cutting {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .rail {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(182, 156, 255, 0.35);
+      border-bottom: 1px solid rgba(182, 156, 255, 0.35);
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .rail strong {
+      display: block;
+      color: var(--violet);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .loop {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 10px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .loop strong {
+      color: var(--green);
+      font-size: 18px;
+    }
+
+    .detail {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 18px;
+      min-height: 102px;
+      padding: 18px 22px;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .detail-label {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-title {
+      display: block;
+      margin-top: 5px;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, sans-serif;
+      font-size: 17px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .detail-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .detail-copy strong {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .node.is-dimmed,
+    .auth-lane.is-dimmed,
+    .rail.is-dimmed,
+    .loop.is-dimmed {
+      opacity: 0.18;
+    }
+
+    .node.is-active {
+      border-color: var(--cyan);
+      background: linear-gradient(145deg, var(--surface-3), var(--cyan-soft));
+      box-shadow: 0 0 0 1px rgba(73, 214, 200, 0.22);
+    }
+
+    .footer-note {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .footer-note strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 1100px) {
+      .flow-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .runtime-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .source-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        width: min(100% - 20px, 1500px);
+        padding-top: 22px;
+      }
+
+      .hero {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hero-rule {
+        width: 100%;
+      }
+
+      .stage {
+        padding: 20px 14px;
+      }
+
+      .boundary {
+        padding: 20px 12px 12px;
+      }
+
+      .source-grid,
+      .flow-grid,
+      .runtime-grid,
+      .outcome-grid,
+      .cross-cutting {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .auth-lane {
+        grid-template-columns: 1fr;
+      }
+
+      .auth-arrow {
+        transform: rotate(90deg);
+        text-align: center;
+      }
+
+      .detail {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .footer-note {
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 470px) {
+      .decision-lane {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Proactive Agent Activation Layer</p>
+        <h1>WakeOnCue</h1>
+        <p class="subtitle">现实信号不再等待下一条 Prompt。系统识别值得介入的 Cue，在正确时机唤醒合适的 Agent。</p>
+      </div>
+      <div class="hero-rule">
+        <strong>WAKE ≠ EXECUTE</strong><br>
+        WakeOnCue 决定何时启动；Agent 决定如何完成；敏感操作由具体 Tool Attempt 触发确认。
+      </div>
+    </header>
+
+    <nav class="view-controls" aria-label="架构视图">
+      <button class="view-btn" type="button" data-view="all" aria-pressed="true">完整架构</button>
+      <button class="view-btn" type="button" data-view="trigger" aria-pressed="false">主动触发主链</button>
+      <button class="view-btn" type="button" data-view="authorize" aria-pressed="false">敏感操作授权</button>
+      <button class="view-btn" type="button" data-view="outcome" aria-pressed="false">结果与通知闭环</button>
+      <button class="view-btn" type="button" data-view="trace" aria-pressed="false">证据回溯</button>
+    </nav>
+
+    <section class="canvas" aria-label="WakeOnCue 系统架构">
+      <div class="stage">
+        <section class="boundary" data-flow="trigger trace">
+          <span class="boundary-label">Replaceable <strong>Perception Providers</strong></span>
+          <div class="source-grid">
+            <button class="node source" type="button" data-flow="trigger trace" data-title="Omi Adapter" data-detail="接收 finalized transcript、conversation 和说话人信息；默认保存供应商 Evidence Ref 与必要片段，不复制持续原始录音。">
+              <span class="node-kicker">Conversation</span>
+              <span class="node-title">Omi</span>
+              <span class="node-meta">Transcript · Speaker · Conversation</span>
+            </button>
+            <button class="node source" type="button" data-flow="trigger trace" data-title="Mobile Adapter" data-detail="接收用户授权的手机状态、快捷指令或 App 事件。Adapter 只陈述事实，不决定是否唤醒 Agent。">
+              <span class="node-kicker">Personal device</span>
+              <span class="node-title">Mobile</span>
+              <span class="node-meta">App Event · Shortcut · Sensor</span>
+            </button>
+            <button class="node source" type="button" data-flow="trigger trace" data-title="Home Assistant Adapter" data-detail="将实体状态和自动化事件映射为统一 Cue Event；设备控制不属于 Source Adapter。">
+              <span class="node-kicker">Environment</span>
+              <span class="node-title">Home Assistant</span>
+              <span class="node-meta">Entity · State · Automation</span>
+            </button>
+            <button class="node source" type="button" data-flow="trigger trace" data-title="Generic Webhook" data-detail="MVP 的通用接入面：签名验证、Schema 映射、幂等键和隐私元数据。业务系统不需要依赖核心内部模型。">
+              <span class="node-kicker">Applications</span>
+              <span class="node-title">Webhook</span>
+              <span class="node-meta">Signed · Versioned · Idempotent</span>
+            </button>
+            <button class="node source" type="button" data-flow="trigger trace" data-title="Future Perception Providers" data-detail="未来可以接 ASR、CV、Browser、Email 或企业事件。核心只依赖 Source Adapter Contract，不绑定某个供应商。">
+              <span class="node-kicker">Extensible</span>
+              <span class="node-title">ASR / CV / Apps</span>
+              <span class="node-meta">Provider-owned perception</span>
+            </button>
+          </div>
+        </section>
+
+        <div class="flow-connector" data-flow="trigger trace">
+          <span>Source Adapter Contract <strong>↓</strong> Cue Event</span>
+        </div>
+
+        <section class="boundary" data-flow="trigger authorize trace">
+          <span class="boundary-label"><strong>WakeOnCue</strong> · Cue & Wake Control Plane</span>
+          <div class="flow-grid">
+            <button class="node cue" type="button" data-flow="trigger trace" data-title="Ingress Gateway" data-detail="验证来源、Schema、TTL、隐私目的和幂等键；进行最小化与脱敏，然后才允许事件进入事实日志。">
+              <span class="node-kicker">01 · Accept</span>
+              <span class="node-title">Ingress Gateway</span>
+              <span class="node-meta">Auth · Validate · Minimize</span>
+            </button>
+            <button class="node trace" type="button" data-flow="trigger trace" data-title="Cue Event Log" data-detail="追加式事实源，支持 replay、删除 tombstone 和投影重建。Event Bus 只负责派发，不能替代 Event Log。">
+              <span class="node-kicker">02 · Remember</span>
+              <span class="node-title">Cue Event Log</span>
+              <span class="node-meta">Append-only · Replay · Evidence refs</span>
+            </button>
+            <button class="node cue" type="button" data-flow="trigger trace" data-title="Cue Understanding" data-detail="可替换 Perceptor 提取承诺、截止时间、实体和事实；Correlator 去重、debounce 并将跨源事件合并为 Episode。">
+              <span class="node-kicker">03 · Understand</span>
+              <span class="node-title">Perceptor + Episode</span>
+              <span class="node-meta">Extract · Correlate · Merge</span>
+            </button>
+            <button class="node cue" type="button" data-flow="trigger trace" data-title="World State" data-detail="从 Event Log 重建的短期世界状态和最近 Episode。只查询当前判断所需上下文，不构造不断膨胀的全量 Prompt。">
+              <span class="node-kicker">04 · Context</span>
+              <span class="node-title">World State</span>
+              <span class="node-meta">Projection · Recent episode · Preference</span>
+            </button>
+            <button class="node attention" type="button" data-flow="trigger trace" data-title="Attention Cascade" data-detail="先运行硬规则、去重、相关性、冷却和打扰预算；证据不足时请求有限观察；只有少数候选进入结构化 Judge。">
+              <span class="node-kicker">05 · Decide</span>
+              <span class="node-title">Attention Cascade</span>
+              <span class="node-meta">Cheap gates → bounded observe → judge</span>
+              <span class="decision-lane" aria-hidden="true">
+                <span class="decision">IGNORE</span>
+                <span class="decision">OBSERVE_MORE</span>
+                <span class="decision">WAKE_AGENT</span>
+              </span>
+            </button>
+            <button class="node wake" type="button" data-flow="trigger authorize trace" data-title="Wake Policy" data-detail="判断是否允许唤醒、选择哪个 Runtime、初始能力范围、预算和是否需要先通知用户。它不替 Agent 规划工具步骤。">
+              <span class="node-kicker">06 · Govern</span>
+              <span class="node-title">Wake Policy</span>
+              <span class="node-meta">Budget · Runtime · Capability scope</span>
+            </button>
+            <button class="node wake" type="button" data-flow="trigger authorize trace" data-title="Task Contract + Outbox" data-detail="以原子事务保存目标、成功标准、约束、证据引用、时限、能力范围和幂等键，再由 Outbox 异步唤醒 Runtime。">
+              <span class="node-kicker">07 · Wake</span>
+              <span class="node-title">Task Contract</span>
+              <span class="node-meta">Goal · Evidence · Constraints · Idempotency</span>
+            </button>
+          </div>
+        </section>
+
+        <div class="flow-connector" data-flow="trigger authorize trace">
+          <span>Task Contract + scoped policy token <strong>↓</strong> Runtime Adapter</span>
+        </div>
+
+        <section class="boundary" data-flow="trigger authorize outcome trace">
+          <span class="boundary-label">External <strong>Agent Execution Plane</strong></span>
+          <div class="runtime-grid">
+            <button class="node runtime" type="button" data-flow="trigger authorize outcome trace" data-title="Runtime Adapter" data-detail="只实现 activate、observe、cancel 和生命周期翻译。Adapter 声明能否在 Tool Call 前强制拦截；不能拦截的 Runtime 只能获得只读能力。">
+              <span class="node-kicker">Adapter</span>
+              <span class="node-title">Runtime Bridge</span>
+              <span class="node-meta">activate · observe · cancel</span>
+            </button>
+            <button class="node runtime" type="button" data-flow="trigger authorize outcome trace" data-title="OpenClaw / Pi Agent" data-detail="可以接 OpenClaw、Pi Agent 或其他宿主。WakeOnCue 不要求所有 Runtime 使用相同内部工具协议，只要求生命周期与授权拦截契约。">
+              <span class="node-kicker">Runtime</span>
+              <span class="node-title">OpenClaw · Pi · Others</span>
+              <span class="node-meta">Existing agent ecosystem</span>
+            </button>
+            <button class="node runtime" type="button" data-flow="trigger authorize trace" data-title="Agent Planning" data-detail="Agent 根据 Task Contract 和 contextRefs 自己制定计划、选择技能和工具。具体执行逻辑继续留在最擅长它的 Runtime。">
+              <span class="node-kicker">Agent-owned</span>
+              <span class="node-title">Plan + Tool Selection</span>
+              <span class="node-meta">Reason · Skill · MCP/API choice</span>
+            </button>
+            <button class="node safety" type="button" data-flow="authorize trace" data-title="Runtime Guard / PEP" data-detail="工具调用前的 Policy Enforcement Point。安全调用可以放行；敏感调用必须暂停并提交包含精确参数摘要的 Tool Attempt。">
+              <span class="node-kicker">Enforce</span>
+              <span class="node-title">Runtime Guard / PEP</span>
+              <span class="node-meta">Pause · Check · Consume permit</span>
+            </button>
+            <button class="node runtime" type="button" data-flow="authorize outcome trace" data-title="MCP / API / Local Tools" data-detail="真正的外部执行面。WakeOnCue 不直接拥有任意 Tool Loop；每个副作用由 Runtime 执行并返回 Tool Result。">
+              <span class="node-kicker">Execution</span>
+              <span class="node-title">MCP · API · Local Tools</span>
+              <span class="node-meta">Read · Draft · Write · Control</span>
+            </button>
+          </div>
+
+          <div class="auth-lane" data-flow="authorize trace">
+            <span class="auth-box"><strong>Sensitive Tool Attempt</strong>具体工具、目标、参数摘要、可逆性与费用</span>
+            <span class="auth-arrow" aria-hidden="true">→</span>
+            <span class="auth-box"><strong>Authorization PDP</strong>ALLOW · APPROVE_ONCE · DENY</span>
+            <span class="auth-arrow" aria-hidden="true">→</span>
+            <span class="auth-box"><strong>Human Approval</strong>只确认这一次精确操作</span>
+            <span class="auth-arrow" aria-hidden="true">→</span>
+            <span class="auth-box"><strong>One-time Permit</strong>绑定 attempt + digest + TTL，用后失效</span>
+          </div>
+        </section>
+
+        <div class="flow-connector" data-flow="outcome trace">
+          <span>Runtime lifecycle + tool result <strong>↓</strong> Outcome event</span>
+        </div>
+
+        <section class="boundary" data-flow="outcome trace">
+          <span class="boundary-label"><strong>Outcome</strong> · User Loop</span>
+          <div class="outcome-grid">
+            <button class="node outcome" type="button" data-flow="outcome trace" data-title="Outcome Reconciliation" data-detail="统一 Runtime 和 Tool Result，显式区分 RUNNING、FAILED、SUCCEEDED 与 UNKNOWN。结果不确定时先查询，不盲目重试副作用。">
+              <span class="node-kicker">Reconcile</span>
+              <span class="node-title">Outcome State</span>
+              <span class="node-meta">Reported · Running · Failed · Unknown</span>
+            </button>
+            <button class="node outcome" type="button" data-flow="outcome trace" data-title="Result Verification" data-detail="按 Task Contract 的成功标准验证结果。Agent 自述、工具确认和外部验证具有不同可信等级。">
+              <span class="node-kicker">Verify</span>
+              <span class="node-title">Success Criteria</span>
+              <span class="node-meta">Reported · Tool-confirmed · External</span>
+            </button>
+            <button class="node outcome" type="button" data-flow="outcome trace" data-title="Notification Orchestrator" data-detail="优先复用 Runtime 原生回复保持会话连续；原渠道失败、审批超时或高风险失败时走 WakeOnCue fallback，并对相同结果去重。">
+              <span class="node-kicker">Notify</span>
+              <span class="node-title">Native + Fallback</span>
+              <span class="node-meta">Dedup · Quiet hours · Escalation</span>
+            </button>
+            <button class="node outcome" type="button" data-flow="outcome trace" data-title="Cue / Task Timeline" data-detail="用户从同一条时间线查看 Cue、Decision、Wake、Tool Attempt、Permit、Outcome 和通知，并反馈接受、忽略、拒绝或关闭主题。">
+              <span class="node-kicker">User surface</span>
+              <span class="node-title">Task Timeline</span>
+              <span class="node-meta">Inspect · Approve · Feedback · Delete</span>
+            </button>
+          </div>
+
+          <div class="loop" data-flow="outcome trigger trace">
+            <span>User feedback + outcome</span><strong>↺</strong><span>new Cue Event → World State → future Wake decisions</span>
+          </div>
+        </section>
+
+        <section class="cross-cutting" aria-label="横切能力">
+          <div class="rail" data-flow="trace"><strong>Evidence Lineage</strong>evidenceRefs · business IDs · replay</div>
+          <div class="rail" data-flow="authorize trace"><strong>Policy & Privacy</strong>purpose · retention · least privilege</div>
+          <div class="rail" data-flow="trace"><strong>Observability</strong>OpenTelemetry · latency · cost · error</div>
+          <div class="rail" data-flow="trigger outcome trace"><strong>Reliability</strong>outbox · inbox · idempotency · reconciliation</div>
+        </section>
+      </div>
+
+      <aside class="detail" aria-live="polite">
+        <div class="detail-label">
+          Selected component
+          <span class="detail-title" id="detail-title">WakeOnCue</span>
+        </div>
+        <p class="detail-copy" id="detail-copy"><strong>核心边界：</strong>现实 Cue 决定何时唤醒；外部 Agent 决定如何完成；具体敏感 Tool Attempt 决定何时向人确认。</p>
+      </aside>
+    </section>
+
+    <div class="footer-note">
+      <span><strong>MVP：</strong>Omi + Webhook → commitment Cue → one Runtime → approval-on-write → verified outcome.</span>
+      <span>Architecture draft · 2026-08-12</span>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll(".view-btn"));
+      var flowItems = Array.prototype.slice.call(document.querySelectorAll("[data-flow]"));
+      var nodes = Array.prototype.slice.call(document.querySelectorAll(".node"));
+      var detailTitle = document.getElementById("detail-title");
+      var detailCopy = document.getElementById("detail-copy");
+
+      function includesFlow(element, view) {
+        if (view === "all") return true;
+        var flows = (element.getAttribute("data-flow") || "").split(/\s+/);
+        return flows.indexOf(view) !== -1;
+      }
+
+      function setView(view) {
+        buttons.forEach(function (button) {
+          button.setAttribute("aria-pressed", button.getAttribute("data-view") === view ? "true" : "false");
+        });
+
+        flowItems.forEach(function (item) {
+          item.classList.toggle("is-dimmed", !includesFlow(item, view));
+        });
+
+        nodes.forEach(function (node) {
+          node.classList.remove("is-active");
+        });
+
+        var labels = {
+          all: ["WakeOnCue", "<strong>核心边界：</strong>现实 Cue 决定何时唤醒；外部 Agent 决定如何完成；具体敏感 Tool Attempt 决定何时向人确认。"],
+          trigger: ["主动触发主链", "<strong>Cue → Decide → Wake：</strong>先用低成本 Gate 和短期世界状态判断价值，证据不足时有限补充观察，只有少数事件形成 Task Contract。"],
+          authorize: ["敏感操作授权", "<strong>Plan stays with the Agent：</strong>Agent 先形成具体 Tool Attempt，Runtime Guard 再向 PDP 请求一次性 Permit；没有拦截点的 Runtime 只能使用只读能力。"],
+          outcome: ["结果与通知闭环", "<strong>完成不等于自述：</strong>结果按成功标准验证，优先使用 Runtime 原生渠道，必要时 fallback；通知和用户反馈重新进入事件流。"],
+          trace: ["证据回溯", "<strong>Trace 是横切能力：</strong>Cue、Decision、Task、Run、Attempt、Permit、Outcome 和 Notification 由稳定业务 ID 关联，同时保留独立的运行观测链。"]
+        };
+
+        detailTitle.textContent = labels[view][0];
+        detailCopy.innerHTML = labels[view][1];
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          setView(button.getAttribute("data-view"));
+        });
+      });
+
+      nodes.forEach(function (node) {
+        node.addEventListener("click", function () {
+          nodes.forEach(function (candidate) {
+            candidate.classList.remove("is-active");
+          });
+          node.classList.add("is-active");
+          detailTitle.textContent = node.getAttribute("data-title") || "Component";
+          detailCopy.textContent = node.getAttribute("data-detail") || "";
+        });
+      });
+
+      setView("all");
+    }());
+  </script>
+</body>
+</html>
