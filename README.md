@@ -26,6 +26,7 @@ WakeOnCue 不实现通用 Agent，也不代替 OpenClaw、Pi Agent 等运行时�
 
 - [系统架构](docs/architecture.md)
 - [MVP 设计](docs/mvp.md)
+- [可直接交给 Codex 长期执行的 MVP Goal Prompt](MVP_GOAL_PROMPT.md)
 - [可交互 HTML 架构图](docs/architecture.html)
 
 ## MVP
