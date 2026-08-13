@@ -74,6 +74,7 @@ interface ApprovalRecord {
 }
 
 function timestamp(value: string): string {
+  if (!value || Number.isNaN(new Date(value).getTime())) return "时间未知";
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -360,14 +361,14 @@ function App() {
                 >
                   <div>
                     <strong>
-                      {item.latestDecision?.signals.commitment ?? item.episode.types[0]}
+                      {item.latestDecision?.signals?.commitment ?? item.episode.types?.[0] ?? "Cue"}
                     </strong>
                     <small>{timestamp(item.episode.lastOccurredAt)}</small>
                   </div>
                   <span
-                    className={`decision ${item.latestDecision?.decision.decision ?? "PENDING"}`}
+                    className={`decision ${item.latestDecision?.decision?.decision ?? "PENDING"}`}
                   >
-                    {item.latestDecision?.decision.decision ?? "PENDING"}
+                    {item.latestDecision?.decision?.decision ?? "PENDING"}
                   </span>
                 </button>
               ))
