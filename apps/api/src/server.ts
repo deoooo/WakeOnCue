@@ -6,9 +6,13 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
+  ExternalOutcomeVerificationSchema,
+  NativeNotificationReceiptSchema,
+  NotificationReceiptSchema,
   RuntimeCallbackSchema,
   RuntimeToolAttemptRequestSchema,
   RuntimeToolResultSchema,
+  TaskFeedbackSchema,
   schemaRegistry,
 } from "@wakeoncue/contracts";
 import { deterministicId, sha256 } from "@wakeoncue/core";
@@ -417,6 +421,160 @@ export async function buildServer(): Promise<FastifyInstance> {
       const statusCode = code.endsWith("NOT_FOUND") ? 404 : 409;
       return reply.code(statusCode).send({ code, status: "error" });
     }
+  });
+
+  server.post<{ Body: string }>("/v1/outcomes/verifications/external", async (request, reply) => {
+    const secret = process.env["WAKEONCUE_OUTCOME_VERIFICATION_SECRET"];
+    if (!secret)
+      return reply
+        .code(503)
+        .send({ code: "OUTCOME_VERIFICATION_SECRET_UNAVAILABLE", status: "error" });
+    try {
+      verifyWebhookSignature({
+        rawBody: request.body,
+        timestamp: headerValue(request.headers["x-wakeoncue-timestamp"]),
+        signature: headerValue(request.headers["x-wakeoncue-signature"]),
+        secret,
+        maxClockSkewSeconds: 300,
+      });
+    } catch (error) {
+      const code = error instanceof WebhookSignatureError ? error.code : "SIGNATURE_INVALID";
+      return reply.code(401).send({ code, status: "error" });
+    }
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(ExternalOutcomeVerificationSchema, body))
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    try {
+      return reply
+        .code(202)
+        .send({ outcome: store.recordExternalOutcomeVerification(body), status: "accepted" });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "OUTCOME_VERIFICATION_REJECTED";
+      return reply.code(code.endsWith("NOT_FOUND") ? 404 : 409).send({ code, status: "error" });
+    }
+  });
+
+  server.post<{ Body: string }>("/v1/notifications/native-receipts", async (request, reply) => {
+    const secret = process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"];
+    if (!secret)
+      return reply.code(503).send({ code: "RUNTIME_CALLBACK_SECRET_UNAVAILABLE", status: "error" });
+    try {
+      verifyWebhookSignature({
+        rawBody: request.body,
+        timestamp: headerValue(request.headers["x-wakeoncue-timestamp"]),
+        signature: headerValue(request.headers["x-wakeoncue-signature"]),
+        secret,
+        maxClockSkewSeconds: 300,
+      });
+    } catch (error) {
+      const code = error instanceof WebhookSignatureError ? error.code : "SIGNATURE_INVALID";
+      return reply.code(401).send({ code, status: "error" });
+    }
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(NativeNotificationReceiptSchema, body))
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    try {
+      return reply
+        .code(202)
+        .send({ receipt: store.recordNativeNotificationReceipt(body), status: "accepted" });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "NATIVE_RECEIPT_REJECTED";
+      return reply.code(code.endsWith("NOT_FOUND") ? 404 : 409).send({ code, status: "error" });
+    }
+  });
+
+  server.post<{ Body: string }>("/v1/notifications/receipts", async (request, reply) => {
+    const token = process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+    if (!token || !bearerMatches(headerValue(request.headers.authorization), token))
+      return reply.code(401).send({ code: "NOTIFICATION_AUTH_INVALID", status: "error" });
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(NotificationReceiptSchema, body))
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    try {
+      return reply
+        .code(202)
+        .send({ receipt: store.recordNotificationReceipt(body), status: "accepted" });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "NOTIFICATION_RECEIPT_REJECTED";
+      return reply.code(code.endsWith("NOT_FOUND") ? 404 : 409).send({ code, status: "error" });
+    }
+  });
+
+  server.post<{ Params: { taskId: string }; Body: string }>(
+    "/v1/tasks/:taskId/feedback",
+    async (request, reply) => {
+      const idempotencyKey = headerValue(request.headers["idempotency-key"]);
+      if (!idempotencyKey)
+        return reply.code(400).send({ code: "IDEMPOTENCY_KEY_REQUIRED", status: "error" });
+      let body: unknown;
+      try {
+        body = parseJson(request.body);
+      } catch {
+        return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+      }
+      if (!Value.Check(TaskFeedbackSchema, body) || body.taskId !== request.params.taskId)
+        return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+      try {
+        return reply
+          .code(202)
+          .send({ feedback: store.recordTaskFeedback(body, idempotencyKey), status: "accepted" });
+      } catch (error) {
+        if (error instanceof IdempotencyConflictError)
+          return reply.code(409).send({ code: "IDEMPOTENCY_CONFLICT", status: "error" });
+        const code = error instanceof Error ? error.message : "FEEDBACK_REJECTED";
+        return reply.code(code.endsWith("NOT_FOUND") ? 404 : 409).send({ code, status: "error" });
+      }
+    },
+  );
+
+  server.get("/v1/outcomes", () => ({ outcomes: store.listOutcomes() }));
+  server.get("/v1/notifications", () => ({ notifications: store.listNotifications() }));
+
+  server.post<{ Body: string }>("/v1/privacy/deletions", async (request, reply) => {
+    const token = process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+    if (!token || !bearerMatches(headerValue(request.headers.authorization), token)) {
+      return reply.code(401).send({ code: "PRIVACY_ADMIN_AUTH_INVALID", status: "error" });
+    }
+    const idempotencyKey = headerValue(request.headers["idempotency-key"]);
+    if (!idempotencyKey) {
+      return reply.code(400).send({ code: "IDEMPOTENCY_KEY_REQUIRED", status: "error" });
+    }
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    const subject =
+      typeof body === "object" && body !== null
+        ? (body as { subject?: unknown }).subject
+        : undefined;
+    if (
+      typeof subject !== "string" ||
+      subject.length === 0 ||
+      Object.keys(body as Record<string, unknown>).some((key) => key !== "subject")
+    ) {
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    }
+    return reply.code(202).send({
+      deletion: store.deleteSubjectData(subject, idempotencyKey),
+      status: "completed",
+    });
   });
 
   server.get("/v1/approvals", async (request, reply) => {

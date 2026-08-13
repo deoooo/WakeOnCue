@@ -2,7 +2,7 @@
 
 更新时间：2026-08-13
 
-当前 checkpoint：6 · Outcome（进行中）
+当前 checkpoint：7 · Full-story（进行中）
 
 分支：`codex/mvp`
 
@@ -26,6 +26,11 @@
 - Runtime adapter 生产默认关闭；OpenClaw 写能力在 Approval/Permit 完成前全部被 fail-closed PEP 拦截。
 - 完成集中 PDP、签名 PEP API、Web Approval、参数级 Tool Attempt、短 TTL one-time Permit、原子消费、Tool Delivery Ledger 与真实 OpenClaw `before_tool_call`/`after_tool_call` 集成。
 - 默认只允许 capability scope 内且目标精确匹配 `contextRefs` 的受约束读取；外发/业务写逐次确认；删除、支付、购买、设备控制与未知工具在 MVP 拒绝。
+- 完成 Outcome 事实分级：Runtime 回调只能形成 `reported`，签名 Tool Result 形成 `tool-confirmed`，独立签名 verifier 才能形成 `externally-verified`。
+- 完成 Runtime 原生通知回执与 signed-webhook fallback Notification SDK；按 task/outcome/channel 去重，原生成功将 fallback 标记 `NATIVE_DELIVERED` 并抑制重复发送。
+- 审批与高风险失败/UNKNOWN 立即升级；普通摘要与 verified completion 遵守 quiet hours、每日预算和原生回执等待窗口。
+- 完成 Feedback 幂等 API、Task 结果/通知时间线、Console 反馈/Replay/删除入口。
+- 完成 Retention/delete：授权删除撤销未消费 Permit、取消在途任务、墓碑化 payload/evidence/projection，同时保留不可恢复摘要、ID、幂等键和 append-only 删除审计。
 
 ## 实际运行的验证
 
@@ -49,6 +54,9 @@
 - `pnpm test`（checkpoint 5）：PASS，11 个 test files、33 个 tests；新增 PDP、PEP HMAC、人类 API 认证、Permit 过期/参数变化/目标变化/重放/伪造 run、append-only 审计与 Runtime conformance 覆盖。
 - `pnpm test:e2e:approval`：PASS；真实 OpenClaw Agent 自主选择 `file_send`，受控 receiver 在批准前 0 次、批准后 1 次，Permit `ISSUED → CONSUMED`，Tool/Delivery 成功，Permit 重放拒绝且重复副作用为 0。
 - `agent-browser` Approval Console：PASS；待审批卡信息完整，“批准一次”真实产生一个 Permit，之后卡片消失，最终浏览器 console 无 error/warning。截图为 `docs/evidence/artifacts/approval-console.png`。
+- `pnpm test`（checkpoint 6）：PASS，12 个 test files、35 个 tests；新增 Outcome 分级、外部 verifier、原生/fallback 回执、Notification SDK、quiet/budget/escalation、Feedback、retention/tombstone/delete 和完整 Task 时间线覆盖。
+- `pnpm test:e2e:outcome`：PASS；Node v26.7.0 上受控真实 HTTP receiver 收到 1 次签名 fallback，Delivery 为 `DELIVERED`；第二个 Outcome 的原生回执抑制 fallback，重复副作用为 0。
+- `agent-browser` Outcome Console：PASS；真实本地 API/Console 展示 Task → Runtime → Tool → Outcome → Notification，兼容旧的部分 Projection，清空日志后无 browser error/warning。截图为 `docs/evidence/artifacts/outcome-console.png`。
 
 ## 证据位置
 
@@ -65,16 +73,18 @@
 - 真实 OpenClaw 脱敏机器可读摘要与原始证据 SHA-256：`docs/evidence/artifacts/real-openclaw-e2e-2026-08-13.json`
 - Approval/Permit 攻击测试、真实批准后执行与 Console 证据：`docs/evidence/approval.md`
 - Approval 真实 E2E 脱敏摘要：`docs/evidence/artifacts/real-openclaw-approval-e2e-2026-08-13.json`
+- Outcome/Notification/Retention 证据：`docs/evidence/outcome.md`
+- 受控 fallback E2E 脱敏摘要：`docs/evidence/artifacts/outcome-notification-e2e-2026-08-13.json`
 
 ## 剩余工作
 
-- 实现 checkpoint 6 的 Outcome 证据等级、原生/fallback 通知去重、反馈、retention/delete 和通知策略。
-- Checkpoint 7–8 尚未开始；见 Goal 的 Full-story 与 Release audit 要求。
+- 实现 checkpoint 7 的真实 OpenClaw full-story：Cue → Wake → Agent 自主 Tool → Approval → Permit → Tool Result → verified Outcome → Notification → Timeline → Replay。
+- Checkpoint 8 release audit 尚未开始；Docker/clean-clone 按用户指示保留到该阶段。
 
 ## 已知风险或真正 blocker
 
 - Docker/Compose 与 clean-clone smoke 尚未运行；按用户指示后置到 release audit，不能在此前声称容器路径已通过。
-- 当前 Runtime `SUCCEEDED` 只证明 OpenClaw Agent turn 完成，不证明外部任务成功；checkpoint 6 必须以 `reported / tool-confirmed / externally-verified` 分级 Outcome，禁止仅凭 Agent 文本升级证据等级。
+- Runtime `SUCCEEDED` 仍只证明 OpenClaw Agent turn 完成；实现已强制将其限制为 `reported`，真实任务完成需要 tool 或外部 verifier 证据。
 - Omi 实机凭证和设备尚未提供；按 Goal 将先使用版本化脱敏真实格式 fixture，且证据会明确标注不是线上实机证明。
 - Omi 官方 webhook 文档展示 payload 但未声明原生请求签名；当前本地入站 API 额外要求专用 Bearer token。若直连形态不能配置该 Header，需在 release audit 前固定受认证反向代理或 Developer API polling 形态，不能退化为未认证公网 endpoint。
 

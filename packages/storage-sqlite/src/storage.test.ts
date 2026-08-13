@@ -44,6 +44,8 @@ describe("SQLite migrations", () => {
         "004_agent_wake.sql",
         "005_runtime_agent_run_id.sql",
         "006_approval_permit.sql",
+        "007_outcome_notification.sql",
+        "008_retention_delete.sql",
       ]);
       expect(migrateDatabase(database)).toEqual([]);
       const tables = database
@@ -62,6 +64,11 @@ describe("SQLite migrations", () => {
           "permits",
           "outcomes",
           "notifications",
+          "native_notification_receipts",
+          "notification_receipt_events",
+          "outcome_events",
+          "privacy_deletion_requests",
+          "privacy_tombstones",
           "outbox",
           "deliveries",
           "ingress_errors",
@@ -308,6 +315,47 @@ describe("SQLite migrations", () => {
     }
   });
 
+  it("tombstones retained payloads and removes subject projections without erasing audit identity", () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database);
+    const store = new SqliteWakeStore(database);
+    const event = cueEvent({
+      data: { transcript: "private phrase that must be removed", deadline: "2026-08-14" },
+    });
+    try {
+      store.appendEvent(event);
+      store.processProjectionOutbox();
+      const episodeId = store.listEpisodes()[0]?.episode.episodeId;
+      expect(episodeId).toBeTruthy();
+      const deletion = store.deleteSubjectData(
+        event.subject,
+        "delete-private-fixture",
+        "2026-08-13T09:00:00.000Z",
+      );
+      expect(deletion.counts).toEqual({ events: 1, episodes: 1, tasks: 0 });
+      expect(store.getEvent(event.eventId)).toBeUndefined();
+      expect(store.getEpisode(String(episodeId))).toBeUndefined();
+      expect(store.listEpisodes()).toEqual([]);
+      const raw = database
+        .prepare(
+          `SELECT e.event_id, e.idempotency_key, e.payload_hash, e.payload_json,
+                  p.evidence_refs_json, p.tombstoned_at
+           FROM events e JOIN event_payloads p ON p.event_id = e.event_id`,
+        )
+        .get() as Record<string, unknown>;
+      expect(raw).toMatchObject({
+        event_id: event.eventId,
+        idempotency_key: event.idempotencyKey,
+        evidence_refs_json: "[]",
+        tombstoned_at: "2026-08-13T09:00:00.000Z",
+      });
+      expect(String(raw["payload_json"])).not.toContain("private phrase");
+      expect(() => store.appendEvent(event)).toThrowError(IdempotencyConflictError);
+    } finally {
+      database.close();
+    }
+  });
+
   it("enforces exact one-time permits and rejects authorization attacks", () => {
     const database = openDatabase(":memory:");
     migrateDatabase(database);
@@ -376,6 +424,15 @@ describe("SQLite migrations", () => {
         reasonCode: "EXTERNAL_WRITE_REQUIRES_APPROVAL",
         attempt: { status: "WAITING_APPROVAL" },
       });
+      const approvalNotification = store
+        .listNotifications(contract.taskId)
+        .find((record) => record.notification.category === "approval");
+      expect(approvalNotification).toBeTruthy();
+      expect(
+        database
+          .prepare("SELECT available_at FROM outbox WHERE aggregate_id = ?")
+          .get(approvalNotification?.notification.notificationId),
+      ).toMatchObject({ available_at: now });
       expect(store.getRuntimeRun("run_approval")?.status).toBe("WAITING_APPROVAL");
       expect(
         store.applyRuntimeCallback({
@@ -452,6 +509,101 @@ describe("SQLite migrations", () => {
         resultDigest: `sha256:${"a".repeat(64)}`,
       });
       expect(result.status).toBe("SUCCEEDED");
+      expect(store.listOutcomes(contract.taskId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ verification: "reported", status: "SUCCEEDED" }),
+          expect.objectContaining({ verification: "tool-confirmed", status: "SUCCEEDED" }),
+        ]),
+      );
+      const verified = store.recordExternalOutcomeVerification({
+        specVersion: "wakeoncue.outcome.external-verification/v1",
+        taskId: contract.taskId,
+        runtimeRunId: "run_approval",
+        status: "SUCCEEDED",
+        summary: "Recipient system confirmed the exact delivery.",
+        evidenceRefs: ["receipt-42"],
+        occurredAt: "2026-08-13T10:00:06.000Z",
+        verifier: "controlled-recipient-sink",
+      });
+      expect(verified.verification).toBe("externally-verified");
+      expect(verified.specVersion).toBe("wakeoncue.outcome/v1");
+      expect(verified).not.toHaveProperty("verifier");
+      expect(verified.evidenceRefs).toEqual(["controlled-recipient-sink:receipt-42"]);
+      const verifiedNotification = store
+        .listNotifications(contract.taskId)
+        .find((record) => record.notification.outcomeId === verified.outcomeId);
+      expect(verifiedNotification?.notification.category).toBe("verified-completion");
+      expect(
+        database
+          .prepare("SELECT available_at > ? AS delayed FROM outbox WHERE aggregate_id = ?")
+          .get(verified.occurredAt, verifiedNotification?.notification.notificationId),
+      ).toMatchObject({ delayed: 1 });
+      const failed = store.recordExternalOutcomeVerification({
+        specVersion: "wakeoncue.outcome.external-verification/v1",
+        taskId: contract.taskId,
+        runtimeRunId: "run_approval",
+        status: "UNKNOWN",
+        summary: "Receiver status could not be reconciled.",
+        evidenceRefs: ["receipt-unknown"],
+        occurredAt: "2026-08-13T15:00:00.000Z",
+        verifier: "controlled-recipient-sink",
+      });
+      const failureNotification = store
+        .listNotifications(contract.taskId)
+        .find((record) => record.notification.outcomeId === failed.outcomeId);
+      expect(failureNotification?.notification.category).toBe("high-risk-failure");
+      expect(
+        database
+          .prepare("SELECT available_at FROM outbox WHERE aggregate_id = ?")
+          .get(failureNotification?.notification.notificationId),
+      ).toMatchObject({ available_at: failed.occurredAt });
+      const quietSuccess = store.recordExternalOutcomeVerification({
+        specVersion: "wakeoncue.outcome.external-verification/v1",
+        taskId: contract.taskId,
+        runtimeRunId: "run_approval",
+        status: "SUCCEEDED",
+        summary: "Late receiver confirmation.",
+        evidenceRefs: ["receipt-late"],
+        occurredAt: "2026-08-13T15:05:00.000Z",
+        verifier: "controlled-recipient-sink",
+      });
+      const quietNotification = store
+        .listNotifications(contract.taskId)
+        .find((record) => record.notification.outcomeId === quietSuccess.outcomeId);
+      expect(
+        database
+          .prepare("SELECT available_at FROM outbox WHERE aggregate_id = ?")
+          .get(quietNotification?.notification.notificationId),
+      ).toMatchObject({ available_at: "2026-08-13T23:00:00.000Z" });
+      store.recordNativeNotificationReceipt({
+        specVersion: "wakeoncue.notification.native-receipt/v1",
+        receiptId: "native-receipt-42",
+        taskId: contract.taskId,
+        outcomeId: verified.outcomeId,
+        runtimeRunId: "run_approval",
+        channel: "openclaw-native",
+        status: "DELIVERED",
+        occurredAt: "2026-08-13T10:00:07.000Z",
+      });
+      expect(
+        database
+          .prepare("SELECT status FROM outbox WHERE aggregate_id = ?")
+          .get(verifiedNotification?.notification.notificationId),
+      ).toMatchObject({ status: "COMPLETED" });
+      expect(
+        store.getNotification(String(verifiedNotification?.notification.notificationId))?.status,
+      ).toBe("NATIVE_DELIVERED");
+      const feedback = {
+        specVersion: "wakeoncue.feedback/v1" as const,
+        taskId: contract.taskId,
+        kind: "ACCEPTED" as const,
+        occurredAt: "2026-08-13T10:00:08.000Z",
+      };
+      expect(store.recordTaskFeedback(feedback, "feedback-42")).toEqual(feedback);
+      expect(store.recordTaskFeedback(feedback, "feedback-42")).toEqual(feedback);
+      expect(() =>
+        store.recordTaskFeedback({ ...feedback, kind: "REJECTED" }, "feedback-42"),
+      ).toThrowError(IdempotencyConflictError);
       expect(
         (
           database
@@ -510,6 +662,32 @@ describe("SQLite migrations", () => {
       expect(() => database.prepare("DELETE FROM tool_attempt_events").run()).toThrowError(
         "tool attempt events are append-only",
       );
+
+      const deletion = store.deleteSubjectData(
+        contract.subject,
+        "delete-subject-approval",
+        "2026-08-13T10:03:00.000Z",
+      );
+      expect(deletion.counts).toMatchObject({ episodes: 1, tasks: 1 });
+      expect(store.deleteSubjectData(contract.subject, "delete-subject-approval")).toEqual(
+        deletion,
+      );
+      expect(store.getTask(contract.taskId)).toBeUndefined();
+      expect(store.getRuntimeRun("run_approval")).toBeUndefined();
+      expect(store.getToolAttempt(waiting.attempt.attempt.attemptId)).toBeUndefined();
+      expect(store.listOutcomes(contract.taskId)).toEqual([]);
+      expect(store.listNotifications(contract.taskId)).toEqual([]);
+      expect(
+        database.prepare("SELECT COUNT(*) count FROM privacy_deletion_context").get(),
+      ).toMatchObject({ count: 0 });
+      expect(
+        database
+          .prepare("SELECT COUNT(*) count FROM permits WHERE task_id = ? AND consumed_at IS NULL")
+          .get(contract.taskId),
+      ).toMatchObject({ count: 0 });
+      expect(() =>
+        database.prepare("UPDATE outcomes SET verification = 'forged'").run(),
+      ).toThrowError("outcomes are append-only");
     } finally {
       database.close();
     }

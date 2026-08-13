@@ -285,6 +285,35 @@ button {
 .timeline {
   margin-top: 22px;
 }
+.timeline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+.task-chain {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #263244;
+  border-radius: 9px;
+  background: #090d13;
+}
+.task-chain small {
+  color: #49d6c8;
+  font-family: ui-monospace, monospace;
+}
+.result-row {
+  display: grid;
+  grid-template-columns: 130px 150px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #cbd5e1;
+  font-size: 12px;
+}
 .timeline-item {
   position: relative;
   display: grid;

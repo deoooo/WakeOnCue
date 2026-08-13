@@ -2,6 +2,11 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { AttentionEngine } from "@wakeoncue/attention";
+import {
+  NotificationTransportError,
+  SignedWebhookNotificationAdapter,
+  type NotificationAdapter,
+} from "@wakeoncue/notify-sdk";
 import { OpenClawRuntimeAdapter } from "@wakeoncue/runtime-openclaw";
 import { RuntimeTransportError, type RuntimeAdapter } from "@wakeoncue/runtime-sdk";
 import {
@@ -42,6 +47,18 @@ function buildRuntimeAdapter(): RuntimeAdapter | undefined {
 }
 
 const runtimeAdapter = buildRuntimeAdapter();
+
+function buildNotificationAdapter(): NotificationAdapter | undefined {
+  if (process.env["WAKEONCUE_NOTIFICATION_ADAPTER"] !== "signed-webhook") return undefined;
+  const url = process.env["WAKEONCUE_NOTIFICATION_WEBHOOK_URL"];
+  const secret = process.env["WAKEONCUE_NOTIFICATION_WEBHOOK_SECRET"];
+  if (!url || !secret) {
+    throw new Error("Signed notification webhook requires URL and secret");
+  }
+  return new SignedWebhookNotificationAdapter({ url, secret });
+}
+
+const notificationAdapter = buildNotificationAdapter();
 let polling = false;
 
 const poll = async (): Promise<void> => {
@@ -60,6 +77,7 @@ const poll = async (): Promise<void> => {
     const callbackUnknown = store.markStaleRuntimeRunsUnknown(callbackStaleBefore);
     const unknown = interruptedUnknown + callbackUnknown;
     let activations = 0;
+    let notifications = 0;
     if (runtimeAdapter) {
       const claim = store.claimWakeActivation(runtimeAdapter.adapterId, runtimeCallbackUrl);
       if (claim) {
@@ -80,9 +98,25 @@ const poll = async (): Promise<void> => {
         }
       }
     }
-    if (projections > 0 || decisions > 0 || activations > 0 || unknown > 0) {
+    if (notificationAdapter) {
+      const claim = store.claimNotificationDelivery(notificationAdapter.channel);
+      if (claim) {
+        notifications = 1;
+        try {
+          const receipt = await notificationAdapter.deliver(claim.notification);
+          store.completeNotificationDelivery(claim, receipt);
+        } catch (error) {
+          store.failNotificationDelivery(
+            claim,
+            error instanceof Error ? error.message : "Notification delivery failed",
+            error instanceof NotificationTransportError ? error.outcomeUncertain : true,
+          );
+        }
+      }
+    }
+    if (projections > 0 || decisions > 0 || activations > 0 || notifications > 0 || unknown > 0) {
       process.stdout.write(
-        `${JSON.stringify({ activations, decisions, projections, service: "wakeoncue-worker", unknown })}\n`,
+        `${JSON.stringify({ activations, decisions, notifications, projections, service: "wakeoncue-worker", unknown })}\n`,
       );
     }
   } catch (error) {

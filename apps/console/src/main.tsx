@@ -49,6 +49,24 @@ interface Timeline {
   episode: Episode;
   cues: CueEvent[];
   decisions: DecisionEvaluation[];
+  tasks: Array<{ taskId: string; status: string; contract: { goal: string } }>;
+}
+
+interface TaskTimeline {
+  task: { taskId: string; status: string; contract: { goal: string } };
+  runtimeRuns: Array<{ runtimeRunId: string; status: string; agentRunId?: string }>;
+  toolAttempts: Array<{ attempt: { attemptId: string; tool: string }; status: string }>;
+  outcomes: Array<{
+    outcomeId: string;
+    status: string;
+    verification: "reported" | "tool-confirmed" | "externally-verified";
+    occurredAt: string;
+  }>;
+  notifications: Array<{
+    notification: { notificationId: string; category: string; channel: string };
+    status: string;
+    updatedAt: string;
+  }>;
 }
 
 interface ApprovalRecord {
@@ -90,6 +108,8 @@ async function readJson<T>(response: Response): Promise<T> {
 function App() {
   const [items, setItems] = useState<EpisodeListItem[]>([]);
   const [selected, setSelected] = useState<Timeline>();
+  const [taskTimelines, setTaskTimelines] = useState<TaskTimeline[]>([]);
+  const [operationStatus, setOperationStatus] = useState("");
   const [error, setError] = useState<string>();
   const [sourceId, setSourceId] = useState("omi-local");
   const [cueType, setCueType] = useState("conversation.finalized");
@@ -153,9 +173,83 @@ function App() {
         await fetch(`${apiUrl}/v1/episodes/${episodeId}/timeline`),
       );
       setSelected(body.timeline);
+      const taskBodies = await Promise.all(
+        body.timeline.tasks.map(async (task) =>
+          readJson<{ timeline: TaskTimeline }>(await fetch(`${apiUrl}/v1/tasks/${task.taskId}`)),
+        ),
+      );
+      setTaskTimelines(taskBodies.map((body) => body.timeline));
       setError(undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "时间线加载失败");
+    }
+  };
+
+  const replaySelected = async () => {
+    if (!selected) return;
+    try {
+      const body = await readJson<{ replay: { digest: string } }>(
+        await fetch(`${apiUrl}/v1/replays`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": `console-replay-${selected.episode.episodeId}-${Date.now()}`,
+          },
+          body: JSON.stringify({ eventIds: selected.episode.eventIds }),
+        }),
+      );
+      setOperationStatus(`Replay 完成：${body.replay.digest}`);
+    } catch (caught) {
+      setOperationStatus(caught instanceof Error ? caught.message : "Replay 失败");
+    }
+  };
+
+  const sendFeedback = async (taskId: string, kind: "ACCEPTED" | "IGNORED") => {
+    try {
+      await readJson(
+        await fetch(`${apiUrl}/v1/tasks/${taskId}/feedback`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": `console-feedback-${taskId}-${kind}`,
+          },
+          body: JSON.stringify({
+            specVersion: "wakeoncue.feedback/v1",
+            taskId,
+            kind,
+            occurredAt: new Date().toISOString(),
+          }),
+        }),
+      );
+      setOperationStatus(`反馈已记录：${kind}`);
+    } catch (caught) {
+      setOperationStatus(caught instanceof Error ? caught.message : "反馈失败");
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (!selected || !approvalToken) {
+      setOperationStatus("删除需要本页 Approval Admin Token");
+      return;
+    }
+    try {
+      await readJson(
+        await fetch(`${apiUrl}/v1/privacy/deletions`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${approvalToken}`,
+            "content-type": "application/json",
+            "idempotency-key": `console-delete-${selected.episode.episodeId}`,
+          },
+          body: JSON.stringify({ subject: selected.episode.subject }),
+        }),
+      );
+      setSelected(undefined);
+      setTaskTimelines([]);
+      setOperationStatus("Payload 与投影已墓碑化；审计标识仍保留");
+      await refresh();
+    } catch (caught) {
+      setOperationStatus(caught instanceof Error ? caught.message : "删除失败");
     }
   };
 
@@ -387,6 +481,15 @@ function App() {
             <p className="empty">选择一个 Episode 查看 Cue、证据、reason codes 与策略版本。</p>
           ) : (
             <div className="timeline">
+              <div className="timeline-actions">
+                <button className="secondary" onClick={() => void replaySelected()}>
+                  Replay 这条链路
+                </button>
+                <button className="danger" onClick={() => void deleteSelected()}>
+                  删除 Payload / Projection
+                </button>
+              </div>
+              {operationStatus ? <div className="gate-status">{operationStatus}</div> : null}
               {selected.cues.map((cue) => (
                 <article className="timeline-item" key={cue.eventId}>
                   <span className="dot cue" />
@@ -431,6 +534,48 @@ function App() {
                   <code key={reference}>{reference}</code>
                 ))}
               </div>
+              {taskTimelines.map((taskTimeline) => (
+                <article className="task-chain" key={taskTimeline.task.taskId}>
+                  <small>Task → Runtime → Tool → Outcome → Notification</small>
+                  <h3>{taskTimeline.task.contract.goal}</h3>
+                  <code>{taskTimeline.task.taskId}</code>
+                  {taskTimeline.runtimeRuns.map((run) => (
+                    <p key={run.runtimeRunId}>
+                      Runtime <strong>{run.status}</strong> · {run.runtimeRunId}
+                    </p>
+                  ))}
+                  {taskTimeline.toolAttempts.map((attempt) => (
+                    <p key={attempt.attempt.attemptId}>
+                      Tool {attempt.attempt.tool} · <strong>{attempt.status}</strong>
+                    </p>
+                  ))}
+                  {taskTimeline.outcomes.map((outcome) => (
+                    <div className="result-row" key={outcome.outcomeId}>
+                      <span>{outcome.status}</span>
+                      <span>{outcome.verification}</span>
+                      <code>{outcome.outcomeId}</code>
+                    </div>
+                  ))}
+                  {taskTimeline.notifications.map((record) => (
+                    <div className="result-row" key={record.notification.notificationId}>
+                      <span>{record.notification.category}</span>
+                      <span>{record.status}</span>
+                      <code>{record.notification.notificationId}</code>
+                    </div>
+                  ))}
+                  <div className="timeline-actions">
+                    <button onClick={() => void sendFeedback(taskTimeline.task.taskId, "ACCEPTED")}>
+                      结果有用
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={() => void sendFeedback(taskTimeline.task.taskId, "IGNORED")}
+                    >
+                      忽略此结果
+                    </button>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </section>

@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "mode": "controlled-local-http-receiver",
+  "node": "v26.7.0",
+  "fallbackDeliveries": 1,
+  "duplicateSideEffects": 0,
+  "nativeSuppressedFallback": true,
+  "fallbackDeliveryStatus": "DELIVERED",
+  "nativeNotificationStatus": "NATIVE_DELIVERED",
+  "evidenceBoundary": "Real loopback HTTP and HMAC; no production provider or real recipient"
+}

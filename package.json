@@ -32,6 +32,7 @@
     "test:replay": "vitest run packages/core/src/replay.test.ts packages/testing/src/replay-golden.test.ts",
     "test:e2e:openclaw": "tsx scripts/real-openclaw-e2e.ts",
     "test:e2e:approval": "tsx scripts/real-openclaw-approval-e2e.ts",
+    "test:e2e:outcome": "tsx scripts/outcome-notification-e2e.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

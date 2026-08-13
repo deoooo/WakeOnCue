@@ -6,11 +6,17 @@ import { fileURLToPath } from "node:url";
 import type { AttentionEngine, AttentionEvaluation, SourceMode } from "@wakeoncue/attention";
 import type {
   CueEvent,
+  ExternalOutcomeVerification,
+  NativeNotificationReceipt,
+  Notification,
+  NotificationReceipt,
+  Outcome,
   Permit,
   RuntimeCallback,
   RuntimeToolAttemptRequest,
   RuntimeToolResult,
   TaskContract,
+  TaskFeedback,
   ToolAttempt,
 } from "@wakeoncue/contracts";
 import {
@@ -22,6 +28,7 @@ import {
 } from "@wakeoncue/core";
 import type { AppendEventResult, EventStore, IngressErrorRecord } from "@wakeoncue/storage";
 import type { RuntimeActivationReceipt, RuntimeStatus } from "@wakeoncue/runtime-sdk";
+import type { NotificationDeliveryReceipt } from "@wakeoncue/notify-sdk";
 import {
   argumentsDigest,
   evaluateAuthorization,
@@ -174,6 +181,25 @@ export interface ToolAuthorizationResult {
   permitId?: string;
 }
 
+export interface NotificationRecord {
+  notification: Notification;
+  status: string;
+  updatedAt: string;
+}
+
+export interface NotificationClaim {
+  outboxId: string;
+  notification: Notification;
+}
+
+export interface PrivacyDeletionRecord {
+  deletionId: string;
+  subjectDigest: string;
+  counts: { events: number; episodes: number; tasks: number };
+  requestedAt: string;
+  completedAt: string;
+}
+
 export interface SourceModeGateEvidence {
   shadowDays?: number;
   explicitCommitmentPrecision?: number;
@@ -308,6 +334,42 @@ function runtimeRunRecord(row: RuntimeRunRow): RuntimeRunRecord {
   };
 }
 
+interface EpisodeRow {
+  episode_id: string;
+  subject: string;
+  correlation_key: string;
+  state_json: string;
+  updated_at: string;
+}
+
+function episodeProjection(row: EpisodeRow): EpisodeProjection {
+  const parsed = JSON.parse(row.state_json) as Partial<EpisodeProjection>;
+  return {
+    episodeId: parsed.episodeId ?? row.episode_id,
+    subject: parsed.subject ?? row.subject,
+    correlationId: parsed.correlationId ?? row.correlation_key,
+    eventIds: parsed.eventIds ?? [],
+    sourceIds: parsed.sourceIds ?? [],
+    types: parsed.types ?? [],
+    latestData: parsed.latestData ?? {},
+    evidenceRefs: parsed.evidenceRefs ?? [],
+    deadlineHistory: parsed.deadlineHistory ?? [],
+    retracted: parsed.retracted ?? false,
+    firstOccurredAt: parsed.firstOccurredAt ?? row.updated_at,
+    lastOccurredAt: parsed.lastOccurredAt ?? row.updated_at,
+  };
+}
+
+function isAttentionEvaluation(value: unknown): value is AttentionEvaluation {
+  if (!value || typeof value !== "object") return false;
+  const decision = (value as { decision?: unknown }).decision;
+  return Boolean(
+    decision &&
+    typeof decision === "object" &&
+    typeof (decision as { decisionId?: unknown }).decisionId === "string",
+  );
+}
+
 export class SqliteWakeStore implements EventStore {
   constructor(readonly database: Database.Database) {}
 
@@ -369,7 +431,10 @@ export class SqliteWakeStore implements EventStore {
 
   getEvent(eventId: string): CueEvent | undefined {
     const row = this.database
-      .prepare("SELECT payload_json FROM events WHERE event_id = ?")
+      .prepare(
+        `SELECT e.payload_json FROM events e JOIN event_payloads p ON p.event_id = e.event_id
+         WHERE e.event_id = ? AND p.tombstoned_at IS NULL`,
+      )
       .get(eventId) as Pick<EventRow, "payload_json"> | undefined;
     return row ? (JSON.parse(row.payload_json) as CueEvent) : undefined;
   }
@@ -379,11 +444,15 @@ export class SqliteWakeStore implements EventStore {
     const rows = eventIds
       ? (this.database
           .prepare(
-            `SELECT payload_json FROM events WHERE event_id IN (${eventIds.map(() => "?").join(",")})`,
+            `SELECT e.payload_json FROM events e JOIN event_payloads p ON p.event_id = e.event_id
+             WHERE p.tombstoned_at IS NULL AND e.event_id IN (${eventIds.map(() => "?").join(",")})`,
           )
           .all(...eventIds) as Array<Pick<EventRow, "payload_json">>)
       : (this.database
-          .prepare("SELECT payload_json FROM events ORDER BY occurred_at, received_at, event_id")
+          .prepare(
+            `SELECT e.payload_json FROM events e JOIN event_payloads p ON p.event_id = e.event_id
+             WHERE p.tombstoned_at IS NULL ORDER BY e.occurred_at, e.received_at, e.event_id`,
+          )
           .all() as Array<Pick<EventRow, "payload_json">>);
     const events = rows.map((row) => JSON.parse(row.payload_json) as CueEvent);
     const positions = new Map(eventIds?.map((id, index) => [id, index]));
@@ -1074,6 +1143,17 @@ export class SqliteWakeStore implements EventStore {
         this.database
           .prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?")
           .run(nextStatus, receivedAt, callback.taskId);
+        if (["SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN"].includes(callback.status)) {
+          this.recordOutcomeFact({
+            taskId: callback.taskId,
+            runtimeRunId: callback.runtimeRunId,
+            status: callback.status as Outcome["status"],
+            verification: "reported",
+            summary: `Agent runtime reported ${callback.status.toLowerCase()}.`,
+            evidenceRefs: [`runtime-callback:${callbackEventId}`],
+            occurredAt: callback.occurredAt,
+          });
+        }
       }
       const updated = this.getRuntimeRunRow(callback.runtimeRunId);
       if (!updated) throw new Error("Runtime run disappeared after callback");
@@ -1266,6 +1346,7 @@ export class SqliteWakeStore implements EventStore {
         this.database
           .prepare("UPDATE tasks SET status = 'WAITING_APPROVAL', updated_at = ? WHERE task_id = ?")
           .run(submittedAt, request.taskId);
+        this.enqueueApprovalNotification(attempt, submittedAt);
       }
       const record = this.getToolAttempt(attemptId);
       if (!record) throw new Error("Tool attempt disappeared after insert");
@@ -1396,6 +1477,15 @@ export class SqliteWakeStore implements EventStore {
         result,
         result.occurredAt,
       );
+      this.recordOutcomeFact({
+        taskId: result.taskId,
+        runtimeRunId: result.runtimeRunId,
+        status: result.status,
+        verification: "tool-confirmed",
+        summary: `Tool execution was ${result.status.toLowerCase()}.`,
+        evidenceRefs: [`tool-attempt:${result.attemptId}`],
+        occurredAt: result.occurredAt,
+      });
       this.database
         .prepare(
           `UPDATE deliveries SET status = ?, record_json = ?, updated_at = ?
@@ -1413,9 +1503,465 @@ export class SqliteWakeStore implements EventStore {
     })();
   }
 
+  recordExternalOutcomeVerification(verification: ExternalOutcomeVerification): Outcome {
+    return this.database.transaction(() => {
+      const run = this.getRuntimeRunRow(verification.runtimeRunId);
+      if (!run) throw new Error("RUNTIME_RUN_NOT_FOUND");
+      if (run.task_id !== verification.taskId) throw new Error("RUNTIME_TASK_MISMATCH");
+      return this.recordOutcomeFact({
+        taskId: verification.taskId,
+        runtimeRunId: verification.runtimeRunId,
+        status: verification.status,
+        summary: verification.summary,
+        occurredAt: verification.occurredAt,
+        verification: "externally-verified",
+        evidenceRefs: verification.evidenceRefs.map(
+          (reference) => `${verification.verifier}:${reference}`,
+        ),
+      });
+    })();
+  }
+
+  recordNativeNotificationReceipt(receipt: NativeNotificationReceipt): NativeNotificationReceipt {
+    return this.database.transaction(() => {
+      const run = this.getRuntimeRunRow(receipt.runtimeRunId);
+      if (!run) throw new Error("RUNTIME_RUN_NOT_FOUND");
+      if (run.task_id !== receipt.taskId) throw new Error("RUNTIME_TASK_MISMATCH");
+      const outcome = this.getOutcome(receipt.outcomeId);
+      if (!outcome) throw new Error("OUTCOME_NOT_FOUND");
+      if (outcome.taskId !== receipt.taskId || outcome.runtimeRunId !== receipt.runtimeRunId) {
+        throw new Error("NOTIFICATION_RECEIPT_BINDING_MISMATCH");
+      }
+      this.database
+        .prepare(
+          `INSERT INTO native_notification_receipts(
+             receipt_id, task_id, outcome_id, runtime_run_id, channel, status, record_json, occurred_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(outcome_id, channel) DO NOTHING`,
+        )
+        .run(
+          receipt.receiptId,
+          receipt.taskId,
+          receipt.outcomeId,
+          receipt.runtimeRunId,
+          receipt.channel,
+          receipt.status,
+          canonicalJson(receipt),
+          receipt.occurredAt,
+        );
+      if (receipt.status === "DELIVERED") {
+        this.database
+          .prepare(
+            `UPDATE notifications SET status = 'NATIVE_DELIVERED', updated_at = ?
+             WHERE outcome_id = ? AND status = 'PENDING'`,
+          )
+          .run(receipt.occurredAt, receipt.outcomeId);
+        this.database
+          .prepare(
+            `UPDATE outbox SET status = 'COMPLETED', completed_at = ?, last_error = 'NATIVE_DELIVERED'
+             WHERE topic = 'notification.deliver' AND status = 'PENDING'
+               AND aggregate_id IN (
+                 SELECT notification_id FROM notifications WHERE outcome_id = ?
+               )`,
+          )
+          .run(receipt.occurredAt, receipt.outcomeId);
+      }
+      return receipt;
+    })();
+  }
+
+  recordNotificationReceipt(receipt: NotificationReceipt): NotificationReceipt {
+    const notification = this.getNotification(receipt.notificationId);
+    if (!notification) throw new Error("NOTIFICATION_NOT_FOUND");
+    const digest = `sha256:${sha256(canonicalJson(receipt))}`;
+    this.database
+      .prepare(
+        `INSERT OR IGNORE INTO notification_receipt_events(
+           receipt_event_id, notification_id, status, payload_digest, record_json, occurred_at
+         ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deterministicId("notification_receipt", `${receipt.notificationId}:${digest}`),
+        receipt.notificationId,
+        receipt.status,
+        digest,
+        canonicalJson(receipt),
+        receipt.occurredAt,
+      );
+    return receipt;
+  }
+
+  recordTaskFeedback(feedback: TaskFeedback, idempotencyKey: string): TaskFeedback {
+    if (!this.getTask(feedback.taskId)) throw new Error("TASK_NOT_FOUND");
+    const existing = this.database
+      .prepare("SELECT record_json FROM feedback WHERE idempotency_key = ?")
+      .get(idempotencyKey) as { record_json: string } | undefined;
+    if (existing) {
+      const current = JSON.parse(existing.record_json) as TaskFeedback;
+      if (canonicalJson(current) !== canonicalJson(feedback)) {
+        throw new IdempotencyConflictError(idempotencyKey);
+      }
+      return current;
+    }
+    this.database
+      .prepare(
+        `INSERT INTO feedback(feedback_id, task_id, kind, record_json, created_at, idempotency_key)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deterministicId("feedback", `${feedback.taskId}:${idempotencyKey}`),
+        feedback.taskId,
+        feedback.kind,
+        canonicalJson(feedback),
+        feedback.occurredAt,
+        idempotencyKey,
+      );
+    return feedback;
+  }
+
+  claimNotificationDelivery(
+    channel: string,
+    now = new Date().toISOString(),
+  ): NotificationClaim | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT o.outbox_id, n.record_json
+         FROM outbox o JOIN notifications n ON n.notification_id = o.aggregate_id
+         WHERE o.topic = 'notification.deliver' AND o.status = 'PENDING' AND o.available_at <= ?
+           AND n.channel = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM native_notification_receipts r
+             WHERE r.outcome_id = n.outcome_id AND r.status = 'DELIVERED'
+           )
+         ORDER BY o.available_at, o.outbox_id LIMIT 1`,
+      )
+      .get(now, channel) as { outbox_id: string; record_json: string } | undefined;
+    if (!row) return undefined;
+    const claimed = this.database
+      .prepare(
+        `UPDATE outbox SET status = 'PROCESSING', claimed_at = ?, attempt_count = attempt_count + 1
+         WHERE outbox_id = ? AND status = 'PENDING'`,
+      )
+      .run(now, row.outbox_id).changes;
+    return claimed
+      ? { outboxId: row.outbox_id, notification: JSON.parse(row.record_json) as Notification }
+      : undefined;
+  }
+
+  completeNotificationDelivery(
+    claim: NotificationClaim,
+    receipt: NotificationDeliveryReceipt,
+  ): NotificationRecord {
+    return this.database.transaction(() => {
+      const now = receipt.acceptedAt;
+      this.database
+        .prepare("UPDATE notifications SET status = ?, updated_at = ? WHERE notification_id = ?")
+        .run(receipt.status, now, claim.notification.notificationId);
+      this.database
+        .prepare(
+          `UPDATE outbox SET status = 'COMPLETED', completed_at = ?, last_error = NULL
+           WHERE outbox_id = ?`,
+        )
+        .run(now, claim.outboxId);
+      this.recordNotificationReceipt({
+        specVersion: "wakeoncue.notification.receipt/v1",
+        notificationId: claim.notification.notificationId,
+        status: receipt.status,
+        occurredAt: receipt.acceptedAt,
+        externalRef: receipt.externalRef,
+      });
+      const record = this.getNotification(claim.notification.notificationId);
+      if (!record) throw new Error("NOTIFICATION_NOT_FOUND");
+      return record;
+    })();
+  }
+
+  failNotificationDelivery(claim: NotificationClaim, error: string, uncertain: boolean): void {
+    const now = new Date().toISOString();
+    const status = uncertain ? "UNKNOWN" : "FAILED";
+    this.database.transaction(() => {
+      this.database
+        .prepare("UPDATE notifications SET status = ?, updated_at = ? WHERE notification_id = ?")
+        .run(status, now, claim.notification.notificationId);
+      this.database
+        .prepare(
+          `UPDATE outbox SET status = 'COMPLETED', completed_at = ?, last_error = ?
+           WHERE outbox_id = ?`,
+        )
+        .run(now, error, claim.outboxId);
+      this.recordNotificationReceipt({
+        specVersion: "wakeoncue.notification.receipt/v1",
+        notificationId: claim.notification.notificationId,
+        status,
+        occurredAt: now,
+      });
+    })();
+  }
+
+  listOutcomes(taskId?: string): Outcome[] {
+    const rows = taskId
+      ? (this.database
+          .prepare(
+            `SELECT record_json FROM outcomes WHERE task_id = ?
+             AND NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = outcomes.task_id)
+             ORDER BY created_at`,
+          )
+          .all(taskId) as Array<{ record_json: string }>)
+      : (this.database
+          .prepare(
+            `SELECT record_json FROM outcomes
+             WHERE NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = outcomes.task_id)
+             ORDER BY created_at`,
+          )
+          .all() as Array<{ record_json: string }>);
+    return rows.map((row) => JSON.parse(row.record_json) as Outcome);
+  }
+
+  getOutcome(outcomeId: string): Outcome | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT record_json FROM outcomes WHERE outcome_id = ?
+         AND NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = outcomes.task_id)`,
+      )
+      .get(outcomeId) as { record_json: string } | undefined;
+    return row ? (JSON.parse(row.record_json) as Outcome) : undefined;
+  }
+
+  listNotifications(taskId?: string): NotificationRecord[] {
+    const rows = taskId
+      ? (this.database
+          .prepare(
+            `SELECT record_json, status, COALESCE(updated_at, created_at) updated_at FROM notifications
+             WHERE task_id = ? AND NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = notifications.task_id)
+             ORDER BY created_at`,
+          )
+          .all(taskId) as Array<{ record_json: string; status: string; updated_at: string }>)
+      : (this.database
+          .prepare(
+            `SELECT record_json, status, COALESCE(updated_at, created_at) updated_at FROM notifications
+             WHERE NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = notifications.task_id)
+             ORDER BY created_at`,
+          )
+          .all() as Array<{ record_json: string; status: string; updated_at: string }>);
+    return rows.map((row) => ({
+      notification: JSON.parse(row.record_json) as Notification,
+      status: row.status,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  getNotification(notificationId: string): NotificationRecord | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT record_json, status, COALESCE(updated_at, created_at) updated_at FROM notifications
+         WHERE notification_id = ? AND NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'task' AND entity_id = notifications.task_id)`,
+      )
+      .get(notificationId) as
+      { record_json: string; status: string; updated_at: string } | undefined;
+    return row
+      ? {
+          notification: JSON.parse(row.record_json) as Notification,
+          status: row.status,
+          updatedAt: row.updated_at,
+        }
+      : undefined;
+  }
+
+  private recordOutcomeFact(input: Omit<Outcome, "specVersion" | "outcomeId">): Outcome {
+    const payloadDigest = `sha256:${sha256(canonicalJson(input))}`;
+    const idempotencyKey = `outcome:${input.runtimeRunId}:${input.verification}:${payloadDigest}`;
+    const existing = this.database
+      .prepare("SELECT record_json FROM outcomes WHERE idempotency_key = ?")
+      .get(idempotencyKey) as { record_json: string } | undefined;
+    if (existing) return JSON.parse(existing.record_json) as Outcome;
+    const outcome: Outcome = {
+      specVersion: "wakeoncue.outcome/v1",
+      outcomeId: deterministicId("outcome", idempotencyKey),
+      ...input,
+    };
+    this.database
+      .prepare(
+        `INSERT INTO outcomes(outcome_id, task_id, runtime_run_id, idempotency_key, verification, record_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        outcome.outcomeId,
+        outcome.taskId,
+        outcome.runtimeRunId,
+        idempotencyKey,
+        outcome.verification,
+        canonicalJson(outcome),
+        outcome.occurredAt,
+      );
+    this.database
+      .prepare(
+        `INSERT INTO outcome_events(outcome_event_id, outcome_id, task_id, runtime_run_id, verification, payload_digest, record_json, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deterministicId("outcome_event", `${outcome.outcomeId}:${payloadDigest}`),
+        outcome.outcomeId,
+        outcome.taskId,
+        outcome.runtimeRunId,
+        outcome.verification,
+        payloadDigest,
+        canonicalJson(outcome),
+        outcome.occurredAt,
+      );
+    this.enqueueOutcomeNotification(outcome);
+    return outcome;
+  }
+
+  private enqueueOutcomeNotification(outcome: Outcome): void {
+    const category: Notification["category"] =
+      outcome.verification === "externally-verified" && outcome.status === "SUCCEEDED"
+        ? "verified-completion"
+        : outcome.status === "FAILED" || outcome.status === "UNKNOWN"
+          ? "high-risk-failure"
+          : "summary";
+    const channel = "fallback-webhook";
+    const deduplicationKey = `${outcome.taskId}:${outcome.outcomeId}:${channel}`;
+    const notification: Notification = {
+      specVersion: "wakeoncue.notification/v1",
+      notificationId: deterministicId("notification", deduplicationKey),
+      taskId: outcome.taskId,
+      outcomeId: outcome.outcomeId,
+      channel,
+      category,
+      deduplicationKey,
+      payload: {
+        template: `wakeoncue.${category}.v1`,
+        taskId: outcome.taskId,
+        status: outcome.status,
+        verification: outcome.verification,
+        deepLink: `/tasks/${outcome.taskId}`,
+      },
+      createdAt: outcome.occurredAt,
+    };
+    this.database
+      .prepare(
+        `INSERT INTO notifications(notification_id, task_id, outcome_id, channel, deduplication_key, status, record_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?) ON CONFLICT(deduplication_key) DO NOTHING`,
+      )
+      .run(
+        notification.notificationId,
+        notification.taskId,
+        notification.outcomeId,
+        channel,
+        deduplicationKey,
+        canonicalJson(notification),
+        notification.createdAt,
+        notification.createdAt,
+      );
+    const availableAt = this.notificationAvailableAt(category, outcome.taskId, outcome.occurredAt);
+    this.database
+      .prepare(
+        `INSERT INTO outbox(outbox_id, topic, aggregate_id, idempotency_key, payload_json, status, available_at) VALUES (?, 'notification.deliver', ?, ?, ?, 'PENDING', ?) ON CONFLICT(idempotency_key) DO NOTHING`,
+      )
+      .run(
+        deterministicId("outbox_notification", deduplicationKey),
+        notification.notificationId,
+        `notification:${deduplicationKey}`,
+        canonicalJson({ notificationId: notification.notificationId }),
+        availableAt,
+      );
+  }
+
+  private enqueueApprovalNotification(attempt: ToolAttempt, createdAt: string): void {
+    const channel = "fallback-webhook";
+    const deduplicationKey = `${attempt.taskId}:${attempt.attemptId}:${channel}`;
+    const notification: Notification = {
+      specVersion: "wakeoncue.notification/v1",
+      notificationId: deterministicId("notification", deduplicationKey),
+      taskId: attempt.taskId,
+      channel,
+      category: "approval",
+      deduplicationKey,
+      payload: {
+        template: "wakeoncue.approval.v1",
+        taskId: attempt.taskId,
+        attemptId: attempt.attemptId,
+        deepLink: `/approvals/${attempt.attemptId}`,
+      },
+      createdAt,
+    };
+    this.database
+      .prepare(
+        `INSERT INTO notifications(
+           notification_id, task_id, outcome_id, channel, deduplication_key,
+           status, record_json, created_at, updated_at
+         ) VALUES (?, ?, NULL, ?, ?, 'PENDING', ?, ?, ?)
+         ON CONFLICT(deduplication_key) DO NOTHING`,
+      )
+      .run(
+        notification.notificationId,
+        notification.taskId,
+        channel,
+        deduplicationKey,
+        canonicalJson(notification),
+        createdAt,
+        createdAt,
+      );
+    this.database
+      .prepare(
+        `INSERT INTO outbox(
+           outbox_id, topic, aggregate_id, idempotency_key, payload_json, status, available_at
+         ) VALUES (?, 'notification.deliver', ?, ?, ?, 'PENDING', ?)
+         ON CONFLICT(idempotency_key) DO NOTHING`,
+      )
+      .run(
+        deterministicId("outbox_notification", deduplicationKey),
+        notification.notificationId,
+        `notification:${deduplicationKey}`,
+        canonicalJson({ notificationId: notification.notificationId }),
+        createdAt,
+      );
+  }
+
+  private notificationAvailableAt(
+    category: Notification["category"],
+    taskId: string,
+    occurredAt: string,
+  ): string {
+    if (category === "approval" || category === "high-risk-failure") return occurredAt;
+    const task = this.getTask(taskId);
+    if (!task) return occurredAt;
+    const offsetMinutes = Number(process.env["WAKEONCUE_TIMEZONE_OFFSET_MINUTES"] ?? "480");
+    const quietStart = Number(process.env["WAKEONCUE_QUIET_START_HOUR"] ?? "22");
+    const quietEnd = Number(process.env["WAKEONCUE_QUIET_END_HOUR"] ?? "7");
+    const dailyBudget = Number(process.env["WAKEONCUE_NOTIFICATION_DAILY_BUDGET"] ?? "3");
+    const instant = new Date(occurredAt);
+    const local = new Date(instant.getTime() + offsetMinutes * 60_000);
+    const usageDate = local.toISOString().slice(0, 10);
+    const usage = this.database
+      .prepare(
+        `SELECT notification_count FROM attention_daily_usage
+         WHERE subject = ? AND usage_date = ?`,
+      )
+      .get(task.contract.subject, usageDate) as { notification_count: number } | undefined;
+    const overBudget = (usage?.notification_count ?? 0) >= dailyBudget;
+    const hour = local.getUTCHours();
+    const quiet =
+      quietStart > quietEnd
+        ? hour >= quietStart || hour < quietEnd
+        : hour >= quietStart && hour < quietEnd;
+    let delayMs = Number(process.env["WAKEONCUE_NATIVE_NOTIFICATION_GRACE_MS"] ?? "5000");
+    if (quiet || overBudget) {
+      const localEnd = new Date(local);
+      localEnd.setUTCHours(quietEnd, 0, 0, 0);
+      if (localEnd <= local || overBudget) localEnd.setUTCDate(localEnd.getUTCDate() + 1);
+      delayMs = Math.max(delayMs, localEnd.getTime() - local.getTime());
+    }
+    this.incrementAttentionUsage(
+      task.contract.subject,
+      usageDate,
+      "notification_count",
+      occurredAt,
+    );
+    return new Date(instant.getTime() + delayMs).toISOString();
+  }
+
   getToolAttempt(attemptId: string): ToolAttemptRecord | undefined {
     const row = this.getToolAttemptRow(attemptId);
     if (!row || !row.policy_decision || !row.reason_code) return undefined;
+    if (this.isTombstoned("task", row.task_id)) return undefined;
     const permitRow = this.database
       .prepare("SELECT * FROM permits WHERE attempt_id = ? ORDER BY issued_at DESC LIMIT 1")
       .get(attemptId) as
@@ -1694,7 +2240,219 @@ export class SqliteWakeStore implements EventStore {
       .get(attemptId) as ToolAttemptRow | undefined;
   }
 
+  deleteSubjectData(
+    subject: string,
+    idempotencyKey: string,
+    requestedAt = new Date().toISOString(),
+  ): PrivacyDeletionRecord {
+    return this.database.transaction(() => {
+      const prior = this.database
+        .prepare(
+          `SELECT deletion_id, subject_digest, counts_json, requested_at, completed_at
+           FROM privacy_deletion_requests WHERE idempotency_key = ?`,
+        )
+        .get(idempotencyKey) as
+        | {
+            deletion_id: string;
+            subject_digest: string;
+            counts_json: string;
+            requested_at: string;
+            completed_at: string;
+          }
+        | undefined;
+      if (prior) {
+        return {
+          deletionId: prior.deletion_id,
+          subjectDigest: prior.subject_digest,
+          counts: JSON.parse(prior.counts_json) as PrivacyDeletionRecord["counts"],
+          requestedAt: prior.requested_at,
+          completedAt: prior.completed_at,
+        };
+      }
+
+      const subjectDigest = `sha256:${sha256(subject)}`;
+      const eventRows = this.database
+        .prepare("SELECT event_id FROM events WHERE subject = ?")
+        .all(subject) as Array<{ event_id: string }>;
+      const episodeRows = this.database
+        .prepare("SELECT episode_id FROM episodes WHERE subject = ?")
+        .all(subject) as Array<{ episode_id: string }>;
+      const decisionRows = this.database
+        .prepare(
+          `SELECT decision_id FROM decisions WHERE episode_id IN
+           (SELECT episode_id FROM episodes WHERE subject = ?)`,
+        )
+        .all(subject) as Array<{ decision_id: string }>;
+      const taskRows = this.database
+        .prepare(
+          `SELECT task_id FROM tasks WHERE decision_id IN
+           (SELECT decision_id FROM decisions WHERE episode_id IN
+             (SELECT episode_id FROM episodes WHERE subject = ?))`,
+        )
+        .all(subject) as Array<{ task_id: string }>;
+      const eventIds = eventRows.map((row) => row.event_id);
+      const episodeIds = episodeRows.map((row) => row.episode_id);
+      const decisionIds = decisionRows.map((row) => row.decision_id);
+      const taskIds = taskRows.map((row) => row.task_id);
+      const placeholders = (values: readonly string[]) => values.map(() => "?").join(",");
+      const tombstone = canonicalJson({ tombstoned: true, subjectDigest });
+
+      this.database
+        .prepare("INSERT INTO privacy_deletion_context(context_id, active) VALUES (1, 1)")
+        .run();
+      for (const [entityType, ids] of [
+        ["event", eventIds],
+        ["episode", episodeIds],
+        ["decision", decisionIds],
+        ["task", taskIds],
+      ] as const) {
+        for (const id of ids) {
+          this.database
+            .prepare(
+              `INSERT OR IGNORE INTO privacy_tombstones(entity_type, entity_id, tombstoned_at)
+               VALUES (?, ?, ?)`,
+            )
+            .run(entityType, id, requestedAt);
+        }
+      }
+
+      if (eventIds.length > 0) {
+        this.database
+          .prepare(
+            `UPDATE event_payloads SET encrypted_payload = NULL, evidence_refs_json = '[]', tombstoned_at = ?
+             WHERE event_id IN (${placeholders(eventIds)})`,
+          )
+          .run(requestedAt, ...eventIds);
+        this.database
+          .prepare(
+            `UPDATE events SET subject = ?, correlation_id = ?, payload_json = ?
+             WHERE event_id IN (${placeholders(eventIds)})`,
+          )
+          .run(`deleted:${subjectDigest}`, `deleted:${subjectDigest}`, tombstone, ...eventIds);
+      }
+      if (episodeIds.length > 0) {
+        this.database
+          .prepare(`DELETE FROM entities WHERE episode_id IN (${placeholders(episodeIds)})`)
+          .run(...episodeIds);
+        this.database
+          .prepare(
+            `UPDATE episodes SET subject = ?, correlation_key = ?, state_json = ?, updated_at = ?
+             WHERE episode_id IN (${placeholders(episodeIds)})`,
+          )
+          .run(
+            `deleted:${subjectDigest}`,
+            `deleted:${subjectDigest}`,
+            tombstone,
+            requestedAt,
+            ...episodeIds,
+          );
+        this.database
+          .prepare(
+            `UPDATE decisions SET subject = ?, evidence_refs_json = '[]', record_json = ?
+             WHERE episode_id IN (${placeholders(episodeIds)})`,
+          )
+          .run(`deleted:${subjectDigest}`, tombstone, ...episodeIds);
+      }
+      if (taskIds.length > 0) {
+        const taskSlots = placeholders(taskIds);
+        this.database
+          .prepare(
+            `UPDATE tasks SET status = 'CANCELLED', contract_json = ?, updated_at = ? WHERE task_id IN (${taskSlots})`,
+          )
+          .run(tombstone, requestedAt, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE runtime_runs SET status = 'CANCELLED', record_json = ?, last_observed_at = ? WHERE task_id IN (${taskSlots})`,
+          )
+          .run(tombstone, requestedAt, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE runtime_callback_events SET record_json = ? WHERE runtime_run_id IN (SELECT runtime_run_id FROM runtime_runs WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE tool_attempts SET record_json = ?, status = CASE WHEN status IN ('SUCCEEDED','FAILED','DENIED') THEN status ELSE 'DENIED' END, reason_code = 'PRIVACY_DELETION', updated_at = ? WHERE task_id IN (${taskSlots})`,
+          )
+          .run(tombstone, requestedAt, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE tool_attempt_events SET record_json = ? WHERE attempt_id IN (SELECT attempt_id FROM tool_attempts WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE permits SET subject = ?, consumed_at = COALESCE(consumed_at, ?) WHERE task_id IN (${taskSlots})`,
+          )
+          .run(`deleted:${subjectDigest}`, requestedAt, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE permit_events SET record_json = ? WHERE attempt_id IN (SELECT attempt_id FROM tool_attempts WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(`UPDATE outcomes SET record_json = ? WHERE task_id IN (${taskSlots})`)
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(`UPDATE outcome_events SET record_json = ? WHERE task_id IN (${taskSlots})`)
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE native_notification_receipts SET record_json = ? WHERE task_id IN (${taskSlots})`,
+          )
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE notifications SET record_json = ?, status = 'CANCELLED', updated_at = ? WHERE task_id IN (${taskSlots})`,
+          )
+          .run(tombstone, requestedAt, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE notification_receipt_events SET record_json = ? WHERE notification_id IN (SELECT notification_id FROM notifications WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(`UPDATE feedback SET record_json = ? WHERE task_id IN (${taskSlots})`)
+          .run(tombstone, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE deliveries SET external_ref = NULL, record_json = ?, updated_at = ? WHERE idempotency_key IN (SELECT idempotency_key FROM tasks WHERE task_id IN (${taskSlots})) OR idempotency_key IN (SELECT 'tool:' || attempt_id FROM tool_attempts WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, requestedAt, ...taskIds, ...taskIds);
+        this.database
+          .prepare(
+            `UPDATE outbox SET payload_json = ?, status = CASE WHEN status IN ('PENDING','PROCESSING') THEN 'COMPLETED' ELSE status END, completed_at = COALESCE(completed_at, ?), last_error = 'PRIVACY_DELETION' WHERE aggregate_id IN (${taskSlots}) OR aggregate_id IN (SELECT notification_id FROM notifications WHERE task_id IN (${taskSlots}))`,
+          )
+          .run(tombstone, requestedAt, ...taskIds, ...taskIds);
+      }
+
+      const counts = {
+        events: eventIds.length,
+        episodes: episodeIds.length,
+        tasks: taskIds.length,
+      };
+      const deletionId = deterministicId("deletion", `${subjectDigest}:${idempotencyKey}`);
+      this.database
+        .prepare(
+          `INSERT INTO privacy_deletion_requests(
+             deletion_id, idempotency_key, subject_digest, counts_json, requested_at, completed_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          deletionId,
+          idempotencyKey,
+          subjectDigest,
+          canonicalJson(counts),
+          requestedAt,
+          requestedAt,
+        );
+      this.database.prepare("DELETE FROM privacy_deletion_context WHERE context_id = 1").run();
+      return { deletionId, subjectDigest, counts, requestedAt, completedAt: requestedAt };
+    })();
+  }
+
   getTask(taskId: string): TaskRecord | undefined {
+    if (this.isTombstoned("task", taskId)) return undefined;
     const row = this.database
       .prepare(
         `SELECT task_id, decision_id, contract_json, status, created_at, updated_at
@@ -1724,7 +2482,7 @@ export class SqliteWakeStore implements EventStore {
 
   getRuntimeRun(runtimeRunId: string): RuntimeRunRecord | undefined {
     const row = this.getRuntimeRunRow(runtimeRunId);
-    return row ? runtimeRunRecord(row) : undefined;
+    return row && !this.isTombstoned("task", row.task_id) ? runtimeRunRecord(row) : undefined;
   }
 
   getTaskTimeline(taskId: string):
@@ -1733,6 +2491,8 @@ export class SqliteWakeStore implements EventStore {
         runtimeRuns: RuntimeRunRecord[];
         callbacks: RuntimeCallback[];
         toolAttempts: ToolAttemptRecord[];
+        outcomes: Outcome[];
+        notifications: NotificationRecord[];
       }
     | undefined {
     const task = this.getTask(taskId);
@@ -1756,6 +2516,8 @@ export class SqliteWakeStore implements EventStore {
         .all(taskId)
         .map((row) => this.getToolAttempt((row as { attempt_id: string }).attempt_id))
         .filter((record): record is ToolAttemptRecord => record !== undefined),
+      outcomes: this.listOutcomes(taskId),
+      notifications: this.listNotifications(taskId),
     };
   }
 
@@ -1766,30 +2528,35 @@ export class SqliteWakeStore implements EventStore {
   }
 
   getDecision(decisionId: string): AttentionEvaluation | undefined {
+    if (this.isTombstoned("decision", decisionId)) return undefined;
     const row = this.database
       .prepare("SELECT record_json FROM decisions WHERE decision_id = ?")
       .get(decisionId) as { record_json: string } | undefined;
-    return row ? (JSON.parse(row.record_json) as AttentionEvaluation) : undefined;
+    if (!row) return undefined;
+    const value = JSON.parse(row.record_json) as unknown;
+    return isAttentionEvaluation(value) ? value : undefined;
   }
 
   listEpisodes(): Array<{ episode: EpisodeProjection; latestDecision?: AttentionEvaluation }> {
     const rows = this.database
-      .prepare("SELECT state_json FROM episodes ORDER BY updated_at DESC, episode_id")
-      .all() as Array<{ state_json: string }>;
+      .prepare(
+        `SELECT episode_id, subject, correlation_key, state_json, updated_at FROM episodes
+         WHERE NOT EXISTS (SELECT 1 FROM privacy_tombstones WHERE entity_type = 'episode' AND entity_id = episodes.episode_id)
+         ORDER BY updated_at DESC, episode_id`,
+      )
+      .all() as EpisodeRow[];
     return rows.map((row) => {
-      const episode = JSON.parse(row.state_json) as EpisodeProjection;
+      const episode = episodeProjection(row);
       const decisionRow = this.database
         .prepare(
           `SELECT record_json FROM decisions WHERE episode_id = ?
            ORDER BY created_at DESC, decision_id DESC LIMIT 1`,
         )
         .get(episode.episodeId) as { record_json: string } | undefined;
-      return {
-        episode,
-        ...(decisionRow
-          ? { latestDecision: JSON.parse(decisionRow.record_json) as AttentionEvaluation }
-          : {}),
-      };
+      const latestDecision = decisionRow
+        ? (JSON.parse(decisionRow.record_json) as unknown)
+        : undefined;
+      return { episode, ...(isAttentionEvaluation(latestDecision) ? { latestDecision } : {}) };
     });
   }
 
@@ -1798,6 +2565,7 @@ export class SqliteWakeStore implements EventStore {
         episode: EpisodeProjection;
         cues: CueEvent[];
         decisions: AttentionEvaluation[];
+        tasks: TaskRecord[];
       }
     | undefined {
     const episode = this.getEpisode(episodeId);
@@ -1811,18 +2579,40 @@ export class SqliteWakeStore implements EventStore {
     return {
       episode,
       cues: this.getEvents(episode.eventIds),
-      decisions: decisionRows.map((row) => JSON.parse(row.record_json) as AttentionEvaluation),
+      decisions: decisionRows
+        .map((row) => JSON.parse(row.record_json) as unknown)
+        .filter(isAttentionEvaluation),
+      tasks: this.database
+        .prepare(
+          `SELECT task_id FROM tasks WHERE decision_id IN
+           (SELECT decision_id FROM decisions WHERE episode_id = ?) ORDER BY created_at`,
+        )
+        .all(episodeId)
+        .map((row) => this.getTask((row as { task_id: string }).task_id))
+        .filter((task): task is TaskRecord => task !== undefined),
     };
   }
 
   getEpisode(episodeId: string): EpisodeProjection | undefined {
+    if (this.isTombstoned("episode", episodeId)) return undefined;
     const row = this.database
-      .prepare("SELECT state_json FROM episodes WHERE episode_id = ?")
-      .get(episodeId) as { state_json: string } | undefined;
-    return row ? (JSON.parse(row.state_json) as EpisodeProjection) : undefined;
+      .prepare(
+        `SELECT episode_id, subject, correlation_key, state_json, updated_at
+         FROM episodes WHERE episode_id = ?`,
+      )
+      .get(episodeId) as EpisodeRow | undefined;
+    return row ? episodeProjection(row) : undefined;
   }
 
   replay(eventIds?: readonly string[]) {
     return replayCueEvents(this.getEvents(eventIds));
+  }
+
+  private isTombstoned(entityType: string, entityId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare("SELECT 1 FROM privacy_tombstones WHERE entity_type = ? AND entity_id = ?")
+        .get(entityType, entityId),
+    );
   }
 }

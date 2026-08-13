@@ -18,6 +18,7 @@ describe("API bootstrap", () => {
     process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"] = "test-only-runtime-callback-secret";
     process.env["WAKEONCUE_RUNTIME_PEP_SECRET"] = "test-only-runtime-pep-secret";
     process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"] = "test-only-approval-admin-token";
+    process.env["WAKEONCUE_OUTCOME_VERIFICATION_SECRET"] = "test-only-outcome-secret";
   });
 
   afterEach(() => {
@@ -29,6 +30,7 @@ describe("API bootstrap", () => {
     delete process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"];
     delete process.env["WAKEONCUE_RUNTIME_PEP_SECRET"];
     delete process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+    delete process.env["WAKEONCUE_OUTCOME_VERIFICATION_SECRET"];
   });
 
   it("reports health and migration readiness", async () => {
@@ -485,6 +487,107 @@ describe("API bootstrap", () => {
       });
       expect(result.statusCode).toBe(200);
       expect(result.json()).toMatchObject({ attempt: { status: "SUCCEEDED" } });
+
+      const verificationPayload = JSON.stringify({
+        specVersion: "wakeoncue.outcome.external-verification/v1",
+        taskId: contract.taskId,
+        runtimeRunId: "run_api_approval",
+        status: "SUCCEEDED",
+        summary: "Controlled receiver confirmed delivery",
+        evidenceRefs: ["receipt-api-1"],
+        occurredAt: new Date().toISOString(),
+        verifier: "controlled-receiver",
+      });
+      const verificationTimestamp = Math.floor(Date.now() / 1_000);
+      const verified = await server.inject({
+        method: "POST",
+        url: "/v1/outcomes/verifications/external",
+        headers: {
+          "content-type": "application/json",
+          "x-wakeoncue-timestamp": String(verificationTimestamp),
+          "x-wakeoncue-signature": signWebhook(
+            verificationPayload,
+            verificationTimestamp,
+            "test-only-outcome-secret",
+          ),
+        },
+        payload: verificationPayload,
+      });
+      expect(verified.statusCode).toBe(202);
+      const verifiedOutcomeId = verified.json<{ outcome: { outcomeId: string } }>().outcome
+        .outcomeId;
+      expect(verified.json()).toMatchObject({
+        outcome: { verification: "externally-verified", status: "SUCCEEDED" },
+      });
+
+      const nativePayload = JSON.stringify({
+        specVersion: "wakeoncue.notification.native-receipt/v1",
+        receiptId: "native-api-1",
+        taskId: contract.taskId,
+        outcomeId: verifiedOutcomeId,
+        runtimeRunId: "run_api_approval",
+        channel: "openclaw-native",
+        status: "DELIVERED",
+        occurredAt: new Date().toISOString(),
+      });
+      const nativeTimestamp = Math.floor(Date.now() / 1_000);
+      const nativeReceipt = await server.inject({
+        method: "POST",
+        url: "/v1/notifications/native-receipts",
+        headers: {
+          "content-type": "application/json",
+          "x-wakeoncue-timestamp": String(nativeTimestamp),
+          "x-wakeoncue-signature": signWebhook(
+            nativePayload,
+            nativeTimestamp,
+            "test-only-runtime-callback-secret",
+          ),
+        },
+        payload: nativePayload,
+      });
+      expect(nativeReceipt.statusCode).toBe(202);
+
+      const feedback = await server.inject({
+        method: "POST",
+        url: `/v1/tasks/${contract.taskId}/feedback`,
+        headers: { "content-type": "application/json", "idempotency-key": "api-feedback-1" },
+        payload: JSON.stringify({
+          specVersion: "wakeoncue.feedback/v1",
+          taskId: contract.taskId,
+          kind: "ACCEPTED",
+          occurredAt: new Date().toISOString(),
+        }),
+      });
+      expect(feedback.statusCode).toBe(202);
+
+      const timeline = await server.inject({ method: "GET", url: `/v1/tasks/${contract.taskId}` });
+      expect(timeline.statusCode).toBe(200);
+      const timelineBody = timeline.json<{
+        timeline: { outcomes: Array<{ verification: string }>; notifications: unknown[] };
+      }>();
+      expect(timelineBody.timeline.outcomes.map((outcome) => outcome.verification)).toEqual(
+        expect.arrayContaining(["tool-confirmed", "externally-verified"]),
+      );
+      expect(timelineBody.timeline.notifications.length).toBeGreaterThan(0);
+
+      const deletion = await server.inject({
+        method: "POST",
+        url: "/v1/privacy/deletions",
+        headers: {
+          authorization: "Bearer test-only-approval-admin-token",
+          "content-type": "application/json",
+          "idempotency-key": "api-deletion-1",
+        },
+        payload: JSON.stringify({ subject: contract.subject }),
+      });
+      expect(deletion.statusCode).toBe(202);
+      expect(deletion.json()).toMatchObject({
+        status: "completed",
+        deletion: { counts: { tasks: 1 } },
+      });
+      expect(
+        (await server.inject({ method: "GET", url: `/v1/tasks/${contract.taskId}` })).statusCode,
+      ).toBe(404);
     } finally {
       await server.close();
     }

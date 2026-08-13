@@ -254,6 +254,76 @@ export const NotificationSchema = Type.Object(
   { $id: "NotificationV1", additionalProperties: false },
 );
 
+export const ExternalOutcomeVerificationSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.outcome.external-verification/v1"),
+    taskId: Id("task"),
+    runtimeRunId: Id("run"),
+    status: Type.Union([
+      Type.Literal("SUCCEEDED"),
+      Type.Literal("FAILED"),
+      Type.Literal("CANCELLED"),
+      Type.Literal("UNKNOWN"),
+    ]),
+    summary: Type.String({ minLength: 1 }),
+    evidenceRefs: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+    occurredAt: Timestamp,
+    verifier: Type.String({ minLength: 1 }),
+  },
+  { $id: "ExternalOutcomeVerificationV1", additionalProperties: false },
+);
+
+export const NativeNotificationReceiptSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.notification.native-receipt/v1"),
+    receiptId: Type.String({ minLength: 1 }),
+    taskId: Id("task"),
+    outcomeId: Id("outcome"),
+    runtimeRunId: Id("run"),
+    channel: Type.String({ minLength: 1 }),
+    status: Type.Union([
+      Type.Literal("DELIVERED"),
+      Type.Literal("FAILED"),
+      Type.Literal("UNKNOWN"),
+    ]),
+    occurredAt: Timestamp,
+  },
+  { $id: "NativeNotificationReceiptV1", additionalProperties: false },
+);
+
+export const NotificationReceiptSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.notification.receipt/v1"),
+    notificationId: Id("notification"),
+    status: Type.Union([
+      Type.Literal("DELIVERED"),
+      Type.Literal("FAILED"),
+      Type.Literal("UNKNOWN"),
+      Type.Literal("OPENED"),
+      Type.Literal("ACKNOWLEDGED"),
+      Type.Literal("DISMISSED"),
+    ]),
+    occurredAt: Timestamp,
+    externalRef: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  { $id: "NotificationReceiptV1", additionalProperties: false },
+);
+
+export const TaskFeedbackSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.feedback/v1"),
+    taskId: Id("task"),
+    kind: Type.Union([
+      Type.Literal("ACCEPTED"),
+      Type.Literal("IGNORED"),
+      Type.Literal("REJECTED"),
+      Type.Literal("TOPIC_CLOSED"),
+    ]),
+    occurredAt: Timestamp,
+  },
+  { $id: "TaskFeedbackV1", additionalProperties: false },
+);
+
 export const schemaRegistry = {
   "wakeoncue.event/v1": CueEventSchema,
   "wakeoncue.decision/v1": AttentionDecisionSchema,
@@ -263,6 +333,10 @@ export const schemaRegistry = {
   "wakeoncue.permit/v1": PermitSchema,
   "wakeoncue.outcome/v1": OutcomeSchema,
   "wakeoncue.notification/v1": NotificationSchema,
+  "wakeoncue.outcome.external-verification/v1": ExternalOutcomeVerificationSchema,
+  "wakeoncue.notification.native-receipt/v1": NativeNotificationReceiptSchema,
+  "wakeoncue.notification.receipt/v1": NotificationReceiptSchema,
+  "wakeoncue.feedback/v1": TaskFeedbackSchema,
 } satisfies Record<string, TSchema>;
 
 export type CueEvent = Static<typeof CueEventSchema>;
@@ -275,3 +349,7 @@ export type RuntimeToolResult = Static<typeof RuntimeToolResultSchema>;
 export type Permit = Static<typeof PermitSchema>;
 export type Outcome = Static<typeof OutcomeSchema>;
 export type Notification = Static<typeof NotificationSchema>;
+export type ExternalOutcomeVerification = Static<typeof ExternalOutcomeVerificationSchema>;
+export type NativeNotificationReceipt = Static<typeof NativeNotificationReceiptSchema>;
+export type NotificationReceipt = Static<typeof NotificationReceiptSchema>;
+export type TaskFeedback = Static<typeof TaskFeedbackSchema>;
