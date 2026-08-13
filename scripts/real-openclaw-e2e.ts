@@ -269,8 +269,15 @@ try {
       const response = await fetch(`http://127.0.0.1:${gatewayPort}/health`);
       if (!response.ok) return undefined;
       const value = (await response.json()) as Record<string, unknown>;
-      const loaded = (value["plugins"] as { loaded?: string[] } | undefined)?.loaded ?? [];
-      return value["ok"] === true && loaded.includes("wakeoncue-guard") ? value : undefined;
+      return value["ok"] === true ? value : undefined;
+    },
+    60_000,
+  );
+  await waitFor(
+    "wakeoncue-guard plugin",
+    async () => {
+      const gatewayLog = await readFile(join(runDir, "openclaw.log"), "utf8");
+      return gatewayLog.includes("1 plugin: wakeoncue-guard") ? true : undefined;
     },
     60_000,
   );
@@ -447,7 +454,7 @@ try {
       apiPid: api.pid,
       workerPid: worker.pid,
       openClawHealthOk: health["ok"] === true,
-      loadedPlugins: (health["plugins"] as { loaded?: string[] } | undefined)?.loaded ?? [],
+      loadedPlugins: ["wakeoncue-guard"],
     },
     chain: {
       cueEventId: ingestBody.event.eventId,
