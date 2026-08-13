@@ -2,7 +2,7 @@
 
 更新时间：2026-08-13
 
-当前 checkpoint：5 · Approval（进行中）
+当前 checkpoint：6 · Outcome（进行中）
 
 分支：`codex/mvp`
 
@@ -24,6 +24,8 @@
 - 完成 outcome-only Task Contract、Runtime SDK、签名 callback adapter、固定版本 OpenClaw adapter、activation ledger、独立 activation/Agent run ID、状态回收和 `UNKNOWN` reconciliation。
 - 完成真实 OpenClaw extension：`before_agent_run`、`before_tool_call`、`agent_end` 均与 WakeOnCue 签名回调关联；回调失败时 fail-closed。
 - Runtime adapter 生产默认关闭；OpenClaw 写能力在 Approval/Permit 完成前全部被 fail-closed PEP 拦截。
+- 完成集中 PDP、签名 PEP API、Web Approval、参数级 Tool Attempt、短 TTL one-time Permit、原子消费、Tool Delivery Ledger 与真实 OpenClaw `before_tool_call`/`after_tool_call` 集成。
+- 默认只允许 capability scope 内且目标精确匹配 `contextRefs` 的受约束读取；外发/业务写逐次确认；删除、支付、购买、设备控制与未知工具在 MVP 拒绝。
 
 ## 实际运行的验证
 
@@ -44,6 +46,9 @@
 - `agent-browser` Console 检查：PASS；页面有内容、无 Vite overlay、无浏览器错误，Episode 点击后 reason codes 与 evidence chain 可见，Notify 配置因缺少 7 天真实 gate evidence 被明确拒绝。该检查发现并修复了 PUT CORS 预检缺失。
 - `pnpm test`（checkpoint 4）：PASS，10 个 test files、28 个 tests；覆盖 Runtime SDK/Webhook/OpenClaw adapter、伪造 callback、callback 去重/乱序/终态、activation ledger 与 reconciliation。
 - `pnpm test:e2e:openclaw`：PASS；WakeOnCue Node v26.7.0，OpenClaw 仅使用本地 `n` 的 Node v24.19.0，固定 OpenClaw 2026.7.1-2。真实模型回合完成，`wakeoncue-guard` 加载，9/9 个 Agent 自主工具调用被 PEP fail-closed 拦截；重复 Cue 与 activation 没有重复任务或副作用。
+- `pnpm test`（checkpoint 5）：PASS，11 个 test files、33 个 tests；新增 PDP、PEP HMAC、人类 API 认证、Permit 过期/参数变化/目标变化/重放/伪造 run、append-only 审计与 Runtime conformance 覆盖。
+- `pnpm test:e2e:approval`：PASS；真实 OpenClaw Agent 自主选择 `file_send`，受控 receiver 在批准前 0 次、批准后 1 次，Permit `ISSUED → CONSUMED`，Tool/Delivery 成功，Permit 重放拒绝且重复副作用为 0。
+- `agent-browser` Approval Console：PASS；待审批卡信息完整，“批准一次”真实产生一个 Permit，之后卡片消失，最终浏览器 console 无 error/warning。截图为 `docs/evidence/artifacts/approval-console.png`。
 
 ## 证据位置
 
@@ -58,16 +63,17 @@
 - Conversation Cue、Omi fixture、离线指标、烟测与 UI 截图：`docs/evidence/conversation-cue.md`
 - 真实 OpenClaw activation、模型回合、回调、幂等与版本边界：`docs/evidence/agent-wake.md`
 - 真实 OpenClaw 脱敏机器可读摘要与原始证据 SHA-256：`docs/evidence/artifacts/real-openclaw-e2e-2026-08-13.json`
+- Approval/Permit 攻击测试、真实批准后执行与 Console 证据：`docs/evidence/approval.md`
+- Approval 真实 E2E 脱敏摘要：`docs/evidence/artifacts/real-openclaw-approval-e2e-2026-08-13.json`
 
 ## 剩余工作
 
-- 实现 checkpoint 5 的真实 PEP/PDP、Tool Attempt、Approval、一次性 Permit 和批准后恰好一次执行。
-- Checkpoint 6–8 尚未开始；见 Goal 的 Outcome、Full-story 与 Release audit 要求。
+- 实现 checkpoint 6 的 Outcome 证据等级、原生/fallback 通知去重、反馈、retention/delete 和通知策略。
+- Checkpoint 7–8 尚未开始；见 Goal 的 Full-story 与 Release audit 要求。
 
 ## 已知风险或真正 blocker
 
 - Docker/Compose 与 clean-clone smoke 尚未运行；按用户指示后置到 release audit，不能在此前声称容器路径已通过。
-- 当前 OpenClaw extension 对相关 run 的所有工具调用均 fail-closed；checkpoint 5 要把它接入实际 PDP/PEP，使限定读操作可放行、写操作必须持有一次性 Permit。
 - 当前 Runtime `SUCCEEDED` 只证明 OpenClaw Agent turn 完成，不证明外部任务成功；checkpoint 6 必须以 `reported / tool-confirmed / externally-verified` 分级 Outcome，禁止仅凭 Agent 文本升级证据等级。
 - Omi 实机凭证和设备尚未提供；按 Goal 将先使用版本化脱敏真实格式 fixture，且证据会明确标注不是线上实机证明。
 - Omi 官方 webhook 文档展示 payload 但未声明原生请求签名；当前本地入站 API 额外要求专用 Bearer token。若直连形态不能配置该 Header，需在 release audit 前固定受认证反向代理或 Developer API polling 形态，不能退化为未认证公网 endpoint。
