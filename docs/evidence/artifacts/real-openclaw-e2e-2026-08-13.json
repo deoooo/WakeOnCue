@@ -1,0 +1,49 @@
+{
+  "specVersion": "wakeoncue.evidence.real-openclaw-summary/v1",
+  "status": "PASS",
+  "implementationCommit": "6749371",
+  "startedAt": "2026-08-13T02:06:11.810Z",
+  "completedAt": "2026-08-13T02:07:24.029Z",
+  "durationMs": 72219,
+  "boundaries": {
+    "input": "versioned de-identified Omi fixture",
+    "runtime": "real OpenClaw process and real configured model provider",
+    "productionCanary": false,
+    "liveWakeGate": "controlled temporary E2E database only"
+  },
+  "versions": {
+    "wakeOnCueNode": "v26.7.0",
+    "openClawNode": "v24.19.0",
+    "openClaw": "OpenClaw 2026.7.1-2 (0790d9f)"
+  },
+  "runtime": {
+    "openClawHealthOk": true,
+    "loadedPlugins": ["wakeoncue-guard"],
+    "callbackStatuses": ["RUNNING", "SUCCEEDED"],
+    "agentSelectedToolCalls": 9,
+    "pepBlockedToolCalls": 9,
+    "modelTurnCompleted": true
+  },
+  "idempotency": {
+    "duplicateCueInserted": false,
+    "taskCountBeforeReplay": 1,
+    "taskCountAfterReplay": 1,
+    "callbackCountAfterReplay": 2,
+    "duplicateActivationReturnedSameRunId": true,
+    "duplicateExternalSideEffects": 0
+  },
+  "chain": {
+    "cueEventId": "evt_c8160b74306af2dce4b12b517b",
+    "taskId": "task_28e5bfefc595e0b9f2f6173121",
+    "runtimeRunId": "run_71133ff5ec1c5552f13e395ca7",
+    "activationRunId": "a62cab02-7ea4-4943-8c18-e4f128e49786",
+    "agentRunId": "b6488abc-6cab-45e9-907b-cdb4cbb26f32"
+  },
+  "rawArtifactSha256": {
+    "result": "b65269bd5626ec2bce8d237b3f29cf58373a04dc86e231b5ca28b1f66e14ccd5",
+    "openClawLog": "3484dbd62ce856d31403a16a81d9e933523f727734af3019f04bca2a003c08cf",
+    "apiLog": "7c1a6d94bdfda898a432842e7b83e21a3dec66363c118f547057e310e93eaf10",
+    "workerLog": "6cff19138efcdbe1aeb8b18a2356821f9e799db17a96edfebff8245b94067f6a",
+    "openClawSession": "52152ae875df64d6362d721f2144bffff67c860af715da3abc745e0c2a2644e2"
+  }
+}
