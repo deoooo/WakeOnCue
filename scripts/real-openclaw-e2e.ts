@@ -31,6 +31,7 @@ await mkdir(runDir, { recursive: true, mode: 0o700 });
 const gatewayToken = randomBytes(32).toString("hex");
 const hookToken = randomBytes(32).toString("hex");
 const callbackSecret = randomBytes(32).toString("hex");
+const pepSecret = randomBytes(32).toString("hex");
 const omiToken = randomBytes(32).toString("hex");
 const managed: Array<{ label: string; child: ChildProcess }> = [];
 
@@ -249,6 +250,7 @@ try {
     {
       ...commonOpenClawEnv,
       WAKEONCUE_RUNTIME_CALLBACK_SECRET: callbackSecret,
+      WAKEONCUE_RUNTIME_PEP_SECRET: pepSecret,
       WAKEONCUE_RUNTIME_CALLBACK_URL: callbackUrl,
     },
   );
@@ -259,6 +261,7 @@ try {
     WAKEONCUE_OMI_WEBHOOK_TOKEN: omiToken,
     WAKEONCUE_OMI_SUBJECT: "subject-controlled-real-openclaw-e2e",
     WAKEONCUE_RUNTIME_CALLBACK_SECRET: callbackSecret,
+    WAKEONCUE_RUNTIME_PEP_SECRET: pepSecret,
     WAKEONCUE_LOG_LEVEL: "info",
   });
 
@@ -402,6 +405,33 @@ try {
       .prepare("SELECT COUNT(*) AS count FROM runtime_callback_events WHERE runtime_run_id = ?")
       .get(runtime.runtimeRunId) as { count: number }
   ).count;
+  const toolAttemptRows = replayDatabase
+    .prepare(
+      `SELECT tool, status, policy_decision, reason_code, record_json
+       FROM tool_attempts WHERE runtime_run_id = ? ORDER BY created_at`,
+    )
+    .all(runtime.runtimeRunId) as Array<{
+    tool: string;
+    status: string;
+    policy_decision: string;
+    reason_code: string;
+    record_json: string;
+  }>;
+  const unauthorizedSensitiveExecutions = (
+    replayDatabase
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM tool_attempts a
+         WHERE a.runtime_run_id = ?
+           AND json_extract(a.record_json, '$.risk.sideEffect') != 'none'
+           AND a.status IN ('EXECUTING', 'SUCCEEDED')
+           AND NOT EXISTS (
+             SELECT 1 FROM permits p
+             WHERE p.attempt_id = a.attempt_id AND p.consumed_at IS NOT NULL
+           )`,
+      )
+      .get(runtime.runtimeRunId) as { count: number }
+  ).count;
   replayDatabase.close();
   if (taskCountBeforeReplay !== 1 || taskCountAfterReplay !== 1 || callbackCountAfterReplay !== 2) {
     throw new Error("Replay produced a duplicate Task or runtime callback");
@@ -426,10 +456,16 @@ try {
     }
     if (
       message?.["role"] === "toolResult" &&
-      JSON.stringify(message).includes("WAKEONCUE_PEP_REQUIRED")
+      JSON.stringify(message).includes("WAKEONCUE_DENIED:")
     ) {
       pepBlockedToolCalls += 1;
     }
+  }
+  if (toolAttemptRows.length === 0 || agentSelectedToolCalls === 0) {
+    throw new Error("Real OpenClaw run did not exercise the Tool Attempt PEP");
+  }
+  if (unauthorizedSensitiveExecutions !== 0) {
+    throw new Error("A sensitive tool executed without a consumed WakeOnCue Permit");
   }
 
   const version = await runCommand(openClawBin, ["--version"], commonOpenClawEnv);
@@ -477,6 +513,13 @@ try {
       sessionFile: sessionPath,
       agentSelectedToolCalls,
       pepBlockedToolCalls,
+      toolAttempts: toolAttemptRows.map((row) => ({
+        tool: row.tool,
+        status: row.status,
+        policyDecision: row.policy_decision,
+        reasonCode: row.reason_code,
+      })),
+      unauthorizedSensitiveExecutions,
       modelTurnCompleted: true,
     },
     idempotency: {

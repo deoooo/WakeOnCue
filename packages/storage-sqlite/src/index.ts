@@ -4,7 +4,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { AttentionEngine, AttentionEvaluation, SourceMode } from "@wakeoncue/attention";
-import type { CueEvent, RuntimeCallback, TaskContract } from "@wakeoncue/contracts";
+import type {
+  CueEvent,
+  Permit,
+  RuntimeCallback,
+  RuntimeToolAttemptRequest,
+  RuntimeToolResult,
+  TaskContract,
+  ToolAttempt,
+} from "@wakeoncue/contracts";
 import {
   canonicalJson,
   deterministicId,
@@ -14,6 +22,12 @@ import {
 } from "@wakeoncue/core";
 import type { AppendEventResult, EventStore, IngressErrorRecord } from "@wakeoncue/storage";
 import type { RuntimeActivationReceipt, RuntimeStatus } from "@wakeoncue/runtime-sdk";
+import {
+  argumentsDigest,
+  evaluateAuthorization,
+  redactToolArguments,
+  type AuthorizationDecision,
+} from "@wakeoncue/policy";
 
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -100,6 +114,22 @@ interface RuntimeRunRow {
   record_json: string;
 }
 
+interface ToolAttemptRow {
+  attempt_id: string;
+  task_id: string;
+  runtime_run_id: string;
+  agent_run_id: string | null;
+  tool_call_id: string | null;
+  tool: string;
+  arguments_digest: string;
+  record_json: string;
+  status: string;
+  policy_decision: AuthorizationDecision | null;
+  reason_code: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface WakeActivationClaim {
   outboxId: string;
   runtimeRunId: string;
@@ -126,6 +156,22 @@ export interface TaskRecord {
   contract: TaskContract;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ToolAttemptRecord {
+  attempt: ToolAttempt;
+  status: string;
+  policyDecision: AuthorizationDecision;
+  reasonCode: string;
+  updatedAt: string;
+  permit?: Permit;
+}
+
+export interface ToolAuthorizationResult {
+  decision: AuthorizationDecision;
+  reasonCode: string;
+  attempt: ToolAttemptRecord;
+  permitId?: string;
 }
 
 export interface SourceModeGateEvidence {
@@ -994,10 +1040,19 @@ export class SqliteWakeStore implements EventStore {
 
       if (inserted) {
         const isOlder = row.last_observed_at !== null && callback.occurredAt < row.last_observed_at;
-        const nextStatus =
+        let nextStatus =
           !isOlder && canApplyRuntimeTransition(row.status, callback.status)
             ? callback.status
             : row.status;
+        const pendingApproval = this.database
+          .prepare(
+            `SELECT 1 FROM tool_attempts
+             WHERE runtime_run_id = ? AND status IN ('WAITING_APPROVAL', 'APPROVED') LIMIT 1`,
+          )
+          .get(callback.runtimeRunId);
+        if (callback.status === "SUCCEEDED" && pendingApproval) {
+          nextStatus = "WAITING_APPROVAL";
+        }
         const record = {
           ...(JSON.parse(row.record_json) as Record<string, unknown>),
           lastCallback: callback,
@@ -1108,6 +1163,537 @@ export class SqliteWakeStore implements EventStore {
     return rows.length;
   }
 
+  submitRuntimeToolAttempt(
+    request: RuntimeToolAttemptRequest,
+    submittedAt = new Date().toISOString(),
+  ): ToolAuthorizationResult {
+    return this.database.transaction(() => {
+      const run = this.getRuntimeRunRow(request.runtimeRunId);
+      if (!run) throw new Error("RUNTIME_RUN_NOT_FOUND");
+      if (run.task_id !== request.taskId) throw new Error("RUNTIME_TASK_MISMATCH");
+      if (!run.agent_run_id || run.agent_run_id !== request.agentRunId) {
+        throw new Error("RUNTIME_AGENT_RUN_ID_MISMATCH");
+      }
+      const task = this.getTask(request.taskId);
+      if (!task) throw new Error("TASK_NOT_FOUND");
+      const digest = argumentsDigest(request.arguments);
+
+      if (request.priorAttemptId) {
+        const prior = this.getToolAttemptRow(request.priorAttemptId);
+        if (!prior) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+        this.assertToolAttemptBinding(prior, request, digest);
+        return this.resolveExistingToolAttempt(prior, submittedAt);
+      }
+
+      const existingCall = this.database
+        .prepare(
+          `SELECT * FROM tool_attempts
+           WHERE runtime_run_id = ? AND agent_run_id = ? AND tool_call_id = ?`,
+        )
+        .get(request.runtimeRunId, request.agentRunId, request.toolCallId) as
+        ToolAttemptRow | undefined;
+      if (existingCall) {
+        this.assertToolAttemptBinding(existingCall, request, digest);
+        return this.resolveExistingToolAttempt(existingCall, submittedAt);
+      }
+
+      const evaluation = evaluateAuthorization(task.contract, request.tool, request.arguments);
+      const attemptId = deterministicId(
+        "attempt",
+        `${request.runtimeRunId}:${request.agentRunId}:${request.toolCallId}:${request.tool}:${digest}`,
+      );
+      const attempt: ToolAttempt = {
+        specVersion: "wakeoncue.attempt/v1",
+        attemptId,
+        subject: task.contract.subject,
+        taskId: request.taskId,
+        runtimeRunId: request.runtimeRunId,
+        agentRunId: request.agentRunId,
+        toolCallId: request.toolCallId,
+        tool: request.tool,
+        arguments: redactToolArguments(request.arguments),
+        argumentsDigest: digest,
+        displaySummary: evaluation.displaySummary,
+        risk: evaluation.risk,
+        createdAt: submittedAt,
+      };
+      const status =
+        evaluation.decision === "ALLOW"
+          ? "ALLOWED"
+          : evaluation.decision === "APPROVE_ONCE"
+            ? "WAITING_APPROVAL"
+            : "DENIED";
+      this.database
+        .prepare(
+          `INSERT INTO tool_attempts(
+            attempt_id, task_id, runtime_run_id, agent_run_id, tool_call_id, tool,
+            arguments_digest, record_json, status, policy_decision, reason_code,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          attemptId,
+          request.taskId,
+          request.runtimeRunId,
+          request.agentRunId,
+          request.toolCallId,
+          request.tool,
+          digest,
+          canonicalJson(attempt),
+          status,
+          evaluation.decision,
+          evaluation.reasonCode,
+          submittedAt,
+          submittedAt,
+        );
+      this.appendToolAttemptEvent(
+        attemptId,
+        "SUBMITTED",
+        {
+          decision: evaluation.decision,
+          reasonCode: evaluation.reasonCode,
+          capability: evaluation.capability,
+        },
+        submittedAt,
+      );
+
+      if (evaluation.decision === "ALLOW") {
+        this.createToolDelivery(attempt, submittedAt);
+      } else if (evaluation.decision === "APPROVE_ONCE") {
+        this.database
+          .prepare("UPDATE runtime_runs SET status = 'WAITING_APPROVAL' WHERE runtime_run_id = ?")
+          .run(request.runtimeRunId);
+        this.database
+          .prepare("UPDATE tasks SET status = 'WAITING_APPROVAL', updated_at = ? WHERE task_id = ?")
+          .run(submittedAt, request.taskId);
+      }
+      const record = this.getToolAttempt(attemptId);
+      if (!record) throw new Error("Tool attempt disappeared after insert");
+      return {
+        decision: evaluation.decision,
+        reasonCode: evaluation.reasonCode,
+        attempt: record,
+      };
+    })();
+  }
+
+  decideToolApproval(
+    attemptId: string,
+    decision: "APPROVE_ONCE" | "DENY",
+    decidedAt = new Date().toISOString(),
+    ttlSeconds = Number(process.env["WAKEONCUE_PERMIT_TTL_SECONDS"] ?? "300"),
+  ): ToolAttemptRecord {
+    return this.database.transaction(() => {
+      const row = this.getToolAttemptRow(attemptId);
+      if (!row) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+      if (row.status === "APPROVED" && decision === "APPROVE_ONCE") {
+        const existing = this.getToolAttempt(attemptId);
+        if (!existing) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+        return existing;
+      }
+      if (row.status !== "WAITING_APPROVAL") {
+        throw new Error("TOOL_ATTEMPT_NOT_WAITING_APPROVAL");
+      }
+      const runtime = this.getRuntimeRunRow(row.runtime_run_id);
+      if (!runtime || runtime.status !== "WAITING_APPROVAL") {
+        throw new Error("RUNTIME_NOT_WAITING_APPROVAL");
+      }
+      if (decision === "DENY") {
+        this.database
+          .prepare(
+            "UPDATE tool_attempts SET status = 'DENIED', reason_code = ?, updated_at = ? WHERE attempt_id = ?",
+          )
+          .run("HUMAN_DENIED", decidedAt, attemptId);
+        this.appendToolAttemptEvent(attemptId, "HUMAN_DENIED", { decision }, decidedAt);
+        this.resumeRuntimeAfterApproval(row.runtime_run_id, row.task_id, decidedAt);
+      } else {
+        const attempt = JSON.parse(row.record_json) as ToolAttempt;
+        const expiresAt = new Date(
+          new Date(decidedAt).getTime() + ttlSeconds * 1_000,
+        ).toISOString();
+        const permit: Permit = {
+          specVersion: "wakeoncue.permit/v1",
+          permitId: deterministicId("permit", `${attemptId}:${decidedAt}`),
+          subject: attempt.subject,
+          runtimeRunId: attempt.runtimeRunId,
+          taskId: attempt.taskId,
+          attemptId,
+          tool: attempt.tool,
+          argumentsDigest: attempt.argumentsDigest,
+          issuedAt: decidedAt,
+          expiresAt,
+        };
+        this.database
+          .prepare(
+            `INSERT INTO permits(
+              permit_id, attempt_id, subject, runtime_run_id, task_id, tool,
+              arguments_digest, issued_at, expires_at, consumed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+          )
+          .run(
+            permit.permitId,
+            permit.attemptId,
+            permit.subject,
+            permit.runtimeRunId,
+            permit.taskId,
+            permit.tool,
+            permit.argumentsDigest,
+            permit.issuedAt,
+            permit.expiresAt,
+          );
+        this.database
+          .prepare(
+            "UPDATE tool_attempts SET status = 'APPROVED', reason_code = ?, updated_at = ? WHERE attempt_id = ?",
+          )
+          .run("HUMAN_APPROVED_ONCE", decidedAt, attemptId);
+        this.appendToolAttemptEvent(
+          attemptId,
+          "HUMAN_APPROVED_ONCE",
+          { permitId: permit.permitId },
+          decidedAt,
+        );
+        this.appendPermitEvent(permit, "ISSUED", { expiresAt }, decidedAt);
+      }
+      const updated = this.getToolAttempt(attemptId);
+      if (!updated) throw new Error("Tool attempt disappeared after approval");
+      return updated;
+    })();
+  }
+
+  recordRuntimeToolResult(result: RuntimeToolResult): ToolAttemptRecord {
+    return this.database.transaction(() => {
+      const row = this.getToolAttemptRow(result.attemptId);
+      if (!row) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+      if (
+        row.task_id !== result.taskId ||
+        row.runtime_run_id !== result.runtimeRunId ||
+        row.agent_run_id !== result.agentRunId ||
+        row.tool_call_id !== result.toolCallId
+      ) {
+        throw new Error("TOOL_RESULT_BINDING_MISMATCH");
+      }
+      if (!new Set(["ALLOWED", "EXECUTING"]).has(row.status)) {
+        if (row.status === result.status) {
+          const existing = this.getToolAttempt(result.attemptId);
+          if (!existing) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+          return existing;
+        }
+        throw new Error("TOOL_ATTEMPT_NOT_EXECUTING");
+      }
+      this.database
+        .prepare(
+          "UPDATE tool_attempts SET status = ?, reason_code = ?, updated_at = ? WHERE attempt_id = ?",
+        )
+        .run(
+          result.status,
+          result.status === "SUCCEEDED" ? "TOOL_RESULT_CONFIRMED" : "TOOL_RESULT_UNCERTAIN",
+          result.occurredAt,
+          result.attemptId,
+        );
+      this.appendToolAttemptEvent(
+        result.attemptId,
+        `RESULT_${result.status}`,
+        result,
+        result.occurredAt,
+      );
+      this.database
+        .prepare(
+          `UPDATE deliveries SET status = ?, record_json = ?, updated_at = ?
+           WHERE consumer = 'tool-pep' AND idempotency_key = ?`,
+        )
+        .run(
+          result.status === "SUCCEEDED" ? "DELIVERED" : "UNKNOWN",
+          canonicalJson(result),
+          result.occurredAt,
+          `tool:${result.attemptId}`,
+        );
+      const updated = this.getToolAttempt(result.attemptId);
+      if (!updated) throw new Error("Tool attempt disappeared after result");
+      return updated;
+    })();
+  }
+
+  getToolAttempt(attemptId: string): ToolAttemptRecord | undefined {
+    const row = this.getToolAttemptRow(attemptId);
+    if (!row || !row.policy_decision || !row.reason_code) return undefined;
+    const permitRow = this.database
+      .prepare("SELECT * FROM permits WHERE attempt_id = ? ORDER BY issued_at DESC LIMIT 1")
+      .get(attemptId) as
+      | {
+          permit_id: string;
+          subject: string;
+          runtime_run_id: string;
+          task_id: string;
+          attempt_id: string;
+          tool: string;
+          arguments_digest: string;
+          issued_at: string;
+          expires_at: string;
+          consumed_at: string | null;
+        }
+      | undefined;
+    return {
+      attempt: JSON.parse(row.record_json) as ToolAttempt,
+      status: row.status,
+      policyDecision: row.policy_decision,
+      reasonCode: row.reason_code,
+      updatedAt: row.updated_at ?? row.created_at,
+      ...(permitRow
+        ? {
+            permit: {
+              specVersion: "wakeoncue.permit/v1",
+              permitId: permitRow.permit_id,
+              subject: permitRow.subject,
+              runtimeRunId: permitRow.runtime_run_id,
+              taskId: permitRow.task_id,
+              attemptId: permitRow.attempt_id,
+              tool: permitRow.tool,
+              argumentsDigest: permitRow.arguments_digest,
+              issuedAt: permitRow.issued_at,
+              expiresAt: permitRow.expires_at,
+              ...(permitRow.consumed_at ? { consumedAt: permitRow.consumed_at } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  listToolAttempts(status?: string): ToolAttemptRecord[] {
+    const rows = status
+      ? (this.database
+          .prepare("SELECT attempt_id FROM tool_attempts WHERE status = ? ORDER BY created_at")
+          .all(status) as Array<{ attempt_id: string }>)
+      : (this.database
+          .prepare("SELECT attempt_id FROM tool_attempts ORDER BY created_at")
+          .all() as Array<{ attempt_id: string }>);
+    return rows
+      .map((row) => this.getToolAttempt(row.attempt_id))
+      .filter((record): record is ToolAttemptRecord => record !== undefined);
+  }
+
+  private resolveExistingToolAttempt(
+    row: ToolAttemptRow,
+    observedAt: string,
+  ): ToolAuthorizationResult {
+    if (!row.policy_decision || !row.reason_code) throw new Error("TOOL_ATTEMPT_POLICY_MISSING");
+    if (row.status === "WAITING_APPROVAL") {
+      const record = this.getToolAttempt(row.attempt_id);
+      if (!record) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+      return { decision: "APPROVE_ONCE", reasonCode: row.reason_code, attempt: record };
+    }
+    if (row.status === "APPROVED") {
+      const permit = this.database
+        .prepare("SELECT * FROM permits WHERE attempt_id = ?")
+        .get(row.attempt_id) as
+        | {
+            permit_id: string;
+            subject: string;
+            runtime_run_id: string;
+            task_id: string;
+            tool: string;
+            arguments_digest: string;
+            expires_at: string;
+            consumed_at: string | null;
+          }
+        | undefined;
+      if (!permit) throw new Error("PERMIT_NOT_FOUND");
+      if (permit.expires_at <= observedAt) {
+        this.database
+          .prepare(
+            "UPDATE tool_attempts SET status = 'EXPIRED', reason_code = 'PERMIT_EXPIRED', updated_at = ? WHERE attempt_id = ?",
+          )
+          .run(observedAt, row.attempt_id);
+        this.appendToolAttemptEvent(
+          row.attempt_id,
+          "PERMIT_EXPIRED",
+          { permitId: permit.permit_id },
+          observedAt,
+        );
+        const expired = this.getToolAttempt(row.attempt_id);
+        if (!expired) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+        return { decision: "DENY", reasonCode: "PERMIT_EXPIRED", attempt: expired };
+      }
+      const consumed = this.database
+        .prepare(
+          `UPDATE permits SET consumed_at = ?
+           WHERE permit_id = ? AND consumed_at IS NULL AND expires_at > ?
+             AND attempt_id = ? AND subject = ? AND runtime_run_id = ?
+             AND task_id = ? AND tool = ? AND arguments_digest = ?`,
+        )
+        .run(
+          observedAt,
+          permit.permit_id,
+          observedAt,
+          row.attempt_id,
+          permit.subject,
+          row.runtime_run_id,
+          row.task_id,
+          row.tool,
+          row.arguments_digest,
+        ).changes;
+      if (consumed !== 1) {
+        const record = this.getToolAttempt(row.attempt_id);
+        if (!record) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+        return { decision: "DENY", reasonCode: "PERMIT_ALREADY_CONSUMED", attempt: record };
+      }
+      const attempt = JSON.parse(row.record_json) as ToolAttempt;
+      this.database
+        .prepare(
+          "UPDATE tool_attempts SET status = 'EXECUTING', reason_code = 'PERMIT_CONSUMED', updated_at = ? WHERE attempt_id = ?",
+        )
+        .run(observedAt, row.attempt_id);
+      this.appendPermitEvent(
+        { ...this.getToolAttempt(row.attempt_id)?.permit, consumedAt: observedAt } as Permit,
+        "CONSUMED",
+        { runtimeRunId: row.runtime_run_id, argumentsDigest: row.arguments_digest },
+        observedAt,
+      );
+      this.appendToolAttemptEvent(
+        row.attempt_id,
+        "EXECUTION_AUTHORIZED",
+        { permitId: permit.permit_id },
+        observedAt,
+      );
+      this.createToolDelivery(attempt, observedAt);
+      this.resumeRuntimeAfterApproval(row.runtime_run_id, row.task_id, observedAt);
+      const record = this.getToolAttempt(row.attempt_id);
+      if (!record) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+      return {
+        decision: "ALLOW",
+        reasonCode: "VALID_ONE_TIME_PERMIT_CONSUMED",
+        attempt: record,
+        permitId: permit.permit_id,
+      };
+    }
+    if (row.status === "ALLOWED") {
+      const record = this.getToolAttempt(row.attempt_id);
+      if (!record) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+      return { decision: "ALLOW", reasonCode: row.reason_code, attempt: record };
+    }
+    const record = this.getToolAttempt(row.attempt_id);
+    if (!record) throw new Error("TOOL_ATTEMPT_NOT_FOUND");
+    return {
+      decision: "DENY",
+      reasonCode:
+        row.status === "EXECUTING" || row.status === "SUCCEEDED"
+          ? "PERMIT_ALREADY_CONSUMED"
+          : row.reason_code,
+      attempt: record,
+    };
+  }
+
+  private assertToolAttemptBinding(
+    row: ToolAttemptRow,
+    request: RuntimeToolAttemptRequest,
+    digest: string,
+  ): void {
+    if (
+      row.task_id !== request.taskId ||
+      row.runtime_run_id !== request.runtimeRunId ||
+      row.agent_run_id !== request.agentRunId ||
+      row.tool_call_id !== request.toolCallId ||
+      row.tool !== request.tool ||
+      row.arguments_digest !== digest
+    ) {
+      throw new Error("TOOL_ATTEMPT_BINDING_MISMATCH");
+    }
+  }
+
+  private createToolDelivery(attempt: ToolAttempt, createdAt: string): void {
+    this.database
+      .prepare(
+        `INSERT INTO deliveries(
+          delivery_id, consumer, idempotency_key, external_ref, status,
+          record_json, created_at, updated_at
+        ) VALUES (?, 'tool-pep', ?, NULL, 'DISPATCHING', ?, ?, ?)
+        ON CONFLICT(consumer, idempotency_key) DO NOTHING`,
+      )
+      .run(
+        deterministicId("delivery", `tool:${attempt.attemptId}`),
+        `tool:${attempt.attemptId}`,
+        canonicalJson({
+          attemptId: attempt.attemptId,
+          tool: attempt.tool,
+          argumentsDigest: attempt.argumentsDigest,
+        }),
+        createdAt,
+        createdAt,
+      );
+  }
+
+  private resumeRuntimeAfterApproval(runtimeRunId: string, taskId: string, at: string): void {
+    this.database
+      .prepare(
+        "UPDATE runtime_runs SET status = 'RUNNING', last_observed_at = ? WHERE runtime_run_id = ? AND status = 'WAITING_APPROVAL'",
+      )
+      .run(at, runtimeRunId);
+    this.database
+      .prepare(
+        "UPDATE tasks SET status = 'RUNNING', updated_at = ? WHERE task_id = ? AND status = 'WAITING_APPROVAL'",
+      )
+      .run(at, taskId);
+  }
+
+  private appendToolAttemptEvent(
+    attemptId: string,
+    eventType: string,
+    record: unknown,
+    occurredAt: string,
+  ): void {
+    const payloadDigest = `sha256:${sha256(canonicalJson(record))}`;
+    this.database
+      .prepare(
+        `INSERT OR IGNORE INTO tool_attempt_events(
+          attempt_event_id, attempt_id, event_type, payload_digest, record_json, occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deterministicId(
+          "attempt_event",
+          `${attemptId}:${eventType}:${occurredAt}:${payloadDigest}`,
+        ),
+        attemptId,
+        eventType,
+        payloadDigest,
+        canonicalJson(record),
+        occurredAt,
+      );
+  }
+
+  private appendPermitEvent(
+    permit: Permit,
+    eventType: string,
+    record: unknown,
+    occurredAt: string,
+  ): void {
+    const payloadDigest = `sha256:${sha256(canonicalJson(record))}`;
+    this.database
+      .prepare(
+        `INSERT OR IGNORE INTO permit_events(
+          permit_event_id, permit_id, attempt_id, event_type, payload_digest,
+          record_json, occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        deterministicId(
+          "permit_event",
+          `${permit.permitId}:${eventType}:${occurredAt}:${payloadDigest}`,
+        ),
+        permit.permitId,
+        permit.attemptId,
+        eventType,
+        payloadDigest,
+        canonicalJson(record),
+        occurredAt,
+      );
+  }
+
+  private getToolAttemptRow(attemptId: string): ToolAttemptRow | undefined {
+    return this.database
+      .prepare("SELECT * FROM tool_attempts WHERE attempt_id = ?")
+      .get(attemptId) as ToolAttemptRow | undefined;
+  }
+
   getTask(taskId: string): TaskRecord | undefined {
     const row = this.database
       .prepare(
@@ -1146,6 +1732,7 @@ export class SqliteWakeStore implements EventStore {
         task: TaskRecord;
         runtimeRuns: RuntimeRunRecord[];
         callbacks: RuntimeCallback[];
+        toolAttempts: ToolAttemptRecord[];
       }
     | undefined {
     const task = this.getTask(taskId);
@@ -1164,6 +1751,11 @@ export class SqliteWakeStore implements EventStore {
       task,
       runtimeRuns: runRows.map(runtimeRunRecord),
       callbacks: callbackRows.map((row) => JSON.parse(row.record_json) as RuntimeCallback),
+      toolAttempts: this.database
+        .prepare("SELECT attempt_id FROM tool_attempts WHERE task_id = ? ORDER BY created_at")
+        .all(taskId)
+        .map((row) => this.getToolAttempt((row as { attempt_id: string }).attempt_id))
+        .filter((record): record is ToolAttemptRecord => record !== undefined),
     };
   }
 

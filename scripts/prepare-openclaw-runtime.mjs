@@ -17,9 +17,13 @@ const sourceConfigPath = resolve(
 );
 const extensionPath = join(root, "packages", "runtime-openclaw", "openclaw-extension");
 const port = Number(process.env.WAKEONCUE_OPENCLAW_PORT ?? "18791");
+const approvalWaitMs = Number(process.env.WAKEONCUE_APPROVAL_WAIT_MS ?? "90000");
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error("WAKEONCUE_OPENCLAW_PORT must be a valid TCP port");
+}
+if (!Number.isInteger(approvalWaitMs) || approvalWaitMs < 1_000 || approvalWaitMs > 590_000) {
+  throw new Error("WAKEONCUE_APPROVAL_WAIT_MS must be between 1000 and 590000");
 }
 
 const sourceConfig = JSON.parse(await readFile(sourceConfigPath, "utf8"));
@@ -92,6 +96,7 @@ const config = {
         hooks: {
           allowConversationAccess: true,
           timeoutMs: 15_000,
+          timeouts: { before_tool_call: approvalWaitMs + 10_000 },
         },
       },
     },

@@ -5,7 +5,12 @@ import { timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { RuntimeCallbackSchema, schemaRegistry } from "@wakeoncue/contracts";
+import {
+  RuntimeCallbackSchema,
+  RuntimeToolAttemptRequestSchema,
+  RuntimeToolResultSchema,
+  schemaRegistry,
+} from "@wakeoncue/contracts";
 import { deterministicId, sha256 } from "@wakeoncue/core";
 import { OmiFinalizedConversationAdapter } from "@wakeoncue/source-omi";
 import {
@@ -330,6 +335,155 @@ export async function buildServer(): Promise<FastifyInstance> {
       return reply.code(statusCode).send({ code, status: "error" });
     }
   });
+
+  server.post<{ Body: string }>("/v1/runtime/tool-attempts/openclaw", async (request, reply) => {
+    const secret = process.env["WAKEONCUE_RUNTIME_PEP_SECRET"];
+    if (!secret) {
+      return reply.code(503).send({ code: "RUNTIME_PEP_SECRET_UNAVAILABLE", status: "error" });
+    }
+    try {
+      verifyWebhookSignature({
+        rawBody: request.body,
+        timestamp: headerValue(request.headers["x-wakeoncue-timestamp"]),
+        signature: headerValue(request.headers["x-wakeoncue-signature"]),
+        secret,
+        maxClockSkewSeconds: Number(
+          process.env["WAKEONCUE_RUNTIME_PEP_CLOCK_SKEW_SECONDS"] ?? "60",
+        ),
+      });
+    } catch (error) {
+      const code = error instanceof WebhookSignatureError ? error.code : "SIGNATURE_INVALID";
+      return reply.code(401).send({ code, status: "error" });
+    }
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(RuntimeToolAttemptRequestSchema, body)) {
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    }
+    try {
+      const authorization = store.submitRuntimeToolAttempt(body);
+      return reply.code(authorization.decision === "APPROVE_ONCE" ? 202 : 200).send({
+        authorization,
+        status:
+          authorization.decision === "ALLOW"
+            ? "authorized"
+            : authorization.decision === "APPROVE_ONCE"
+              ? "waiting-approval"
+              : "denied",
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "TOOL_ATTEMPT_REJECTED";
+      const statusCode = code.endsWith("NOT_FOUND") ? 404 : 409;
+      return reply.code(statusCode).send({ code, status: "error" });
+    }
+  });
+
+  server.post<{ Body: string }>("/v1/runtime/tool-results/openclaw", async (request, reply) => {
+    const secret = process.env["WAKEONCUE_RUNTIME_PEP_SECRET"];
+    if (!secret) {
+      return reply.code(503).send({ code: "RUNTIME_PEP_SECRET_UNAVAILABLE", status: "error" });
+    }
+    try {
+      verifyWebhookSignature({
+        rawBody: request.body,
+        timestamp: headerValue(request.headers["x-wakeoncue-timestamp"]),
+        signature: headerValue(request.headers["x-wakeoncue-signature"]),
+        secret,
+        maxClockSkewSeconds: Number(
+          process.env["WAKEONCUE_RUNTIME_PEP_CLOCK_SKEW_SECONDS"] ?? "60",
+        ),
+      });
+    } catch (error) {
+      const code = error instanceof WebhookSignatureError ? error.code : "SIGNATURE_INVALID";
+      return reply.code(401).send({ code, status: "error" });
+    }
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(RuntimeToolResultSchema, body)) {
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    }
+    try {
+      return reply.send({ attempt: store.recordRuntimeToolResult(body), status: "accepted" });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "TOOL_RESULT_REJECTED";
+      const statusCode = code.endsWith("NOT_FOUND") ? 404 : 409;
+      return reply.code(statusCode).send({ code, status: "error" });
+    }
+  });
+
+  server.get("/v1/approvals", async (request, reply) => {
+    const token = process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+    if (!token || !bearerMatches(headerValue(request.headers.authorization), token)) {
+      return reply.code(401).send({ code: "APPROVAL_AUTH_INVALID", status: "error" });
+    }
+    return reply.send({
+      approvals: store.listToolAttempts("WAITING_APPROVAL").map((attempt) => ({
+        ...attempt,
+        task: store.getTask(attempt.attempt.taskId),
+      })),
+    });
+  });
+
+  server.get<{ Params: { attemptId: string } }>(
+    "/v1/approvals/:attemptId",
+    async (request, reply) => {
+      const token = process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+      if (!token || !bearerMatches(headerValue(request.headers.authorization), token)) {
+        return reply.code(401).send({ code: "APPROVAL_AUTH_INVALID", status: "error" });
+      }
+      const attempt = store.getToolAttempt(request.params.attemptId);
+      return attempt
+        ? reply.send({ attempt: { ...attempt, task: store.getTask(attempt.attempt.taskId) } })
+        : reply.code(404).send({ code: "TOOL_ATTEMPT_NOT_FOUND", status: "error" });
+    },
+  );
+
+  server.post<{ Params: { attemptId: string }; Body: string }>(
+    "/v1/approvals/:attemptId",
+    async (request, reply) => {
+      const token = process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
+      if (!token || !bearerMatches(headerValue(request.headers.authorization), token)) {
+        return reply.code(401).send({ code: "APPROVAL_AUTH_INVALID", status: "error" });
+      }
+      let body: unknown;
+      try {
+        body = parseJson(request.body);
+      } catch {
+        return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+      }
+      const decision =
+        typeof body === "object" && body !== null
+          ? (body as Record<string, unknown>)["decision"]
+          : undefined;
+      if (
+        !["APPROVE_ONCE", "DENY"].includes(String(decision)) ||
+        typeof body !== "object" ||
+        body === null ||
+        Object.keys(body).some((key) => key !== "decision")
+      ) {
+        return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+      }
+      try {
+        const attempt = store.decideToolApproval(
+          request.params.attemptId,
+          decision as "APPROVE_ONCE" | "DENY",
+        );
+        return reply.send({ attempt, status: decision === "APPROVE_ONCE" ? "approved" : "denied" });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "APPROVAL_REJECTED";
+        const statusCode = code.endsWith("NOT_FOUND") ? 404 : 409;
+        return reply.code(statusCode).send({ code, status: "error" });
+      }
+    },
+  );
 
   server.get<{ Params: { sourceId: string; cueType: string } }>(
     "/v1/source-modes/:sourceId/:cueType",

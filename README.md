@@ -98,6 +98,12 @@ E2E 会创建隔离的 `.runtime/openclaw-e2e` 状态，强制 Gateway 绑定 lo
 
 这条验证使用版本化、脱敏的 Omi fixture，但启动的 OpenClaw、模型请求、plugin hook、Tool Attempt 和签名 callback 都是真实运行。它证明工程集成，不代表 Omi 设备线上数据或生产 7 天 canary；生产 Live Wake 仍默认关闭。
 
+### Approval / Permit
+
+OpenClaw 的 `before_tool_call` 会把精确 Tool Attempt 通过独立 HMAC 密钥提交给 WakeOnCue PDP。受约束只读工具可以直接放行；外发消息、邮件、文件及日历/任务/业务写操作会暂停在 PEP，等待 Console 的“批准一次”或“拒绝”；删除、支付、购买、设备控制和未知工具直接拒绝。
+
+将 `WAKEONCUE_APPROVAL_ADMIN_TOKEN` 只提供给本地人类操作者，不要传给 OpenClaw 进程。Console 中输入的 token 只保存在当前页面的 `sessionStorage`。批准产生的短 TTL Permit 绑定 subject、Runtime、Task、Attempt、tool 和完整 canonical arguments digest；PEP 在真实执行前原子消费一次。收件人、附件或任一参数变化、Permit 过期及重复消费都会拒绝执行。
+
 Compose 路径：
 
 ~~~bash

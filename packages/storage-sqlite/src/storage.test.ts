@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import type { CueEvent } from "@wakeoncue/contracts";
+import type { CueEvent, RuntimeToolAttemptRequest, TaskContract } from "@wakeoncue/contracts";
 import { AttentionEngine } from "@wakeoncue/attention";
 import { activationReceipt } from "@wakeoncue/runtime-sdk";
 
@@ -43,6 +43,7 @@ describe("SQLite migrations", () => {
         "003_conversation_attention.sql",
         "004_agent_wake.sql",
         "005_runtime_agent_run_id.sql",
+        "006_approval_permit.sql",
       ]);
       expect(migrateDatabase(database)).toEqual([]);
       const tables = database
@@ -302,6 +303,213 @@ describe("SQLite migrations", () => {
       ).toBe(1);
       expect(store.getRuntimeRun(claim.runtimeRunId)?.status).toBe("UNKNOWN");
       expect(store.claimWakeActivation("openclaw", "http://127.0.0.1/callback")).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("enforces exact one-time permits and rejects authorization attacks", () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database);
+    const store = new SqliteWakeStore(database);
+    const now = "2026-08-13T10:00:00.000Z";
+    const contract: TaskContract = {
+      contractVersion: "wakeoncue.task/v1",
+      taskId: "task_approval",
+      subject: "subject-approval",
+      goal: "Send the final quote to Zhang San",
+      successCriteria: ["The exact approved file is sent to the exact approved recipient"],
+      constraints: ["External writes require a one-time permit"],
+      contextRefs: ["fixture://approval"],
+      runtime: { adapter: "openclaw", profile: "default" },
+      capabilityScope: ["evidence.read", "task.plan"],
+      approvalRequiredFor: ["external.send", "calendar.write", "task.write"],
+      idempotencyKey: "approval-fixture",
+    };
+    database
+      .prepare(
+        `INSERT INTO episodes(episode_id, subject, correlation_key, state_json, version, updated_at)
+         VALUES ('ep_approval', ?, 'approval', '{}', 1, ?)`,
+      )
+      .run(contract.subject, now);
+    database
+      .prepare(
+        `INSERT INTO decisions(
+          decision_id, episode_id, decision, reason_codes_json, evidence_refs_json,
+          strategy_version, record_json, created_at
+        ) VALUES ('dec_approval', 'ep_approval', 'WAKE_AGENT', '[]', '[]', 'test/v1', '{}', ?)`,
+      )
+      .run(now);
+    database
+      .prepare(
+        `INSERT INTO tasks(
+          task_id, decision_id, idempotency_key, contract_json, status, created_at, updated_at
+        ) VALUES (?, 'dec_approval', ?, ?, 'RUNNING', ?, ?)`,
+      )
+      .run(contract.taskId, contract.idempotencyKey, JSON.stringify(contract), now, now);
+    database
+      .prepare(
+        `INSERT INTO runtime_runs(
+          runtime_run_id, task_id, adapter, external_run_id, agent_run_id,
+          idempotency_key, status, last_observed_at, record_json
+        ) VALUES (
+          'run_approval', ?, 'openclaw', 'activation-approval', 'agent-approval',
+          'run-approval', 'RUNNING', ?, '{}'
+        )`,
+      )
+      .run(contract.taskId, now);
+
+    const sendRequest: RuntimeToolAttemptRequest = {
+      specVersion: "wakeoncue.runtime.tool-attempt/v1",
+      taskId: contract.taskId,
+      runtimeRunId: "run_approval",
+      agentRunId: "agent-approval",
+      toolCallId: "tool-call-send-1",
+      tool: "file.send",
+      arguments: { recipient: "contact:zhangsan", attachment: "final-quote-v1.pdf" },
+    };
+
+    try {
+      const waiting = store.submitRuntimeToolAttempt(sendRequest, now);
+      expect(waiting).toMatchObject({
+        decision: "APPROVE_ONCE",
+        reasonCode: "EXTERNAL_WRITE_REQUIRES_APPROVAL",
+        attempt: { status: "WAITING_APPROVAL" },
+      });
+      expect(store.getRuntimeRun("run_approval")?.status).toBe("WAITING_APPROVAL");
+      expect(
+        store.applyRuntimeCallback({
+          specVersion: "wakeoncue.runtime.callback/v1",
+          runtimeRunId: "run_approval",
+          taskId: contract.taskId,
+          agentRunId: "agent-approval",
+          status: "SUCCEEDED",
+          occurredAt: "2026-08-13T10:00:01.500Z",
+          summary: "Agent turn ended while a write remained paused",
+          evidenceRefs: [],
+        }).runtimeRun.status,
+      ).toBe("WAITING_APPROVAL");
+      expect(store.submitRuntimeToolAttempt(sendRequest, "2026-08-13T10:00:01.000Z").decision).toBe(
+        "APPROVE_ONCE",
+      );
+
+      const approved = store.decideToolApproval(
+        waiting.attempt.attempt.attemptId,
+        "APPROVE_ONCE",
+        "2026-08-13T10:00:02.000Z",
+        60,
+      );
+      expect(approved.status).toBe("APPROVED");
+      expect(approved.permit?.consumedAt).toBeUndefined();
+
+      expect(() =>
+        store.submitRuntimeToolAttempt(
+          {
+            ...sendRequest,
+            priorAttemptId: waiting.attempt.attempt.attemptId,
+            arguments: { recipient: "contact:lisi", attachment: "final-quote-v1.pdf" },
+          },
+          "2026-08-13T10:00:03.000Z",
+        ),
+      ).toThrowError("TOOL_ATTEMPT_BINDING_MISMATCH");
+      expect(() =>
+        store.submitRuntimeToolAttempt(
+          {
+            ...sendRequest,
+            priorAttemptId: waiting.attempt.attempt.attemptId,
+            arguments: { recipient: "contact:zhangsan", attachment: "final-quote-v2.pdf" },
+          },
+          "2026-08-13T10:00:03.000Z",
+        ),
+      ).toThrowError("TOOL_ATTEMPT_BINDING_MISMATCH");
+
+      const authorized = store.submitRuntimeToolAttempt(
+        { ...sendRequest, priorAttemptId: waiting.attempt.attempt.attemptId },
+        "2026-08-13T10:00:03.000Z",
+      );
+      expect(authorized).toMatchObject({
+        decision: "ALLOW",
+        reasonCode: "VALID_ONE_TIME_PERMIT_CONSUMED",
+        attempt: { status: "EXECUTING", permit: { consumedAt: "2026-08-13T10:00:03.000Z" } },
+      });
+      expect(store.getRuntimeRun("run_approval")?.status).toBe("RUNNING");
+      expect(
+        store.submitRuntimeToolAttempt(
+          { ...sendRequest, priorAttemptId: waiting.attempt.attempt.attemptId },
+          "2026-08-13T10:00:04.000Z",
+        ),
+      ).toMatchObject({ decision: "DENY", reasonCode: "PERMIT_ALREADY_CONSUMED" });
+
+      const result = store.recordRuntimeToolResult({
+        specVersion: "wakeoncue.runtime.tool-result/v1",
+        attemptId: waiting.attempt.attempt.attemptId,
+        taskId: contract.taskId,
+        runtimeRunId: "run_approval",
+        agentRunId: "agent-approval",
+        toolCallId: sendRequest.toolCallId,
+        occurredAt: "2026-08-13T10:00:05.000Z",
+        status: "SUCCEEDED",
+        resultDigest: `sha256:${"a".repeat(64)}`,
+      });
+      expect(result.status).toBe("SUCCEEDED");
+      expect(
+        (
+          database
+            .prepare("SELECT COUNT(*) AS count FROM deliveries WHERE consumer = 'tool-pep'")
+            .get() as { count: number }
+        ).count,
+      ).toBe(1);
+
+      const expiring = store.submitRuntimeToolAttempt(
+        { ...sendRequest, toolCallId: "tool-call-send-expiring" },
+        "2026-08-13T10:01:00.000Z",
+      );
+      store.decideToolApproval(
+        expiring.attempt.attempt.attemptId,
+        "APPROVE_ONCE",
+        "2026-08-13T10:01:00.000Z",
+        1,
+      );
+      expect(
+        store.submitRuntimeToolAttempt(
+          {
+            ...sendRequest,
+            toolCallId: "tool-call-send-expiring",
+            priorAttemptId: expiring.attempt.attempt.attemptId,
+          },
+          "2026-08-13T10:01:02.000Z",
+        ),
+      ).toMatchObject({ decision: "DENY", reasonCode: "PERMIT_EXPIRED" });
+
+      expect(
+        store.submitRuntimeToolAttempt(
+          { ...sendRequest, toolCallId: "tool-call-delete", tool: "calendar.delete" },
+          "2026-08-13T10:02:00.000Z",
+        ),
+      ).toMatchObject({ decision: "DENY", reasonCode: "MVP_FORBIDDEN_OPERATION" });
+      expect(
+        store.submitRuntimeToolAttempt(
+          {
+            ...sendRequest,
+            toolCallId: "tool-call-read",
+            tool: "read",
+            arguments: { path: "fixture://approval" },
+          },
+          "2026-08-13T10:02:01.000Z",
+        ),
+      ).toMatchObject({ decision: "ALLOW", reasonCode: "BOUNDED_READ_ALLOWED" });
+      expect(() =>
+        store.submitRuntimeToolAttempt(
+          { ...sendRequest, toolCallId: "tool-call-forged", agentRunId: "forged-agent" },
+          "2026-08-13T10:02:02.000Z",
+        ),
+      ).toThrowError("RUNTIME_AGENT_RUN_ID_MISMATCH");
+      expect(() =>
+        database.prepare("UPDATE permit_events SET event_type = 'TAMPERED'").run(),
+      ).toThrowError("permit events are append-only");
+      expect(() => database.prepare("DELETE FROM tool_attempt_events").run()).toThrowError(
+        "tool attempt events are append-only",
+      );
     } finally {
       database.close();
     }

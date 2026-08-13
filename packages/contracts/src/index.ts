@@ -132,6 +132,8 @@ export const ToolAttemptSchema = Type.Object(
     subject: Type.String({ minLength: 1 }),
     taskId: Id("task"),
     runtimeRunId: Id("run"),
+    agentRunId: Type.String({ minLength: 1 }),
+    toolCallId: Type.String({ minLength: 1 }),
     tool: Type.String({ minLength: 1 }),
     arguments: Type.Record(Type.String(), Type.Unknown()),
     argumentsDigest: Type.String({ pattern: "^sha256:[a-f0-9]{64}$" }),
@@ -151,8 +153,44 @@ export const ToolAttemptSchema = Type.Object(
       },
       { additionalProperties: false },
     ),
+    createdAt: Timestamp,
   },
   { $id: "ToolAttemptV1", additionalProperties: false },
+);
+
+export const RuntimeToolAttemptRequestSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.runtime.tool-attempt/v1"),
+    taskId: Id("task"),
+    runtimeRunId: Id("run"),
+    agentRunId: Type.String({ minLength: 1 }),
+    toolCallId: Type.String({ minLength: 1 }),
+    tool: Type.String({ minLength: 1 }),
+    arguments: Type.Record(Type.String(), Type.Unknown()),
+    priorAttemptId: Type.Optional(Id("attempt")),
+  },
+  { $id: "RuntimeToolAttemptRequestV1", additionalProperties: false },
+);
+
+export const RuntimeToolResultSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.runtime.tool-result/v1"),
+    attemptId: Id("attempt"),
+    taskId: Id("task"),
+    runtimeRunId: Id("run"),
+    agentRunId: Type.String({ minLength: 1 }),
+    toolCallId: Type.String({ minLength: 1 }),
+    occurredAt: Timestamp,
+    status: Type.Union([
+      Type.Literal("SUCCEEDED"),
+      Type.Literal("FAILED"),
+      Type.Literal("UNKNOWN"),
+    ]),
+    resultDigest: Type.Optional(Type.String({ pattern: "^sha256:[a-f0-9]{64}$" })),
+    errorCode: Type.Optional(Type.String({ minLength: 1 })),
+    durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  },
+  { $id: "RuntimeToolResultV1", additionalProperties: false },
 );
 
 export const PermitSchema = Type.Object(
@@ -232,6 +270,8 @@ export type AttentionDecision = Static<typeof AttentionDecisionSchema>;
 export type TaskContract = Static<typeof TaskContractSchema>;
 export type RuntimeCallback = Static<typeof RuntimeCallbackSchema>;
 export type ToolAttempt = Static<typeof ToolAttemptSchema>;
+export type RuntimeToolAttemptRequest = Static<typeof RuntimeToolAttemptRequestSchema>;
+export type RuntimeToolResult = Static<typeof RuntimeToolResultSchema>;
 export type Permit = Static<typeof PermitSchema>;
 export type Outcome = Static<typeof OutcomeSchema>;
 export type Notification = Static<typeof NotificationSchema>;

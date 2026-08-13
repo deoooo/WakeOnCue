@@ -16,6 +16,8 @@ describe("API bootstrap", () => {
     process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"] = "test-only-omi-token";
     process.env["WAKEONCUE_OMI_SUBJECT"] = "omi-test-subject";
     process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"] = "test-only-runtime-callback-secret";
+    process.env["WAKEONCUE_RUNTIME_PEP_SECRET"] = "test-only-runtime-pep-secret";
+    process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"] = "test-only-approval-admin-token";
   });
 
   afterEach(() => {
@@ -25,6 +27,8 @@ describe("API bootstrap", () => {
     delete process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"];
     delete process.env["WAKEONCUE_OMI_SUBJECT"];
     delete process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"];
+    delete process.env["WAKEONCUE_RUNTIME_PEP_SECRET"];
+    delete process.env["WAKEONCUE_APPROVAL_ADMIN_TOKEN"];
   });
 
   it("reports health and migration readiness", async () => {
@@ -308,6 +312,179 @@ describe("API bootstrap", () => {
         payload,
       });
       expect(forged.statusCode).toBe(401);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("requires a signed PEP request and separate human approval before consuming one permit", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "wakeoncue-api-approval-"));
+    const databasePath = join(directory, "approval.sqlite");
+    process.env["WAKEONCUE_DATABASE_PATH"] = databasePath;
+    const now = new Date().toISOString();
+    const contract = {
+      contractVersion: "wakeoncue.task/v1",
+      taskId: "task_api_approval",
+      subject: "subject-api-approval",
+      goal: "Send the final quote",
+      successCriteria: ["Exact recipient and attachment"],
+      constraints: ["One-time approval required"],
+      contextRefs: ["fixture://api/approval"],
+      runtime: { adapter: "openclaw", profile: "default" },
+      capabilityScope: ["evidence.read", "task.plan"],
+      approvalRequiredFor: ["external.send"],
+      idempotencyKey: "api-approval-task",
+    };
+    const database = openDatabase(databasePath);
+    migrateDatabase(database);
+    database
+      .prepare(
+        `INSERT INTO episodes(episode_id, subject, correlation_key, state_json, version, updated_at)
+         VALUES ('ep_api_approval', ?, 'api-approval', '{}', 1, ?)`,
+      )
+      .run(contract.subject, now);
+    database
+      .prepare(
+        `INSERT INTO decisions(
+          decision_id, episode_id, decision, reason_codes_json, evidence_refs_json,
+          strategy_version, record_json, created_at
+        ) VALUES ('dec_api_approval', 'ep_api_approval', 'WAKE_AGENT', '[]', '[]', 'test/v1', '{}', ?)`,
+      )
+      .run(now);
+    database
+      .prepare(
+        `INSERT INTO tasks(
+          task_id, decision_id, idempotency_key, contract_json, status, created_at, updated_at
+        ) VALUES (?, 'dec_api_approval', ?, ?, 'RUNNING', ?, ?)`,
+      )
+      .run(contract.taskId, contract.idempotencyKey, JSON.stringify(contract), now, now);
+    database
+      .prepare(
+        `INSERT INTO runtime_runs(
+          runtime_run_id, task_id, adapter, external_run_id, agent_run_id,
+          idempotency_key, status, last_observed_at, record_json
+        ) VALUES (
+          'run_api_approval', ?, 'openclaw', 'activation-api-approval', 'agent-api-approval',
+          'run-api-approval', 'RUNNING', ?, '{}'
+        )`,
+      )
+      .run(contract.taskId, now);
+    database.close();
+
+    const server = await buildServer();
+    const timestamp = Math.floor(Date.now() / 1_000);
+    const attemptPayload = JSON.stringify({
+      specVersion: "wakeoncue.runtime.tool-attempt/v1",
+      taskId: contract.taskId,
+      runtimeRunId: "run_api_approval",
+      agentRunId: "agent-api-approval",
+      toolCallId: "tool-call-api-send",
+      tool: "file.send",
+      arguments: { recipient: "contact:zhangsan", attachment: "final-quote.pdf" },
+    });
+    const pepHeaders = {
+      "content-type": "application/json",
+      "x-wakeoncue-timestamp": String(timestamp),
+      "x-wakeoncue-signature": signWebhook(
+        attemptPayload,
+        timestamp,
+        "test-only-runtime-pep-secret",
+      ),
+    };
+    try {
+      const forged = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/tool-attempts/openclaw",
+        headers: { ...pepHeaders, "x-wakeoncue-signature": "v1=forged" },
+        payload: attemptPayload,
+      });
+      expect(forged.statusCode).toBe(401);
+
+      const waiting = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/tool-attempts/openclaw",
+        headers: pepHeaders,
+        payload: attemptPayload,
+      });
+      expect(waiting.statusCode).toBe(202);
+      const attemptId = waiting.json<{
+        authorization: { attempt: { attempt: { attemptId: string } }; decision: string };
+      }>().authorization.attempt.attempt.attemptId;
+      expect(waiting.json()).toMatchObject({
+        authorization: { decision: "APPROVE_ONCE" },
+        status: "waiting-approval",
+      });
+
+      const unauthorizedApproval = await server.inject({
+        method: "POST",
+        url: `/v1/approvals/${attemptId}`,
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ decision: "APPROVE_ONCE" }),
+      });
+      expect(unauthorizedApproval.statusCode).toBe(401);
+
+      const approved = await server.inject({
+        method: "POST",
+        url: `/v1/approvals/${attemptId}`,
+        headers: {
+          authorization: "Bearer test-only-approval-admin-token",
+          "content-type": "application/json",
+        },
+        payload: JSON.stringify({ decision: "APPROVE_ONCE" }),
+      });
+      expect(approved.statusCode).toBe(200);
+      expect(approved.json()).toMatchObject({ attempt: { status: "APPROVED" } });
+
+      const authorized = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/tool-attempts/openclaw",
+        headers: pepHeaders,
+        payload: attemptPayload,
+      });
+      expect(authorized.statusCode).toBe(200);
+      expect(authorized.json()).toMatchObject({
+        authorization: { decision: "ALLOW", reasonCode: "VALID_ONE_TIME_PERMIT_CONSUMED" },
+      });
+
+      const replayed = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/tool-attempts/openclaw",
+        headers: pepHeaders,
+        payload: attemptPayload,
+      });
+      expect(replayed.statusCode).toBe(200);
+      expect(replayed.json()).toMatchObject({
+        authorization: { decision: "DENY", reasonCode: "PERMIT_ALREADY_CONSUMED" },
+      });
+
+      const resultPayload = JSON.stringify({
+        specVersion: "wakeoncue.runtime.tool-result/v1",
+        attemptId,
+        taskId: contract.taskId,
+        runtimeRunId: "run_api_approval",
+        agentRunId: "agent-api-approval",
+        toolCallId: "tool-call-api-send",
+        occurredAt: new Date().toISOString(),
+        status: "SUCCEEDED",
+        resultDigest: `sha256:${"b".repeat(64)}`,
+      });
+      const resultTimestamp = Math.floor(Date.now() / 1_000);
+      const result = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/tool-results/openclaw",
+        headers: {
+          "content-type": "application/json",
+          "x-wakeoncue-timestamp": String(resultTimestamp),
+          "x-wakeoncue-signature": signWebhook(
+            resultPayload,
+            resultTimestamp,
+            "test-only-runtime-pep-secret",
+          ),
+        },
+        payload: resultPayload,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toMatchObject({ attempt: { status: "SUCCEEDED" } });
     } finally {
       await server.close();
     }

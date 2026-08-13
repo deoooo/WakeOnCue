@@ -30,6 +30,10 @@ interface OpenClawHookResponse {
 }
 
 function taskMessage(contract: TaskContract, context: RuntimeActivationContext): string {
+  const policyUrl = context.callbackUrl?.replace(
+    /\/runtime\/callbacks\/openclaw$/u,
+    "/runtime/tool-attempts/openclaw",
+  );
   const marker = JSON.stringify({
     specVersion: "wakeoncue.openclaw.task-context/v1",
     taskId: contract.taskId,
@@ -37,6 +41,7 @@ function taskMessage(contract: TaskContract, context: RuntimeActivationContext):
     capabilityScope: contract.capabilityScope,
     approvalRequiredFor: contract.approvalRequiredFor,
     callbackUrl: context.callbackUrl,
+    policyUrl,
   });
   return [
     `WAKEONCUE_TASK_CONTEXT:${marker}`,
