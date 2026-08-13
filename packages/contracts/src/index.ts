@@ -103,6 +103,28 @@ export const TaskContractSchema = Type.Object(
   { $id: "TaskContractV1", additionalProperties: false },
 );
 
+export const RuntimeCallbackSchema = Type.Object(
+  {
+    specVersion: Type.Literal("wakeoncue.runtime.callback/v1"),
+    runtimeRunId: Id("run"),
+    taskId: Id("task"),
+    agentRunId: Type.String({ minLength: 1 }),
+    status: Type.Union([
+      Type.Literal("RUNNING"),
+      Type.Literal("WAITING_APPROVAL"),
+      Type.Literal("SUCCEEDED"),
+      Type.Literal("FAILED"),
+      Type.Literal("CANCELLED"),
+      Type.Literal("UNKNOWN"),
+      Type.Literal("RECONCILING"),
+    ]),
+    occurredAt: Timestamp,
+    summary: Type.Optional(Type.String({ minLength: 1 })),
+    evidenceRefs: Type.Array(Type.String({ minLength: 1 })),
+  },
+  { $id: "RuntimeCallbackV1", additionalProperties: false },
+);
+
 export const ToolAttemptSchema = Type.Object(
   {
     specVersion: Type.Literal("wakeoncue.attempt/v1"),
@@ -198,6 +220,7 @@ export const schemaRegistry = {
   "wakeoncue.event/v1": CueEventSchema,
   "wakeoncue.decision/v1": AttentionDecisionSchema,
   "wakeoncue.task/v1": TaskContractSchema,
+  "wakeoncue.runtime.callback/v1": RuntimeCallbackSchema,
   "wakeoncue.attempt/v1": ToolAttemptSchema,
   "wakeoncue.permit/v1": PermitSchema,
   "wakeoncue.outcome/v1": OutcomeSchema,
@@ -207,6 +230,7 @@ export const schemaRegistry = {
 export type CueEvent = Static<typeof CueEventSchema>;
 export type AttentionDecision = Static<typeof AttentionDecisionSchema>;
 export type TaskContract = Static<typeof TaskContractSchema>;
+export type RuntimeCallback = Static<typeof RuntimeCallbackSchema>;
 export type ToolAttempt = Static<typeof ToolAttemptSchema>;
 export type Permit = Static<typeof PermitSchema>;
 export type Outcome = Static<typeof OutcomeSchema>;

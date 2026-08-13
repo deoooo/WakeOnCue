@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CueEvent } from "@wakeoncue/contracts";
 import { AttentionEngine } from "@wakeoncue/attention";
+import { activationReceipt } from "@wakeoncue/runtime-sdk";
 
 import {
   IdempotencyConflictError,
@@ -40,6 +41,8 @@ describe("SQLite migrations", () => {
         "001_initial.sql",
         "002_replay_first.sql",
         "003_conversation_attention.sql",
+        "004_agent_wake.sql",
+        "005_runtime_agent_run_id.sql",
       ]);
       expect(migrateDatabase(database)).toEqual([]);
       const tables = database
@@ -53,6 +56,7 @@ describe("SQLite migrations", () => {
           "decisions",
           "tasks",
           "runtime_runs",
+          "runtime_callback_events",
           "tool_attempts",
           "permits",
           "outcomes",
@@ -153,6 +157,151 @@ describe("SQLite migrations", () => {
         "2026-08-12T10:05:00.000Z",
       );
       expect(store.setSourceMode("source-local", event.type, "NOTIFY").mode).toBe("NOTIFY");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("creates an outcome-based Task Contract and applies append-only runtime callbacks", async () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database);
+    const store = new SqliteWakeStore(database);
+    try {
+      const event = cueEvent({
+        type: "conversation.finalized",
+        data: {
+          conversation: {
+            segments: [
+              {
+                text: "我周五之前把最终报价发给张三。",
+                speakerRef: "subject",
+                isSubject: true,
+                startSeconds: 0,
+                endSeconds: 3,
+              },
+            ],
+            actionItems: [],
+          },
+        },
+      });
+      store.recordSourceGateEvidence(event.source.sourceId, event.type, {
+        shadowDays: 7,
+        explicitCommitmentPrecision: 0.95,
+        falseWakeRatePerUserDay: 0.1,
+        privacyViolationCount: 0,
+        evidenceRef: "fixture://gate/runtime-conformance",
+        userExplicitlyEnabled: true,
+        runtimeIdempotencyPassed: true,
+        pepConformancePassed: true,
+        authorizationAttackSuitePassed: true,
+        sourcePauseAvailable: true,
+      });
+      store.setSourceMode(event.source.sourceId, event.type, "WAKE");
+      store.appendEvent(event);
+      store.processProjectionOutbox();
+      await store.processAttentionOutbox(new AttentionEngine());
+
+      const claim = store.claimWakeActivation(
+        "openclaw",
+        "http://127.0.0.1:4310/v1/runtime/callbacks/openclaw",
+      );
+      expect(claim?.contract).toMatchObject({
+        goal: "Follow through on this commitment: 我周五之前把最终报价发给张三。",
+        capabilityScope: ["task.plan", "evidence.read"],
+        runtime: { adapter: "openclaw", profile: "default" },
+      });
+      expect(JSON.stringify(claim?.contract)).not.toContain("toolSteps");
+      if (!claim) throw new Error("Expected wake activation claim");
+      const activated = store.completeWakeActivation(
+        claim,
+        activationReceipt({
+          externalRunId: "openclaw-run-storage-1",
+          status: "RUN_ACCEPTED",
+          acceptedAt: "2026-08-12T10:00:02.000Z",
+          providerReceipt: { ok: true, runId: "openclaw-run-storage-1" },
+        }),
+      );
+      expect(activated.status).toBe("RUN_ACCEPTED");
+
+      const running = {
+        specVersion: "wakeoncue.runtime.callback/v1" as const,
+        runtimeRunId: claim.runtimeRunId,
+        taskId: claim.contract.taskId,
+        agentRunId: "openclaw-agent-run-storage-1",
+        status: "RUNNING" as const,
+        occurredAt: "2026-08-12T10:00:03.000Z",
+        evidenceRefs: [],
+      };
+      expect(store.applyRuntimeCallback(running).inserted).toBe(true);
+      expect(store.applyRuntimeCallback(running).inserted).toBe(false);
+      expect(
+        store.applyRuntimeCallback({
+          ...running,
+          status: "SUCCEEDED",
+          occurredAt: "2026-08-12T10:00:04.000Z",
+          summary: "OpenClaw agent turn completed",
+        }).runtimeRun.status,
+      ).toBe("SUCCEEDED");
+      expect(store.getTaskTimeline(claim.contract.taskId)?.callbacks).toHaveLength(2);
+      expect(() =>
+        database.prepare("UPDATE runtime_callback_events SET status = 'FAILED'").run(),
+      ).toThrowError("runtime callback events are append-only");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("marks interrupted activation UNKNOWN without placing it back on the retry queue", async () => {
+    const database = openDatabase(":memory:");
+    migrateDatabase(database);
+    const store = new SqliteWakeStore(database);
+    try {
+      const event = cueEvent({
+        type: "conversation.finalized",
+        data: {
+          conversation: {
+            segments: [
+              {
+                text: "我明天下午把会议纪要发给李四。",
+                speakerRef: "subject",
+                isSubject: true,
+                startSeconds: 0,
+                endSeconds: 3,
+              },
+            ],
+            actionItems: [],
+          },
+        },
+      });
+      store.recordSourceGateEvidence(event.source.sourceId, event.type, {
+        shadowDays: 7,
+        explicitCommitmentPrecision: 0.95,
+        falseWakeRatePerUserDay: 0.1,
+        privacyViolationCount: 0,
+        evidenceRef: "fixture://gate/runtime-conformance",
+        userExplicitlyEnabled: true,
+        runtimeIdempotencyPassed: true,
+        pepConformancePassed: true,
+        authorizationAttackSuitePassed: true,
+        sourcePauseAvailable: true,
+      });
+      store.setSourceMode(event.source.sourceId, event.type, "WAKE");
+      store.appendEvent(event);
+      store.processProjectionOutbox();
+      await store.processAttentionOutbox(new AttentionEngine());
+      const claim = store.claimWakeActivation("openclaw", "http://127.0.0.1/callback");
+      if (!claim) throw new Error("Expected wake activation claim");
+      database
+        .prepare("UPDATE outbox SET claimed_at = ? WHERE outbox_id = ?")
+        .run("2026-08-12T09:00:00.000Z", claim.outboxId);
+      expect(
+        store.markStaleRuntimeActivationsUnknown(
+          "2026-08-12T09:01:00.000Z",
+          "2026-08-12T10:00:00.000Z",
+        ),
+      ).toBe(1);
+      expect(store.getRuntimeRun(claim.runtimeRunId)?.status).toBe("UNKNOWN");
+      expect(store.claimWakeActivation("openclaw", "http://127.0.0.1/callback")).toBeUndefined();
     } finally {
       database.close();
     }

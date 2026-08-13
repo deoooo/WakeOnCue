@@ -1,10 +1,11 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { Value } from "@sinclair/typebox/value";
 import { timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { schemaRegistry } from "@wakeoncue/contracts";
+import { RuntimeCallbackSchema, schemaRegistry } from "@wakeoncue/contracts";
 import { deterministicId, sha256 } from "@wakeoncue/core";
 import { OmiFinalizedConversationAdapter } from "@wakeoncue/source-omi";
 import {
@@ -269,6 +270,66 @@ export async function buildServer(): Promise<FastifyInstance> {
         : reply.code(404).send({ code: "DECISION_NOT_FOUND", status: "error" });
     },
   );
+
+  server.get<{ Params: { taskId: string } }>("/v1/tasks/:taskId", async (request, reply) => {
+    const timeline = store.getTaskTimeline(request.params.taskId);
+    return timeline
+      ? reply.send({ timeline })
+      : reply.code(404).send({ code: "TASK_NOT_FOUND", status: "error" });
+  });
+
+  server.get<{ Params: { runtimeRunId: string } }>(
+    "/v1/runtime-runs/:runtimeRunId",
+    async (request, reply) => {
+      const runtimeRun = store.getRuntimeRun(request.params.runtimeRunId);
+      return runtimeRun
+        ? reply.send({ runtimeRun })
+        : reply.code(404).send({ code: "RUNTIME_RUN_NOT_FOUND", status: "error" });
+    },
+  );
+
+  server.post<{ Body: string }>("/v1/runtime/callbacks/openclaw", async (request, reply) => {
+    const secret = process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"];
+    if (!secret) {
+      return reply.code(503).send({ code: "RUNTIME_CALLBACK_SECRET_UNAVAILABLE", status: "error" });
+    }
+    try {
+      verifyWebhookSignature({
+        rawBody: request.body,
+        timestamp: headerValue(request.headers["x-wakeoncue-timestamp"]),
+        signature: headerValue(request.headers["x-wakeoncue-signature"]),
+        secret,
+        maxClockSkewSeconds: Number(
+          process.env["WAKEONCUE_RUNTIME_CALLBACK_CLOCK_SKEW_SECONDS"] ?? "300",
+        ),
+      });
+    } catch (error) {
+      const code = error instanceof WebhookSignatureError ? error.code : "SIGNATURE_INVALID";
+      return reply.code(401).send({ code, status: "error" });
+    }
+
+    let body: unknown;
+    try {
+      body = parseJson(request.body);
+    } catch {
+      return reply.code(400).send({ code: "INVALID_JSON", status: "error" });
+    }
+    if (!Value.Check(RuntimeCallbackSchema, body)) {
+      return reply.code(400).send({ code: "SCHEMA_INVALID", status: "error" });
+    }
+    try {
+      const result = store.applyRuntimeCallback(body);
+      return reply.code(result.inserted ? 202 : 200).send({
+        inserted: result.inserted,
+        runtimeRun: result.runtimeRun,
+        status: result.inserted ? "accepted" : "duplicate",
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "RUNTIME_CALLBACK_REJECTED";
+      const statusCode = code === "RUNTIME_RUN_NOT_FOUND" ? 404 : 409;
+      return reply.code(statusCode).send({ code, status: "error" });
+    }
+  });
 
   server.get<{ Params: { sourceId: string; cueType: string } }>(
     "/v1/source-modes/:sourceId/:cueType",

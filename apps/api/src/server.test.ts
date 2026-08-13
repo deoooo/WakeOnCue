@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { signWebhook } from "@wakeoncue/source-webhook";
+import { migrateDatabase, openDatabase } from "@wakeoncue/storage-sqlite";
 
 import { buildServer } from "./server.ts";
 
@@ -13,6 +15,7 @@ describe("API bootstrap", () => {
     process.env["WAKEONCUE_LOG_LEVEL"] = "silent";
     process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"] = "test-only-omi-token";
     process.env["WAKEONCUE_OMI_SUBJECT"] = "omi-test-subject";
+    process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"] = "test-only-runtime-callback-secret";
   });
 
   afterEach(() => {
@@ -21,6 +24,7 @@ describe("API bootstrap", () => {
     delete process.env["WAKEONCUE_LOG_LEVEL"];
     delete process.env["WAKEONCUE_OMI_WEBHOOK_TOKEN"];
     delete process.env["WAKEONCUE_OMI_SUBJECT"];
+    delete process.env["WAKEONCUE_RUNTIME_CALLBACK_SECRET"];
   });
 
   it("reports health and migration readiness", async () => {
@@ -210,6 +214,100 @@ describe("API bootstrap", () => {
       });
       expect(shadow.statusCode).toBe(200);
       expect(shadow.json()).toMatchObject({ sourceMode: { mode: "SHADOW" } });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("authenticates and deduplicates an OpenClaw runtime callback before state transition", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "wakeoncue-api-runtime-"));
+    const databasePath = join(directory, "runtime.sqlite");
+    process.env["WAKEONCUE_DATABASE_PATH"] = databasePath;
+    const database = openDatabase(databasePath);
+    migrateDatabase(database);
+    database
+      .prepare(
+        `INSERT INTO episodes(episode_id, subject, correlation_key, state_json, version, updated_at)
+         VALUES ('ep_api_runtime', 'subject-api', 'runtime-api', '{}', 1, ?)`,
+      )
+      .run(new Date().toISOString());
+    database
+      .prepare(
+        `INSERT INTO decisions(
+          decision_id, episode_id, decision, reason_codes_json, evidence_refs_json,
+          strategy_version, record_json, created_at
+        ) VALUES ('dec_api_runtime', 'ep_api_runtime', 'WAKE_AGENT', '[]', '[]', 'test/v1', '{}', ?)`,
+      )
+      .run(new Date().toISOString());
+    database
+      .prepare(
+        `INSERT INTO tasks(
+          task_id, decision_id, idempotency_key, contract_json, status, created_at, updated_at
+        ) VALUES ('task_api_runtime', 'dec_api_runtime', 'task-api-runtime', '{}', 'RUN_ACCEPTED', ?, ?)`,
+      )
+      .run(new Date().toISOString(), new Date().toISOString());
+    database
+      .prepare(
+        `INSERT INTO runtime_runs(
+          runtime_run_id, task_id, adapter, external_run_id, agent_run_id,
+          idempotency_key, status, last_observed_at, record_json
+        ) VALUES (
+          'run_api_runtime', 'task_api_runtime', 'openclaw', 'activation-api-runtime', NULL,
+          'run-api-runtime', 'RUN_ACCEPTED', ?, '{}'
+        )`,
+      )
+      .run(new Date(Date.now() - 1_000).toISOString());
+    database.close();
+
+    const server = await buildServer();
+    const timestamp = Math.floor(Date.now() / 1_000);
+    const payload = JSON.stringify({
+      specVersion: "wakeoncue.runtime.callback/v1",
+      runtimeRunId: "run_api_runtime",
+      taskId: "task_api_runtime",
+      agentRunId: "agent-run-api-runtime",
+      status: "RUNNING",
+      occurredAt: new Date().toISOString(),
+      evidenceRefs: [],
+    });
+    const headers = {
+      "content-type": "application/json",
+      "x-wakeoncue-timestamp": String(timestamp),
+      "x-wakeoncue-signature": signWebhook(payload, timestamp, "test-only-runtime-callback-secret"),
+    };
+    try {
+      const accepted = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/callbacks/openclaw",
+        headers,
+        payload,
+      });
+      expect(accepted.statusCode).toBe(202);
+      expect(accepted.json()).toMatchObject({
+        inserted: true,
+        runtimeRun: {
+          agentRunId: "agent-run-api-runtime",
+          externalRunId: "activation-api-runtime",
+          status: "RUNNING",
+        },
+      });
+
+      const duplicate = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/callbacks/openclaw",
+        headers,
+        payload,
+      });
+      expect(duplicate.statusCode).toBe(200);
+      expect(duplicate.json()).toMatchObject({ inserted: false, status: "duplicate" });
+
+      const forged = await server.inject({
+        method: "POST",
+        url: "/v1/runtime/callbacks/openclaw",
+        headers: { ...headers, "x-wakeoncue-signature": "v1=forged" },
+        payload,
+      });
+      expect(forged.statusCode).toBe(401);
     } finally {
       await server.close();
     }

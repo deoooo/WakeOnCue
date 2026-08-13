@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { AttentionEngine, AttentionEvaluation, SourceMode } from "@wakeoncue/attention";
-import type { CueEvent } from "@wakeoncue/contracts";
+import type { CueEvent, RuntimeCallback, TaskContract } from "@wakeoncue/contracts";
 import {
   canonicalJson,
   deterministicId,
@@ -13,6 +13,7 @@ import {
   type EpisodeProjection,
 } from "@wakeoncue/core";
 import type { AppendEventResult, EventStore, IngressErrorRecord } from "@wakeoncue/storage";
+import type { RuntimeActivationReceipt, RuntimeStatus } from "@wakeoncue/runtime-sdk";
 
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -82,6 +83,51 @@ interface AttentionOutboxRow {
   payload_json: string;
 }
 
+interface WakeOutboxRow {
+  outbox_id: string;
+  aggregate_id: string;
+  idempotency_key: string;
+}
+
+interface RuntimeRunRow {
+  runtime_run_id: string;
+  task_id: string;
+  adapter: string;
+  external_run_id: string | null;
+  agent_run_id: string | null;
+  status: RuntimeStatus;
+  last_observed_at: string | null;
+  record_json: string;
+}
+
+export interface WakeActivationClaim {
+  outboxId: string;
+  runtimeRunId: string;
+  contract: TaskContract;
+  idempotencyKey: string;
+  callbackUrl: string;
+}
+
+export interface RuntimeRunRecord {
+  runtimeRunId: string;
+  taskId: string;
+  adapter: string;
+  externalRunId?: string;
+  agentRunId?: string;
+  status: RuntimeStatus;
+  lastObservedAt?: string;
+  record: Record<string, unknown>;
+}
+
+export interface TaskRecord {
+  taskId: string;
+  decisionId: string;
+  status: RuntimeStatus;
+  contract: TaskContract;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SourceModeGateEvidence {
   shadowDays?: number;
   explicitCommitmentPrecision?: number;
@@ -141,6 +187,79 @@ function validateModeGate(mode: SourceMode, evidence: SourceModeGateEvidence): v
 
 function idempotencyPayloadHash(event: CueEvent): string {
   return sha256(canonicalJson({ ...event, receivedAt: "<ingress-received-at>" }));
+}
+
+function normalizeTaskDeadline(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/u.exec(value);
+  if (dateOnly) return `${value}T23:59:59.000Z`;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function buildTaskContract(
+  evaluation: AttentionEvaluation,
+  episode: EpisodeProjection,
+  adapter: string,
+): TaskContract {
+  const taskId = deterministicId("task", evaluation.decision.decisionId);
+  const commitment = evaluation.signals.commitment ?? "the accepted cue";
+  const deadline = normalizeTaskDeadline(evaluation.signals.deadline);
+  return {
+    contractVersion: "wakeoncue.task/v1",
+    taskId,
+    subject: episode.subject,
+    goal: `Follow through on this commitment: ${commitment}`,
+    successCriteria: [
+      "Produce a concrete outcome or report a specific blocker",
+      "Attach verifiable evidence for any claimed result",
+    ],
+    constraints: [
+      "Do not perform external writes without a WakeOnCue one-time permit",
+      "Do not treat agent text alone as proof that an external side effect happened",
+      "Stay within the initial capability scope",
+    ],
+    contextRefs: [
+      `wakeoncue://decisions/${evaluation.decision.decisionId}`,
+      `wakeoncue://episodes/${episode.episodeId}`,
+      ...evaluation.decision.evidenceRefs,
+    ],
+    ...(deadline ? { deadline } : {}),
+    runtime: { adapter, profile: "default" },
+    capabilityScope: ["task.plan", "evidence.read"],
+    approvalRequiredFor: [
+      "external.send",
+      "external.write",
+      "file.write",
+      "calendar.write",
+      "task.write",
+    ],
+    idempotencyKey: `wake:${evaluation.decision.decisionId}:v1`,
+  };
+}
+
+const terminalRuntimeStatuses = new Set<RuntimeStatus>(["SUCCEEDED", "FAILED", "CANCELLED"]);
+
+function canApplyRuntimeTransition(current: RuntimeStatus, next: RuntimeStatus): boolean {
+  if (current === next) return true;
+  if (terminalRuntimeStatuses.has(current)) return false;
+  if (current === "UNKNOWN") {
+    return ["RECONCILING", "SUCCEEDED", "FAILED", "CANCELLED"].includes(next);
+  }
+  return next !== "RUN_ACCEPTED" || current === "RECONCILING";
+}
+
+function runtimeRunRecord(row: RuntimeRunRow): RuntimeRunRecord {
+  return {
+    runtimeRunId: row.runtime_run_id,
+    taskId: row.task_id,
+    adapter: row.adapter,
+    ...(row.external_run_id ? { externalRunId: row.external_run_id } : {}),
+    ...(row.agent_run_id ? { agentRunId: row.agent_run_id } : {}),
+    status: row.status,
+    ...(row.last_observed_at ? { lastObservedAt: row.last_observed_at } : {}),
+    record: JSON.parse(row.record_json) as Record<string, unknown>,
+  };
 }
 
 export class SqliteWakeStore implements EventStore {
@@ -640,6 +759,418 @@ export class SqliteWakeStore implements EventStore {
         canonicalJson({ decisionId: evaluation.decision.decisionId }),
         now,
       );
+  }
+
+  claimWakeActivation(adapter: string, callbackUrl: string): WakeActivationClaim | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT outbox_id, aggregate_id, idempotency_key
+         FROM outbox
+         WHERE topic = 'wake.activate' AND status = 'PENDING' AND available_at <= ?
+         ORDER BY available_at, outbox_id
+         LIMIT 1`,
+      )
+      .get(new Date().toISOString()) as WakeOutboxRow | undefined;
+    if (!row) return undefined;
+
+    return this.database.transaction(() => {
+      const claimedAt = new Date().toISOString();
+      const claimed = this.database
+        .prepare(
+          `UPDATE outbox SET status = 'PROCESSING', claimed_at = ?
+           WHERE outbox_id = ? AND status = 'PENDING'`,
+        )
+        .run(claimedAt, row.outbox_id).changes;
+      if (claimed === 0) return undefined;
+
+      const evaluation = this.getDecision(row.aggregate_id);
+      if (!evaluation)
+        throw new Error(`Wake outbox references missing decision ${row.aggregate_id}`);
+      const episode = this.getEpisode(evaluation.decision.episodeId);
+      if (!episode) {
+        throw new Error(
+          `Wake decision references missing episode ${evaluation.decision.episodeId}`,
+        );
+      }
+      const contract = buildTaskContract(evaluation, episode, adapter);
+      const runtimeRunId = deterministicId(
+        "run",
+        `${contract.taskId}:${adapter}:${contract.runtime.profile}`,
+      );
+      this.database
+        .prepare(
+          `INSERT INTO tasks(
+            task_id, decision_id, idempotency_key, contract_json, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'RECONCILING', ?, ?)
+          ON CONFLICT(idempotency_key) DO NOTHING`,
+        )
+        .run(
+          contract.taskId,
+          evaluation.decision.decisionId,
+          contract.idempotencyKey,
+          canonicalJson(contract),
+          claimedAt,
+          claimedAt,
+        );
+      this.database
+        .prepare(
+          `INSERT INTO runtime_runs(
+            runtime_run_id, task_id, adapter, external_run_id, idempotency_key,
+            status, last_observed_at, record_json
+          ) VALUES (?, ?, ?, NULL, ?, 'RECONCILING', ?, ?)
+          ON CONFLICT(idempotency_key) DO NOTHING`,
+        )
+        .run(
+          runtimeRunId,
+          contract.taskId,
+          adapter,
+          contract.idempotencyKey,
+          claimedAt,
+          canonicalJson({
+            phase: "ACTIVATION_DISPATCHING",
+            callbackUrl,
+            sourceOutboxId: row.outbox_id,
+          }),
+        );
+      this.database
+        .prepare(
+          `INSERT INTO deliveries(
+            delivery_id, consumer, idempotency_key, external_ref, status,
+            record_json, created_at, updated_at
+          ) VALUES (?, ?, ?, NULL, 'DISPATCHING', ?, ?, ?)
+          ON CONFLICT(consumer, idempotency_key) DO NOTHING`,
+        )
+        .run(
+          deterministicId("delivery", `runtime:${adapter}:${contract.idempotencyKey}`),
+          `runtime:${adapter}`,
+          contract.idempotencyKey,
+          canonicalJson({ runtimeRunId, taskId: contract.taskId }),
+          claimedAt,
+          claimedAt,
+        );
+      return {
+        outboxId: row.outbox_id,
+        runtimeRunId,
+        contract,
+        idempotencyKey: contract.idempotencyKey,
+        callbackUrl,
+      };
+    })();
+  }
+
+  completeWakeActivation(
+    claim: WakeActivationClaim,
+    receipt: RuntimeActivationReceipt,
+  ): RuntimeRunRecord {
+    return this.database.transaction(() => {
+      const row = this.getRuntimeRunRow(claim.runtimeRunId);
+      if (!row) throw new Error(`Runtime run ${claim.runtimeRunId} does not exist`);
+      if (row.external_run_id && row.external_run_id !== receipt.externalRunId) {
+        throw new Error("RUNTIME_EXTERNAL_RUN_ID_MISMATCH");
+      }
+      const now = new Date().toISOString();
+      const observedAt = receipt.acceptedAt;
+      const status = canApplyRuntimeTransition(row.status, receipt.status)
+        ? receipt.status
+        : row.status;
+      const record = {
+        ...(JSON.parse(row.record_json) as Record<string, unknown>),
+        activationReceipt: receipt,
+        phase: "ACTIVATION_ACCEPTED",
+      };
+      this.database
+        .prepare(
+          `UPDATE runtime_runs SET external_run_id = ?, status = ?, last_observed_at = ?, record_json = ?
+           WHERE runtime_run_id = ?`,
+        )
+        .run(receipt.externalRunId, status, observedAt, canonicalJson(record), claim.runtimeRunId);
+      this.database
+        .prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?")
+        .run(status, now, claim.contract.taskId);
+      this.database
+        .prepare(
+          `UPDATE deliveries SET external_ref = ?, status = 'DELIVERED', record_json = ?, updated_at = ?
+           WHERE consumer = ? AND idempotency_key = ?`,
+        )
+        .run(
+          receipt.externalRunId,
+          canonicalJson({ receipt, runtimeRunId: claim.runtimeRunId }),
+          now,
+          `runtime:${claim.contract.runtime.adapter}`,
+          claim.idempotencyKey,
+        );
+      this.database
+        .prepare("UPDATE outbox SET status = 'COMPLETED', completed_at = ? WHERE outbox_id = ?")
+        .run(now, claim.outboxId);
+      const updated = this.getRuntimeRunRow(claim.runtimeRunId);
+      if (!updated) throw new Error("Runtime run disappeared after activation");
+      return runtimeRunRecord(updated);
+    })();
+  }
+
+  failWakeActivation(
+    claim: WakeActivationClaim,
+    error: string,
+    outcomeUncertain: boolean,
+  ): RuntimeRunRecord {
+    return this.database.transaction(() => {
+      const status: RuntimeStatus = outcomeUncertain ? "UNKNOWN" : "FAILED";
+      const now = new Date().toISOString();
+      const row = this.getRuntimeRunRow(claim.runtimeRunId);
+      if (!row) throw new Error(`Runtime run ${claim.runtimeRunId} does not exist`);
+      const record = {
+        ...(JSON.parse(row.record_json) as Record<string, unknown>),
+        activationError: error,
+        outcomeUncertain,
+        phase: outcomeUncertain ? "ACTIVATION_OUTCOME_UNKNOWN" : "ACTIVATION_FAILED",
+      };
+      this.database
+        .prepare(
+          `UPDATE runtime_runs SET status = ?, last_observed_at = ?, record_json = ?
+           WHERE runtime_run_id = ?`,
+        )
+        .run(status, now, canonicalJson(record), claim.runtimeRunId);
+      this.database
+        .prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?")
+        .run(status, now, claim.contract.taskId);
+      this.database
+        .prepare(
+          `UPDATE deliveries SET status = ?, record_json = ?, updated_at = ?
+           WHERE consumer = ? AND idempotency_key = ?`,
+        )
+        .run(
+          status,
+          canonicalJson({ error, outcomeUncertain, runtimeRunId: claim.runtimeRunId }),
+          now,
+          `runtime:${claim.contract.runtime.adapter}`,
+          claim.idempotencyKey,
+        );
+      this.database
+        .prepare(
+          `UPDATE outbox SET status = 'COMPLETED', completed_at = ?, last_error = ?
+           WHERE outbox_id = ?`,
+        )
+        .run(now, error, claim.outboxId);
+      const updated = this.getRuntimeRunRow(claim.runtimeRunId);
+      if (!updated) throw new Error("Runtime run disappeared after activation failure");
+      return runtimeRunRecord(updated);
+    })();
+  }
+
+  applyRuntimeCallback(
+    callback: RuntimeCallback,
+    receivedAt = new Date().toISOString(),
+  ): { inserted: boolean; runtimeRun: RuntimeRunRecord } {
+    return this.database.transaction(() => {
+      const row = this.getRuntimeRunRow(callback.runtimeRunId);
+      if (!row) throw new Error("RUNTIME_RUN_NOT_FOUND");
+      if (row.task_id !== callback.taskId) throw new Error("RUNTIME_TASK_MISMATCH");
+      if (row.agent_run_id && row.agent_run_id !== callback.agentRunId) {
+        throw new Error("RUNTIME_AGENT_RUN_ID_MISMATCH");
+      }
+      const payloadDigest = `sha256:${sha256(canonicalJson(callback))}`;
+      const callbackEventId = deterministicId(
+        "callback",
+        `${callback.runtimeRunId}:${payloadDigest}`,
+      );
+      const inserted =
+        this.database
+          .prepare(
+            `INSERT OR IGNORE INTO runtime_callback_events(
+              callback_event_id, runtime_run_id, agent_run_id, status, payload_digest,
+              record_json, occurred_at, received_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            callbackEventId,
+            callback.runtimeRunId,
+            callback.agentRunId,
+            callback.status,
+            payloadDigest,
+            canonicalJson(callback),
+            callback.occurredAt,
+            receivedAt,
+          ).changes > 0;
+
+      if (inserted) {
+        const isOlder = row.last_observed_at !== null && callback.occurredAt < row.last_observed_at;
+        const nextStatus =
+          !isOlder && canApplyRuntimeTransition(row.status, callback.status)
+            ? callback.status
+            : row.status;
+        const record = {
+          ...(JSON.parse(row.record_json) as Record<string, unknown>),
+          lastCallback: callback,
+          phase: `CALLBACK_${callback.status}`,
+        };
+        this.database
+          .prepare(
+            `UPDATE runtime_runs SET agent_run_id = COALESCE(agent_run_id, ?),
+               status = ?, last_observed_at = ?, record_json = ?
+             WHERE runtime_run_id = ?`,
+          )
+          .run(
+            callback.agentRunId,
+            nextStatus,
+            isOlder ? row.last_observed_at : callback.occurredAt,
+            canonicalJson(record),
+            callback.runtimeRunId,
+          );
+        this.database
+          .prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?")
+          .run(nextStatus, receivedAt, callback.taskId);
+      }
+      const updated = this.getRuntimeRunRow(callback.runtimeRunId);
+      if (!updated) throw new Error("Runtime run disappeared after callback");
+      return { inserted, runtimeRun: runtimeRunRecord(updated) };
+    })();
+  }
+
+  markStaleRuntimeActivationsUnknown(
+    staleBefore: string,
+    observedAt = new Date().toISOString(),
+  ): number {
+    const rows = this.database
+      .prepare(
+        `SELECT o.outbox_id, r.runtime_run_id, r.task_id, r.adapter, r.idempotency_key
+         FROM outbox o
+         JOIN runtime_runs r ON json_extract(r.record_json, '$.sourceOutboxId') = o.outbox_id
+         WHERE o.topic = 'wake.activate' AND o.status = 'PROCESSING' AND o.claimed_at < ?`,
+      )
+      .all(staleBefore) as Array<{
+      outbox_id: string;
+      runtime_run_id: string;
+      task_id: string;
+      adapter: string;
+      idempotency_key: string;
+    }>;
+    for (const row of rows) {
+      this.database.transaction(() => {
+        this.database
+          .prepare(
+            `UPDATE runtime_runs SET status = 'UNKNOWN', last_observed_at = ?,
+               record_json = json_set(record_json, '$.phase', 'STALE_ACTIVATION_UNKNOWN')
+             WHERE runtime_run_id = ? AND status = 'RECONCILING'`,
+          )
+          .run(observedAt, row.runtime_run_id);
+        this.database
+          .prepare("UPDATE tasks SET status = 'UNKNOWN', updated_at = ? WHERE task_id = ?")
+          .run(observedAt, row.task_id);
+        this.database
+          .prepare(
+            `UPDATE deliveries SET status = 'UNKNOWN', updated_at = ?
+             WHERE consumer = ? AND idempotency_key = ?`,
+          )
+          .run(observedAt, `runtime:${row.adapter}`, row.idempotency_key);
+        this.database
+          .prepare(
+            `UPDATE outbox SET status = 'COMPLETED', completed_at = ?,
+               last_error = 'ACTIVATION_INTERRUPTED_OUTCOME_UNKNOWN'
+             WHERE outbox_id = ?`,
+          )
+          .run(observedAt, row.outbox_id);
+      })();
+    }
+    return rows.length;
+  }
+
+  markStaleRuntimeRunsUnknown(staleBefore: string, observedAt = new Date().toISOString()): number {
+    const rows = this.database
+      .prepare(
+        `SELECT runtime_run_id, task_id, record_json
+         FROM runtime_runs
+         WHERE status IN ('RUN_ACCEPTED', 'RUNNING', 'RECONCILING')
+           AND last_observed_at < ?`,
+      )
+      .all(staleBefore) as Array<{
+      runtime_run_id: string;
+      task_id: string;
+      record_json: string;
+    }>;
+    for (const row of rows) {
+      this.database.transaction(() => {
+        const record = {
+          ...(JSON.parse(row.record_json) as Record<string, unknown>),
+          phase: "RUNTIME_CALLBACK_STALE_UNKNOWN",
+          reconciliationRequired: true,
+        };
+        this.database
+          .prepare(
+            `UPDATE runtime_runs SET status = 'UNKNOWN', last_observed_at = ?, record_json = ?
+             WHERE runtime_run_id = ? AND status IN ('RUN_ACCEPTED', 'RUNNING', 'RECONCILING')`,
+          )
+          .run(observedAt, canonicalJson(record), row.runtime_run_id);
+        this.database
+          .prepare("UPDATE tasks SET status = 'UNKNOWN', updated_at = ? WHERE task_id = ?")
+          .run(observedAt, row.task_id);
+      })();
+    }
+    return rows.length;
+  }
+
+  getTask(taskId: string): TaskRecord | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT task_id, decision_id, contract_json, status, created_at, updated_at
+         FROM tasks WHERE task_id = ?`,
+      )
+      .get(taskId) as
+      | {
+          task_id: string;
+          decision_id: string;
+          contract_json: string;
+          status: RuntimeStatus;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          taskId: row.task_id,
+          decisionId: row.decision_id,
+          status: row.status,
+          contract: JSON.parse(row.contract_json) as TaskContract,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      : undefined;
+  }
+
+  getRuntimeRun(runtimeRunId: string): RuntimeRunRecord | undefined {
+    const row = this.getRuntimeRunRow(runtimeRunId);
+    return row ? runtimeRunRecord(row) : undefined;
+  }
+
+  getTaskTimeline(taskId: string):
+    | {
+        task: TaskRecord;
+        runtimeRuns: RuntimeRunRecord[];
+        callbacks: RuntimeCallback[];
+      }
+    | undefined {
+    const task = this.getTask(taskId);
+    if (!task) return undefined;
+    const runRows = this.database
+      .prepare("SELECT * FROM runtime_runs WHERE task_id = ? ORDER BY runtime_run_id")
+      .all(taskId) as RuntimeRunRow[];
+    const callbackRows = this.database
+      .prepare(
+        `SELECT record_json FROM runtime_callback_events
+         WHERE runtime_run_id IN (SELECT runtime_run_id FROM runtime_runs WHERE task_id = ?)
+         ORDER BY occurred_at, callback_event_id`,
+      )
+      .all(taskId) as Array<{ record_json: string }>;
+    return {
+      task,
+      runtimeRuns: runRows.map(runtimeRunRecord),
+      callbacks: callbackRows.map((row) => JSON.parse(row.record_json) as RuntimeCallback),
+    };
+  }
+
+  private getRuntimeRunRow(runtimeRunId: string): RuntimeRunRow | undefined {
+    return this.database
+      .prepare("SELECT * FROM runtime_runs WHERE runtime_run_id = ?")
+      .get(runtimeRunId) as RuntimeRunRow | undefined;
   }
 
   getDecision(decisionId: string): AttentionEvaluation | undefined {

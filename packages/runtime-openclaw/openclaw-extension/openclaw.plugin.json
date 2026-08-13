@@ -1,0 +1,11 @@
+{
+  "id": "wakeoncue-guard",
+  "name": "WakeOnCue Guard",
+  "description": "Correlates WakeOnCue runs, exports lifecycle callbacks, and fails closed on unmediated tools.",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

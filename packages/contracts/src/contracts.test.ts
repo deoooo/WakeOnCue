@@ -12,6 +12,7 @@ describe("public contract registry", () => {
       "wakeoncue.notification/v1",
       "wakeoncue.outcome/v1",
       "wakeoncue.permit/v1",
+      "wakeoncue.runtime.callback/v1",
       "wakeoncue.task/v1",
     ]);
   });

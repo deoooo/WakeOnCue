@@ -21,6 +21,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
+    "openclaw:prepare": "node scripts/prepare-openclaw-runtime.mjs",
+    "openclaw:import-auth": "node scripts/import-openclaw-auth.mjs",
     "replay": "tsx packages/testing/src/replay-cli.ts",
     "smoke:webhook": "node scripts/smoke-webhook.mjs",
     "smoke:conversation": "node scripts/smoke-conversation.mjs",
@@ -28,6 +30,7 @@
     "start:worker": "tsx apps/worker/src/main.ts",
     "test": "vitest run",
     "test:replay": "vitest run packages/core/src/replay.test.ts packages/testing/src/replay-golden.test.ts",
+    "test:e2e:openclaw": "tsx scripts/real-openclaw-e2e.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

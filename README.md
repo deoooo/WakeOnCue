@@ -77,6 +77,27 @@ pnpm test
 pnpm build
 ~~~
 
+### 真实 OpenClaw E2E
+
+WakeOnCue 日常开发继续使用 Node 26。当前固定验证的 OpenClaw `2026.7.1-2` 不支持 Node 26，因此只给 OpenClaw 进程使用 `n` 安装在用户目录中的 Node 24，不修改全局 Node，也不要求 Docker：
+
+~~~bash
+N_PREFIX="$HOME/.local/n" n 24.19.0
+mkdir -p .runtime/openclaw-cli
+PATH="$HOME/.local/n/bin:$PATH" npm install \
+  --prefix .runtime/openclaw-cli \
+  --ignore-scripts --no-audit --no-fund \
+  openclaw@2026.7.1-2
+
+export WAKEONCUE_OPENCLAW_BIN="$PWD/.runtime/openclaw-cli/node_modules/.bin/openclaw"
+export WAKEONCUE_OPENCLAW_NODE_BIN_DIR="$HOME/.local/n/bin"
+pnpm test:e2e:openclaw
+~~~
+
+E2E 会创建隔离的 `.runtime/openclaw-e2e` 状态，强制 Gateway 绑定 loopback，关闭渠道，并通过 OpenClaw 官方 CLI 把现有 `~/.openclaw` 中的 portable static auth profile 导入隔离的 SQLite auth store；中间 JSON 副本随后删除，密钥不会输出。也可用 `WAKEONCUE_OPENCLAW_SOURCE_STATE_DIR` 指向另一份来源状态。
+
+这条验证使用版本化、脱敏的 Omi fixture，但启动的 OpenClaw、模型请求、plugin hook、Tool Attempt 和签名 callback 都是真实运行。它证明工程集成，不代表 Omi 设备线上数据或生产 7 天 canary；生产 Live Wake 仍默认关闭。
+
 Compose 路径：
 
 ~~~bash

@@ -15,6 +15,7 @@ data/backups/
 *.tsbuildinfo
 .idea/
 .vscode/
+.runtime/
 node_modules/
 dist/
 coverage/

@@ -33,6 +33,6 @@
       "@wakeoncue/testing": ["packages/testing/src/index.ts"]
     }
   },
-  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "*.ts"],
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "scripts/**/*.ts", "*.ts"],
   "exclude": ["dist", "node_modules"]
 }
