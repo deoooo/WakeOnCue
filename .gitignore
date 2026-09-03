@@ -11,4 +11,16 @@ coverage/
 *.db
 *.db-shm
 *.db-wal
-
+.runtime/
+data/
+.local/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.egg-info/

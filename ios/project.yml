@@ -1,0 +1,136 @@
+name: WakeOnCue
+options:
+  bundleIdPrefix: com.deoooo
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  WakeOnCueCore:
+    path: Packages/WakeOnCueCore
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    DEVELOPMENT_TEAM: "TEAM_IDH"
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+
+targets:
+  WakeOnCue:
+    type: application
+    platform: iOS
+    sources:
+      - path: WakeOnCue
+      - path: Shared
+    dependencies:
+      - package: WakeOnCueCore
+      - target: WakeOnCueWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue
+        PRODUCT_NAME: WakeOnCue
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: WakeOnCue
+    info:
+      path: WakeOnCue/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSMicrophoneUsageDescription: WakeOnCue needs microphone access to record meetings you explicitly start.
+        NSLocalNetworkUsageDescription: WakeOnCue connects to user-configured storage and realtime processing services.
+        NSBonjourServices:
+          - _wakeoncue._tcp
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: false
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UIBackgroundModes:
+          - audio
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.deoooo.WakeOnCue.recording
+            CFBundleURLSchemes:
+              - wakeoncue
+    entitlements:
+      path: WakeOnCue/WakeOnCue.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.deoooo.WakeOnCue
+
+  WakeOnCueWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WakeOnCueWidgets
+      - path: Shared
+    dependencies:
+      - package: WakeOnCueCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.widgets
+        PRODUCT_NAME: WakeOnCueWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: true
+        APPLICATION_EXTENSION_API_ONLY: true
+    info:
+      path: WakeOnCueWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue Controls
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WakeOnCueWidgets/WakeOnCueWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.deoooo.WakeOnCue
+
+  WakeOnCueTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WakeOnCueTests
+    dependencies:
+      - target: WakeOnCue
+      - package: WakeOnCueCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.tests
+        GENERATE_INFOPLIST_FILE: true
+
+  WakeOnCueUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: WakeOnCueUITests
+    dependencies:
+      - target: WakeOnCue
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: WakeOnCue
+
+schemes:
+  WakeOnCue:
+    build:
+      targets:
+        WakeOnCue: all
+        WakeOnCueWidgets: all
+        WakeOnCueTests: [test]
+        WakeOnCueUITests: [test]
+    test:
+      gatherCoverageData: true
+      targets:
+        - WakeOnCueTests
+        - WakeOnCueUITests

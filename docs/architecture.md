@@ -1,556 +1,150 @@
-# WakeOnCue 系统架构
-
-状态：Draft 0.1  
-更新时间：2026-08-12
-
-## 1. 架构结论
-
-WakeOnCue 是位于“现实世界感知”和“Agent Runtime”之间的主动唤醒层：
-
-> 它判断某个现实 Cue 是否值得补充观察、是否值得唤醒 Agent，以及这次唤醒可以携带什么权限；它不替 Agent 规划和执行任务。
-
-主路径只有三种决策：
-
-~~~text
-IGNORE | OBSERVE_MORE | WAKE_AGENT
-~~~
-
-其中：
-
-- <code>IGNORE</code>：事件不值得打扰或已经处理过；
-- <code>OBSERVE_MORE</code>：当前证据不足，只请求被允许的有限观察；
-- <code>WAKE_AGENT</code>：形成 Task Contract，唤醒指定 Runtime；
-- Agent 形成具体 Tool Attempt 后，敏感操作才进入授权与人工确认；
-- 执行结果和用户反馈重新进入 Cue 流。
-
-链路追踪、证据引用和审计是所有模块共享的基础设施，但不是产品的第一叙事。产品第一叙事是：**无需新的 Prompt，现实事件在正确时机主动唤醒 Agent。**
-
-## 2. 系统上下文
-
-~~~mermaid
-flowchart LR
-    World["现实世界<br/>对话 / 设备 / 应用 / 环境"] --> Sources["Perception Providers<br/>Omi / ASR / CV / HA / Webhook"]
-    Sources --> WOC["WakeOnCue<br/>Cue → Decide → Wake"]
-    WOC --> Runtime["Agent Runtime<br/>OpenClaw / Pi Agent / Others"]
-    Runtime --> Tools["MCP / API / Local Tools"]
-    Runtime --> WOC
-    WOC --> User["用户<br/>确认 / 通知 / 反馈"]
-    User --> WOC
-~~~
-
-### 边界
-
-WakeOnCue 负责：
-
-- 统一接收异构现实事件；
-- Cue 归一化、关联、合并和短期世界状态；
-- 主动补充观察；
-- 低成本 Attention Cascade；
-- Wake Policy、Runtime 路由和 Task Contract；
-- 敏感 Tool Attempt 的集中授权决策；
-- 运行结果回收、验证、通知治理和时间线；
-- 事件到结果的关联标识和可回放记录。
-
-WakeOnCue 不负责：
-
-- 自研通用 ASR、CV 或可穿戴硬件平台；
-- 通用 Agent Planner、Tool Loop、Memory 或 Skill 市场；
-- 代替 Agent 调用任意 MCP/API/本机工具；
-- 未经许可持续扩大感知范围；
-- 用自由文本推理过程充当审计证据。
-
-## 3. 逻辑架构
-
-~~~mermaid
-flowchart TB
-    subgraph Perception["可替换感知供应商"]
-      Omi["Omi transcript"]
-      Hook["Generic webhook"]
-      HA["Home Assistant"]
-      More["Future ASR / CV / App"]
-    end
-
-    subgraph CuePlane["WakeOnCue · Cue Plane"]
-      Ingest["Ingress Gateway<br/>auth / schema / privacy / idempotency"]
-      EventLog["Cue Event Log<br/>append-only / replay"]
-      Understand["Cue Understanding<br/>perceptor / entity / episode"]
-      State["World State Projection<br/>current state / recent episode"]
-      Attention["Attention Cascade<br/>IGNORE / OBSERVE_MORE / WAKE_AGENT"]
-      Observe["Observation Broker<br/>bounded capability request"]
-      WakePolicy["Wake Policy<br/>budget / runtime / pre-approval"]
-      Contract["Task Contract + Wake Outbox"]
-    end
-
-    subgraph RuntimePlane["Agent Execution Plane"]
-      Adapter["Runtime Adapter"]
-      Runtime["OpenClaw / Pi Agent / Other"]
-      Plan["Agent planning + tool selection"]
-      PEP["Runtime Guard / PEP"]
-      Tools["MCP / API / Local Tools"]
-    end
-
-    subgraph Safety["WakeOnCue · Authorization"]
-      PDP["Authorization PDP"]
-      Approval["Human Approval"]
-      Permit["One-time Permit"]
-    end
-
-    subgraph CloseLoop["Outcome Loop"]
-      Outcome["Outcome Reconciliation"]
-      Verify["Result Verification"]
-      Notify["Native reply + fallback notification"]
-      Timeline["Cue / Task Timeline"]
-    end
-
-    Omi & Hook & HA & More --> Ingest
-    Ingest --> EventLog --> Understand --> State --> Attention
-    Attention -->|OBSERVE_MORE| Observe
-    Observe --> EventLog
-    Attention -->|WAKE_AGENT| WakePolicy --> Contract --> Adapter --> Runtime --> Plan --> PEP
-    Attention -->|IGNORE| Timeline
-    PEP -->|safe| Tools
-    PEP -->|sensitive attempt| PDP --> Approval --> Permit --> PEP
-    Tools --> Outcome --> Verify --> Notify --> Timeline
-    Runtime --> Outcome
-    Timeline --> EventLog
-~~~
-
-## 4. 组件职责与替换接口
-
-| 组件 | 单一职责 | 插件接口 | 禁止承担 |
-|---|---|---|---|
-| Source Adapter | 将供应商事件转换为 Cue Envelope | <code>ingest(raw) → CueEvent[]</code> | 判断是否唤醒、直接执行任务 |
-| Cue Event Log | 保存事实、引用和状态变化 | <code>append</code> / <code>read</code> / <code>replay</code> | 作为实时派发器或 Prompt |
-| Perceptor | 从 Cue 提取实体、意图候选和事实 | <code>perceive(event, context)</code> | 产生外部副作用 |
-| Correlator | 去重、合并 Episode、关联跨源事件 | <code>correlate(fact)</code> | 调用 Agent 工具 |
-| World State Projector | 从事件重建当前可查询状态 | <code>project(events)</code> | 保存不可回放的隐藏状态 |
-| Attention Strategy | 决定忽略、补充观察或唤醒 | <code>decide(snapshot)</code> | 直接调用 MCP/Tools |
-| Observation Provider | 执行白名单内的有限感知请求 | <code>observe(request)</code> | 任意探索或写操作 |
-| Wake Policy | 决定是否唤醒、唤醒谁、预算和初始能力 | <code>authorizeWake(candidate)</code> | 规划具体工具步骤 |
-| Runtime Adapter | 翻译 Task Contract 和 Runtime 生命周期 | <code>activate</code> / <code>observe</code> / <code>cancel</code> | 实现另一套 Agent Runtime |
-| Authorization PDP | 对具体 Tool Attempt 作授权决策 | <code>evaluate(attempt)</code> | 猜测 Agent 后续所有步骤 |
-| Notification Adapter | 去重后投递审批、失败或结果 | <code>deliver(notification)</code> | 成为任意消息发送工具 |
-
-所有接口都必须：
-
-- 有版本字段；
-- 使用稳定 ID 和幂等键；
-- 只传结构化对象与证据引用；
-- 显式声明数据敏感等级、保留时间和调用预算；
-- 支持超时、取消和未知结果；
-- 不把供应商 SDK 类型泄漏进核心领域模型。
-
-## 5. 核心契约
-
-### 5.1 Cue Event
-
-~~~json
-{
-  "specVersion": "wakeoncue.event/v1",
-  "eventId": "evt_01J...",
-  "type": "conversation.commitment.detected",
-  "source": {
-    "adapter": "omi",
-    "providerRef": "device_123"
-  },
-  "subject": "user_abc",
-  "occurredAt": "2026-08-12T12:01:22+08:00",
-  "receivedAt": "2026-08-12T12:01:24+08:00",
-  "correlationId": "conversation_456",
-  "confidence": 0.93,
-  "data": {
-    "speaker": "user",
-    "commitment": "周五之前把报价发送给张三"
-  },
-  "evidenceRefs": [
-    {
-      "uri": "omi://conversation/456#segment=9",
-      "mediaType": "text/plain",
-      "classification": "private"
-    }
-  ],
-  "privacy": {
-    "purpose": ["attention", "task-activation"],
-    "retention": "P7D"
-  },
-  "idempotencyKey": "omi:conversation_456:segment_9:v1"
-}
-~~~
-
-原则：
-
-- 原始音视频优先留在供应商或用户设备，核心默认保存引用；
-- <code>occurredAt</code> 和 <code>receivedAt</code> 分开，允许延迟事件；
-- 低置信度不是自动丢弃的唯一理由，可以进入 <code>OBSERVE_MORE</code>；
-- 删除或到期通过 tombstone 事件表达，投影随之清除。
-
-### 5.2 Attention Decision
-
-~~~json
-{
-  "decisionId": "dec_01J...",
-  "episodeId": "ep_01J...",
-  "decision": "WAKE_AGENT",
-  "reasonCodes": [
-    "EXPLICIT_COMMITMENT",
-    "DEADLINE_PRESENT",
-    "NOT_DUPLICATE"
-  ],
-  "scores": {
-    "relevance": 0.94,
-    "urgency": 0.72,
-    "novelty": 0.88,
-    "userCost": 0.24
-  },
-  "evidenceRefs": ["evt_01J..."],
-  "strategyVersion": "attention-v1",
-  "modelRef": "judge-model@version",
-  "cooldownKey": "commitment:quote:recipient_zhangsan",
-  "expiresAt": "2026-08-12T12:11:24+08:00"
-}
-~~~
-
-不保存自由文本 Chain-of-Thought。可审计内容是输入摘要、结构化评分、原因码、模型版本、策略版本和证据引用。
-
-### 5.3 Task Contract
-
-~~~json
-{
-  "contractVersion": "wakeoncue.task/v1",
-  "taskId": "task_01J...",
-  "goal": "在周五之前向张三发送最终报价",
-  "successCriteria": [
-    "报价内容经用户确认",
-    "目标收件人唯一确定",
-    "发送渠道返回可验证回执"
-  ],
-  "constraints": [
-    "发送前必须人工确认",
-    "不得向其他联系人发送"
-  ],
-  "contextRefs": ["evt_01J...", "ep_01J..."],
-  "deadline": "2026-08-14T17:00:00+08:00",
-  "runtime": {
-    "adapter": "openclaw",
-    "profile": "personal-assistant"
-  },
-  "capabilityScope": [
-    "contacts.read",
-    "draft.create"
-  ],
-  "approvalRequiredFor": [
-    "message.send",
-    "file.share"
-  ],
-  "idempotencyKey": "wake:commitment:quote:recipient_zhangsan:2026-08-14"
-}
-~~~
-
-Task Contract 传递目标和约束，不预先规定 Agent 的完整工具计划。
-
-### 5.4 Tool Attempt 与 Permit
-
-Agent 形成具体操作后，Runtime Guard 才提交授权：
-
-~~~json
-{
-  "attemptId": "attempt_01J...",
-  "taskId": "task_01J...",
-  "runtimeRunId": "run_external_123",
-  "tool": "message.send",
-  "argumentsDigest": "sha256:...",
-  "displaySummary": "向联系人张三发送《最终报价.pdf》",
-  "risk": {
-    "sideEffect": "external-write",
-    "reversible": false,
-    "dataClassification": "confidential",
-    "destination": "contact:zhangsan"
-  }
-}
-~~~
-
-授权返回：
-
-~~~json
-{
-  "decision": "APPROVE_ONCE",
-  "permitId": "permit_01J...",
-  "attemptId": "attempt_01J...",
-  "argumentsDigest": "sha256:...",
-  "expiresAt": "2026-08-12T12:06:00+08:00"
-}
-~~~
-
-Permit 必须绑定 Runtime、Task、Attempt、参数摘要和短 TTL，使用一次后立即失效。参数改变必须重新确认。
-
-## 6. 主动触发决策
-
-Attention Cascade 按成本从低到高执行：
-
-1. **Hard Gate**：Schema、来源授权、TTL、隐私目的、最小置信度；
-2. **Episode Builder**：幂等、去重、debounce、跨源合并；
-3. **Cheap Signals**：明确承诺、截止时间、异常状态、用户相关性；
-4. **Novelty & Cost**：近期是否已经处理、当前打扰预算、静默时段；
-5. **OBSERVE_MORE**：仅请求缺失且被授权的观察；
-6. **Judge**：结构化模型判断是否值得唤醒；
-7. **Wake Gate**：焦点验证、语义重复抑制、冷却与 Runtime 选择；
-8. **Outbox**：持久化 Task Contract 后再异步激活 Runtime。
-
-任何阶段都可以返回 <code>IGNORE</code>。只有少数候选进入昂贵 Judge。
-
-### OBSERVE_MORE 的边界
-
-Observation Broker 不是另一个 Agent。它只接受已注册能力：
-
-~~~text
-conversation.recent_segments
-entity.current_state
-camera.snapshot
-calendar.window
-~~~
-
-每个请求必须指定：
-
-- capability 与目标 Source；
-- 目的、最大成本、TTL；
-- 最小所需数据范围；
-- 是否需要用户预授权；
-- 结果的保留时间。
-
-## 7. 执行与授权边界
-
-### 7.1 为什么授权不能只下放到 Agent 配置
-
-Agent 配置适合声明“有哪些工具”，但不能成为唯一安全边界：
-
-- 不同 Runtime 的权限语义不同；
-- Agent 可能被提示注入或错误规划；
-- 预先授权整个工具过宽，真正风险取决于具体参数和目标；
-- 用户需要在一个产品面查看和撤销授权。
-
-因此采用 PDP / PEP：
-
-- **PDP**：WakeOnCue 集中判断策略；
-- **PEP**：OpenClaw 插件、Pi Extension 或 Runtime Adapter 在工具调用前强制拦截；
-- **Runtime**：负责形成计划和 Tool Attempt；
-- **用户**：对具体敏感 Attempt 作一次性确认。
-
-如果 Runtime 没有可靠的调用前拦截点，则该 Adapter 只能运行只读工具，不能宣称支持敏感执行。
-
-### 7.2 默认风险策略
-
-| 操作类别 | 默认策略 |
-|---|---|
-| 本地只读查询 | 可自动允许，受数据范围限制 |
-| 生成草稿、摘要、计划 | 可自动允许，不对外发布 |
-| 通知当前用户 | 可自动允许，受打扰预算和静默时段限制 |
-| 外发消息、邮件、文件 | 每次确认 |
-| 修改日历、任务、业务记录 | 每次确认；成熟后可配置窄范围授权 |
-| 支付、购买、删除、设备控制 | MVP 禁止 |
-| 未知工具或参数无法解释 | 拒绝 |
-
-OpenClaw、Pi Agent 或其他 Runtime 自己的审批能力可作为第二道门，但 WakeOnCue 不能假设宿主一定会阻拦。安全保证必须由 Adapter 能力声明和 PEP 验证决定。
-
-## 8. Runtime 与通知兼容
-
-### Runtime Adapter
-
-MVP 窄接口：
-
-~~~text
-activate(taskContract, policyToken) -> runtimeRunId
-observe(runtimeRunId) -> RuntimeRunState
-cancel(runtimeRunId, reason) -> CancelResult
-~~~
-
-Runtime 通过 Callback 或轮询回传：
-
-~~~text
-RUN_ACCEPTED
-RUNNING
-WAITING_APPROVAL
-SUCCEEDED
-FAILED
-CANCELLED
-UNKNOWN
-~~~
-
-<code>UNKNOWN</code> 是一等状态。外部执行结果不确定时禁止盲目重试。
-
-### 通知策略
-
-优先使用 Runtime 原生渠道保持对话连续性，例如 OpenClaw 已绑定的聊天渠道。WakeOnCue 负责：
-
-- 将 <code>taskId</code>、<code>runtimeRunId</code> 和原生消息回执关联；
-- 对相同结果做去重；
-- 原渠道不可用、审批超时或高风险失败时走 fallback；
-- 通知 Deep Link 打开同一条 Cue / Task 时间线；
-- 将 opened、acknowledged、dismissed 作为反馈事件。
-
-通知不是任意工具执行。WakeOnCue 只允许自己的审批、失败、完成和摘要模板。
-
-## 9. 状态、可靠性和回放
-
-### 9.1 事实与派发分离
-
-- Event Log：事实来源，可持久、可回放；
-- Event Bus：进程内或远端派发，可丢失后重建；
-- Outbox：保证 Wake、通知等副作用在提交后最终派发；
-- Inbox / Delivery Ledger：保证消费者和外部投递幂等；
-- Projection：World State、Task View、Timeline 均可从日志重建。
-
-MVP 使用 SQLite 的 append-only 表和事务 Outbox。接口保持 transport-neutral，达到真实吞吐或可用性瓶颈后再迁移 PostgreSQL、队列或 A2A Broker。
-
-### 9.2 Task 状态机
-
-~~~mermaid
-stateDiagram-v2
-    [*] --> CANDIDATE
-    CANDIDATE --> IGNORED
-    CANDIDATE --> OBSERVING
-    OBSERVING --> CANDIDATE
-    CANDIDATE --> PROPOSED
-    PROPOSED --> ACTIVATING
-    ACTIVATING --> RUNNING
-    ACTIVATING --> UNKNOWN
-    RUNNING --> WAITING_APPROVAL
-    WAITING_APPROVAL --> RUNNING
-    WAITING_APPROVAL --> REJECTED
-    RUNNING --> SUCCEEDED
-    RUNNING --> FAILED
-    RUNNING --> UNKNOWN
-    SUCCEEDED --> VERIFIED
-    SUCCEEDED --> UNVERIFIED
-    VERIFIED --> NOTIFIED
-    FAILED --> NOTIFIED
-    UNKNOWN --> RECONCILING
-    RECONCILING --> RUNNING
-    RECONCILING --> SUCCEEDED
-    RECONCILING --> FAILED
-~~~
-
-## 10. 证据与可观测性
-
-每一条业务链路使用以下稳定关联：
-
-~~~text
-cueEventId
-  → episodeId
-  → decisionId
-  → taskId
-  → runtimeRunId
-  → toolAttemptId
-  → permitId
-  → outcomeId
-  → notificationId
-~~~
-
-需要同时保留两类记录：
-
-1. **业务证据链**：来源、事件、原因码、授权、结果与用户反馈；
-2. **运行观测链**：OpenTelemetry trace、span、latency、error、cost。
-
-两者通过稳定业务 ID 关联，但不能互相替代。日志采样不能破坏业务审计；业务证据保留也不能意味着永久保存原始音视频。
-
-### 回溯时必须回答
-
-- 哪个现实 Cue 触发了判断？
-- 使用了哪些原始证据或供应商引用？
-- 为什么选择忽略、补充观察或唤醒？
-- 哪个策略、模型和版本参与了决策？
-- 唤醒了哪个 Agent Runtime，给了什么范围？
-- Agent 计划了什么具体 Tool Attempt？
-- 谁在什么时候批准了哪些精确参数？
-- 工具结果是 Agent 报告、工具确认还是外部验证？
-- 用户是否收到、打开、接受或驳回？
-
-## 11. 部署形态
-
-### MVP：单机模块化服务
-
-~~~text
-wakeoncue-api
-wakeoncue-worker
-wakeoncue-console
-SQLite + local artifact refs
-Omi adapter + Webhook adapter
-One runtime adapter
-One notification adapter
-~~~
-
-推荐参考技术栈：
-
-- TypeScript + Node.js 22；
-- Fastify + JSON Schema/Zod；
-- SQLite + repository abstraction，后续切 PostgreSQL；
-- DB-backed queue/outbox，不先引入 Kafka；
-- React/Vite 的轻量任务时间线；
-- OpenTelemetry；
-- Vitest + replay fixtures。
-
-技术栈是实现建议，不进入领域接口。
-
-### 规模化演进
-
-只有出现明确瓶颈后才拆分：
-
-1. 独立 Source Gateway；
-2. PostgreSQL 与独立 Worker；
-3. 远端 Event Transport；
-4. 多租户 Policy Service；
-5. 企业 Agent Mesh / A2A Adapter。
-
-## 12. 与类似项目的差异
-
-| 系统 | 主要解决的问题 | WakeOnCue 与其关系 |
-|---|---|---|
-| Omi | 可穿戴音频、转写、对话与 App/通知生态 | 作为感知来源；WakeOnCue 泛化到异构 Cue，并负责跨源 Wake 决策 |
-| OwnPilot | 围绕任务、日历和记忆的个人 Agent 主动 Pulse | 借鉴 gate、cooldown 和 autonomy；WakeOnCue 不绑定封闭上下文，也不自己执行工具 |
-| OpenClaw / Pi Agent | Agent 规划、工具调用和宿主渠道 | 作为 Runtime；WakeOnCue 提供无 Prompt 的主动入口与统一授权闭环 |
-| MCP | 工具发现和调用协议 | 位于 Agent Runtime 与工具之间，不解决何时因现实事件启动 Agent |
-| Agent Mesh / A2A | Agent 发现、路由与协作 | 是未来 Runtime/transport 选项，不解决原始 Cue 是否值得形成任务 |
-
-WakeOnCue 的独立价值是：
-
-> 开放现实事件契约 + 跨源短期世界状态 + 渐进观察 + 低打扰 Wake 决策 + 与外部 Runtime 解耦的授权/结果闭环。
-
-## 13. 建议代码结构
-
-~~~text
-apps/
-  api/                    # ingestion、query、approval API
-  worker/                 # projector、attention、outbox
-  console/                # Cue / Task 时间线
-packages/
-  contracts/              # event、decision、task、attempt schemas
-  core/                   # 纯领域逻辑与状态机
-  policy/                 # wake policy、authorization PDP
-  storage/                # repository interfaces
-  storage-sqlite/         # MVP adapter
-  source-sdk/             # Source Adapter SDK
-  source-webhook/
-  source-omi/
-  runtime-sdk/            # Runtime Adapter SDK
-  runtime-webhook/
-  runtime-openclaw/
-  runtime-pi/
-  notify-sdk/
-  testing/                # replay fixtures 与 adapter conformance
-docs/
-  architecture.md
-  architecture.html
-  mvp.md
-~~~
-
-## 14. 不可破坏的架构约束
-
-1. Source Adapter 不得决定 Wake；
-2. Attention Engine 不得调用任意 MCP/Tools；
-3. WakeOnCue 不得实现通用 Agent Planner；
-4. 敏感 Tool Attempt 没有有效 Permit 不得执行；
-5. 没有 pre-tool interception 的 Runtime Adapter 不得开放敏感工具；
-6. 事件事实、派发和投影必须分离；
-7. 所有外部副作用必须使用幂等键与 Delivery Record；
-8. <code>UNKNOWN</code> 不得自动等同于失败并重试；
-9. 原始隐私数据最小化保存，证据引用不等于复制内容；
-10. 新 Source、Judge、Runtime、Policy 和 Notification 必须通过契约测试。
+# WakeOnCue Recording Architecture
+
+状态：MVP implementation；最低目标系统：iOS 18
+
+## 1. 产品边界
+
+WakeOnCue iOS 只负责可靠采集、持久化和同步。它不运行 ASR、Diarization、LLM 或 Agent。当前阶段通过通用 S3 SigV4 协议直连用户配置的 AWS S3 或兼容存储，不依赖 Recording API。
+
+```text
+┌──────────────────────── iPhone ────────────────────────┐
+│ AVAudioEngine                                           │
+│   └─ AVAudioConverter (24 kHz mono)                     │
+│       ├─ source.caf (continuous PCM, local truth)       │
+│       └─ 000001.m4a, 000002.m4a... (AAC upload units)   │
+│                    ↓                                    │
+│ SQLite: Recording + Chunk                               │
+│     ├─ local mode: complete on device                   │
+│     └─ S3 mode: UploadTask → Background URLSession      │
+└────────────────────┬────────────────────────────────────┘
+                     │ S3 SigV4 PUT
+┌────────────────────▼────────────────────────────────────┐
+│ User S3: metadata.json + chunks/* + source.m4a          │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 2. 本地音频为什么是双轨
+
+`source.caf` 是连续的 PCM 源文件。网络不可用、上传超时或服务端宕机都不会影响它。CAF 采用 `completeUntilFirstUserAuthentication` 文件保护，使设备第一次解锁后即使再次锁屏，后台录音仍可继续写入。
+
+上传使用单独的 AAC-LC `.m4a`：
+
+- 24 kHz、mono、64 kbps；
+- 每段目标约 10 秒；
+- AVAudioEngine 不停机，Chunk 在转换后的 buffer 边界轮转，避免每 10 秒重启麦克风；
+- Pause 会封口当前 Chunk，Resume 打开新 Chunk，但不创建新 Recording；
+- 只有文件封口、SHA-256 计算成功并事务化写入 SQLite 后，Chunk 才会成为可恢复的本地数据；仅 S3 模式会同时创建上传任务。
+
+PCM 源文件比只保留 Transcript 或只依赖网络流更保守。第一版暂不自动清理本地音频。
+
+Finish 时使用 AVFoundation 把所有 AAC Chunk 合成为标准 AAC-LC `.m4a`。同一个文件用于本地播放、系统分享和 S3 的 `source.m4a`；CAF 继续作为更保守的本地源文件，不直接分享。
+
+## 3. 状态模型
+
+Recording 状态：
+
+```text
+READY → RECORDING ↔ PAUSED → FINISHING → UPLOADING → COMPLETED
+                  ↘                      ↘
+                    FAILED ←──────────────
+```
+
+`READY` 表示当前没有 Recording。数据库中的新记录直接从 `RECORDING` 开始。
+
+Chunk 状态：
+
+```text
+pending → uploading → uploaded
+             ↓          ↑
+           failed ──────┘
+```
+
+UploadTask 类型：
+
+- `createRecording` → S3 `metadata.json`
+- `uploadChunk` → S3 `chunks/000001.m4a...`
+- `finish` → S3 `source.m4a`
+
+metadata 上传成功前不上传 Chunk。完整 `source.m4a` 只有在 metadata 和全部 Chunk 都收到 S3 2xx 后才上传；最终文件收到 S3 2xx 后 Recording 才进入 COMPLETED。Pause / Resume 只改变本机状态，不额外产生云端请求。
+
+本地模式不创建 UploadTask。Finish 会合并 M4A，并在本机事务中直接把 Recording 和 Chunk 标记为完成。对于 S3 模式，完成等待期间也提供“Save to this iPhone”作为保留真实本地文件的退出路径。
+
+## 4. SQLite 事务边界
+
+SQLite 使用 WAL、foreign keys 和 `synchronous=FULL`。
+
+### Recording
+
+包含全局唯一 ID、创建/开始/结束时间、时长、状态、本地源文件路径、上传汇总、设备与版本、metadata。
+
+### Chunk
+
+包含 `recording_id + chunk_index` 唯一约束、本地路径、SHA-256、字节数、开始时间、时长、状态和错误。
+
+### UploadTask
+
+包含任务类型、去重键、文件路径、状态、retry count、next retry、错误和 Background URLSession task identifier。
+
+插入 Chunk、增加 pending count、更新持久化时长和创建 UploadTask 在同一事务内完成。收到 S3 2xx 后，UploadTask、Chunk、uploaded bytes 和 pending count 也在同一事务内更新。
+
+开始一个 Chunk 上传时，UploadTask 与对应 Chunk 会在同一事务内进入 `uploading`。每个请求包含实际文件的 SHA-256，并使用 AWS Signature Version 4 对 host、路径、时间、内容类型和 payload hash 签名；只有 S3 成功响应才确认任务。
+
+## 5. 后台上传和恢复
+
+后台 session 使用固定 identifier，并且所有 upload task 都来自文件。App 启动时先重新创建同一 session，读取系统仍在管理的 tasks，再重置已经没有系统任务对应的 `uploading` 行，避免正常后台任务被误判为孤儿。
+
+网络行为：
+
+- `waitsForConnectivity = true`；
+- Wi-Fi / Cellular 均允许；
+- NWPath 恢复时重新调度；
+- HTTP / 网络失败持久化错误并指数退避，最大 15 分钟；
+- 每个 Recording 使用稳定 object key，重复 PUT 覆盖同一对象，不创建重复 Chunk。
+
+如果 App 在录音时被终止，iOS 不可能继续运行普通麦克风进程。下次启动会：
+
+1. 把 Recording 从 RECORDING / PAUSED 置为 FINISHING，并重新接管已进入 FINISHING 但尚未完整入队的窗口；
+2. 保留系统仍管理的 Background URLSession tasks；
+3. 重置孤儿 uploading tasks；
+4. 扫描未入库但仍可由 AVFoundation 读取的 `.m4a` 并补入队列；
+5. 合并 M4A，上传全部可恢复 Chunk 和最终 `source.m4a`；
+6. 连续本地 `source.caf` 始终保留供人工恢复或未来重切 Chunk。
+
+未配置 S3 时，恢复扫描仍会补录可读的 `.m4a`，但不会启动 Background URLSession；中断或旧版本卡在 FINISHING / UPLOADING 的 Recording 会直接在本机完成并解除操作锁。
+
+## 6. 系统入口
+
+- App 首页：直接调用同一个 AppModel 状态机；
+- App Shortcuts / Action Button：`AudioRecordingIntent`；
+- iOS 18 Control：WidgetKit `ControlWidget`；同一 Control 可放到 Control Center、锁屏和支持的 Action Button；
+- Live Activity：录音开始时创建并提供 Pause / Resume / Finish。本地模式只显示本机保存状态，不出现上传提示；配置 S3 后才显示已同步时长和等待同步时长。
+
+App 内状态变化会通过 `ControlCenter.reloadControls` 刷新系统 Control。Finish 后 Live Activity 切换为上传状态并固定已录时长，不再显示麦克风仍在录音。
+
+Apple 要求 AudioRecordingIntent 开始录音时同时保持 Live Activity，本实现先创建 Activity 再投递录音命令。锁屏首次启动录音的权限和音频 session 行为仍必须在目标 iOS 版本、真实签名和真机上验证。
+
+## 7. S3 配置边界
+
+Bucket、Region、Endpoint、Prefix 和 path-style 保存在 UserDefaults；Access Key、Secret Key 和可选 Session Token 保存在 iOS Keychain。点击 Save 时，App 使用候选配置执行临时对象 PUT、HEAD、DELETE，全部成功后才替换当前生效配置。
+
+Recording API 和 Agent/Webhook 当前不参与链路。后续需要 Agent 时，应以 S3 中已经确认完成的 `source.m4a` 为数据源，再增加事件或 API 层，不能让 Agent 成为录音完成的依赖。
+
+## 8. 实时处理旁路
+
+启用实时文字后，AVAudioEngine 转换后的同一份 24 kHz mono PCM 还会按 0.5 秒复制给 Realtime Client。文件写入和 Chunk 封口仍先执行；Realtime Client 使用独立 actor 和 WebSocket 发送，不参与 Recording / Chunk / UploadTask 状态机。
+
+App 只依赖版本化 Gateway。Gateway 负责短期会话、Processor 路由、revision 和断线事件补放，不运行模型。当前 Mac Processor 是协议的第一个实现，未来可换成云端 Processor，而无需更新 iOS 音频或字幕协议。完整说明见 [Realtime Processing](realtime-processing.md)。
+
+实时链路断开时最多缓存约 60 秒待发送 PCM；超过上限只丢弃最旧的实时帧，不删除本地 CAF/M4A。Processor 不可用时 Gateway 不持久化音频，最终可通过 S3 `source.m4a` 做补处理，避免为实时功能引入另一套录音事实来源。
+
+Mac Processor 的 ASR 使用约 4 秒窗口。说话人分析默认使用约 30 秒的有限滚动窗口（20 秒推进、10 秒重叠），不随整场会议时长重复计算所有历史音频；每个模型临时 speaker label 会计算 embedding，并与会话内稳定 cluster centroid 匹配。因此后续窗口即使交换模型标签，App 中的 Speaker 1/2 仍可保持一致。字幕先以 Unknown speaker 出现，再用同一 segment ID 的 `speaker.corrected` 事件修订。
+
+## 9. 已知边界
+
+- 第一版没有账户注册、多租户或 Agent 事件；
+- 用户需要提供权限受限的 S3 凭据；
+- 自动清理故意未启用；
+- 本机 M4A 合并依赖 AVFoundation；
+- 录音中的 Force Quit 会停止麦克风，这是 iOS 进程语义；已完成 Chunk 与系统后台上传任务会在重开后恢复；
+- 完整 Xcode build、锁屏 30 分钟、断网 10 分钟和 60 分钟录音只能由真机验收。
+- Speaker 1/2 是会话内声纹聚类，不是人员真实姓名；姓名需要后续 enrollment 或用户确认。

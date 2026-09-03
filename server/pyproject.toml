@@ -1,0 +1,18 @@
+[project]
+name = "wakeoncue-recording-service"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Minimal idempotent Recording API for the WakeOnCue iOS client"
+dependencies = ["aiohttp>=3.10,<4", "boto3>=1.35,<2", "websockets>=15,<17"]
+
+[project.scripts]
+wakeoncue-recording-service = "recording_service.__main__:main"
+wakeoncue-realtime-gateway = "recording_service.realtime_main:main"
+wakeoncue-mac-processor = "recording_service.mac_processor:main"
+
+[project.optional-dependencies]
+mac-processor = ["mlx-whisper>=0.4,<0.5", "sherpa-onnx>=1.13,<1.14"]
+qwen-processor = ["qwen-asr>=0.0.6,<0.1", "sherpa-onnx>=1.13,<1.14"]
+
+[tool.ruff]
+line-length = 100

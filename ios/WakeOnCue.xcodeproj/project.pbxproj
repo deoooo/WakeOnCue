@@ -1,0 +1,918 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03F32A464D9F57116A9320C3 /* RealtimeGatewayDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */; };
+		06DFAB7913D853C72D246BD1 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 858D730FA216B5904F8363C8 /* InfoPlist.strings */; };
+		116DD06F75F19AB28F0D281A /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
+		140283C37E9E0E404CB1239D /* BackgroundUploadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AC5ED25FC04F1093E8FB6D3 /* BackgroundUploadCoordinator.swift */; };
+		2203253C60FA4C13E05309D3 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA526BAF013923BBC75EBC60 /* WakeOnCueCore */; };
+		269B7E6A0B56D4FE1DD779A4 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 364E97881D72FF49F2C4F063 /* WakeOnCueCore */; };
+		2FE5645F6B734B0B028E2502 /* RecordingStorageMaintenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD8ABC2DA71F79FCC9FBA1E /* RecordingStorageMaintenance.swift */; };
+		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
+		3EBC44400AD284B01FFE86D5 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
+		4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */; };
+		4B211C375A1E8FBFCBFFACAB /* SharedRecordingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430BD843F968775BC442DAE5 /* SharedRecordingState.swift */; };
+		53CD5F4C453E36D552D5B823 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
+		5F805F7A42983C06C29DF7E0 /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
+		6021FF573FCC07D085701CE6 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
+		741D5986552DDD76C5C88E68 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 858D730FA216B5904F8363C8 /* InfoPlist.strings */; };
+		77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430BD843F968775BC442DAE5 /* SharedRecordingState.swift */; };
+		789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */; };
+		7926AE919DB1149BFB9561E2 /* SpokenLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */; };
+		79B3C2441B3E453A3D24D063 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 33CCCFD5FC2D9005CF22D259 /* WakeOnCueCore */; };
+		8AD40F5D04CE05D71749C948 /* RecordingFileLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */; };
+		920E0E8B46A2126A7498B445 /* RecordingCommandObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */; };
+		982D1A7A9C67C37CF0258F03 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
+		9D9FE1273731021262DAF3D9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
+		A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */; };
+		B0F9A4F91F18B4AFE9C48CF4 /* S3StorageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */; };
+		B2C88683F77391BBC6E88D9D /* RecordingAudioFileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */; };
+		B3C44F955BD28C6022EA8ACB /* RecordingStartupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */; };
+		B6062CBA6EB324F8EA172FF5 /* WakeOnCueWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 004ADFE12E5AC730D2E437EF /* WakeOnCueWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B708A2B587B86D2DD7069F3F /* RecordingControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC92EB06720047F373C10DFC /* RecordingControlWidget.swift */; };
+		B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */; };
+		B8EC165E40AC6C92613F52CD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E745A03BE489FE9A6A44E7FF /* AppModel.swift */; };
+		BE9A905CC49C9DCE3B734AF3 /* RecordingFileLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */; };
+		C307E723EF8DB4F282F6B14A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B24D97BAA1B9EB3CE43D2B6 /* AppDelegate.swift */; };
+		D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A872A2ADA906883325D430 /* SettingsView.swift */; };
+		D47AE489BEE3831F69138029 /* RecordingRecoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */; };
+		D4D41C76311F4AA5900B1D1B /* RecordingAudioAssembler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */; };
+		DA336C5E9026EB01BB8684D5 /* RecordingLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */; };
+		DAC32638A37AA865F8162814 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3997A0D733F09923BCD17F13 /* AppSettings.swift */; };
+		E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */; };
+		EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */; };
+		EBD66C251B633A70DE738E31 /* RecordingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */; };
+		F1C2A96BFA1E3FDC3D3CB1E6 /* RealtimeProcessingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */; };
+		FE9AB9FEA87CF11CD104CF6E /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0921B2FA1383FE5740454635 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 22275792CBEC965A2CFAFCE6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 85F277F2A36A7806BAF04573;
+			remoteInfo = WakeOnCueWidgets;
+		};
+		B7D67B36BEEBAA2E0C5FDF56 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 22275792CBEC965A2CFAFCE6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B50B0250357195A8284C1B0D;
+			remoteInfo = WakeOnCue;
+		};
+		B94F5DFDAF5265AF85C9DE50 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 22275792CBEC965A2CFAFCE6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B50B0250357195A8284C1B0D;
+			remoteInfo = WakeOnCue;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A767F9B7F761B02165952A47 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B6062CBA6EB324F8EA172FF5 /* WakeOnCueWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		004ADFE12E5AC730D2E437EF /* WakeOnCueWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WakeOnCueWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioFileProvider.swift; sourceTree = "<group>"; };
+		1B24D97BAA1B9EB3CE43D2B6 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryService.swift; sourceTree = "<group>"; };
+		2AC5ED25FC04F1093E8FB6D3 /* BackgroundUploadCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundUploadCoordinator.swift; sourceTree = "<group>"; };
+		2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivityWidget.swift; sourceTree = "<group>"; };
+		2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeProcessingClient.swift; sourceTree = "<group>"; };
+		34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingIntents.swift; sourceTree = "<group>"; };
+		3997A0D733F09923BCD17F13 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		430BD843F968775BC442DAE5 /* SharedRecordingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedRecordingState.swift; sourceTree = "<group>"; };
+		43EC47D0ECE07DF72FCBF3F0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		4A6F8EBA363AFC36576CBDC2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		4F5D92341789174B478A1B2B /* WakeOnCueWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWidgets.entitlements; sourceTree = "<group>"; };
+		4FD8ABC2DA71F79FCC9FBA1E /* RecordingStorageMaintenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageMaintenance.swift; sourceTree = "<group>"; };
+		5C2C0A3BB0F7CB999F01D1E4 /* WakeOnCueCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WakeOnCueCore; path = Packages/WakeOnCueCore; sourceTree = SOURCE_ROOT; };
+		5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioAssembler.swift; sourceTree = "<group>"; };
+		69A872A2ADA906883325D430 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueApp.swift; sourceTree = "<group>"; };
+		6EB419A36E5FBD434A45BDA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StorageClient.swift; sourceTree = "<group>"; };
+		8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWidgets.swift; sourceTree = "<group>"; };
+		858D730FA216B5904F8363C8 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingShortcuts.swift; sourceTree = "<group>"; };
+		9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCue.entitlements; sourceTree = "<group>"; };
+		9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayout.swift; sourceTree = "<group>"; };
+		A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AC92EB06720047F373C10DFC /* RecordingControlWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingControlWidget.swift; sourceTree = "<group>"; };
+		AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCommandObserver.swift; sourceTree = "<group>"; };
+		B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayoutTests.swift; sourceTree = "<group>"; };
+		D2B7CB564F864C828123FDD3 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivityAttributes.swift; sourceTree = "<group>"; };
+		D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenLanguage.swift; sourceTree = "<group>"; };
+		E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartupUITests.swift; sourceTree = "<group>"; };
+		E745A03BE489FE9A6A44E7FF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivityController.swift; sourceTree = "<group>"; };
+		EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeGatewayDiscovery.swift; sourceTree = "<group>"; };
+		EDE36A0BFE6304551A90D527 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FBD67A1E5C4EF7AEAF00AA9D /* WakeOnCueUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A74B433043C6AE760524E97 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				79B3C2441B3E453A3D24D063 /* WakeOnCueCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		589ACA587CA97422452DDBF3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				269B7E6A0B56D4FE1DD779A4 /* WakeOnCueCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9A69F04712B0847172E37651 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2203253C60FA4C13E05309D3 /* WakeOnCueCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1C1600BD98E1C2C297C4FDF5 /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				3997A0D733F09923BCD17F13 /* AppSettings.swift */,
+				0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */,
+				AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */,
+				A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */,
+				4FD8ABC2DA71F79FCC9FBA1E /* RecordingStorageMaintenance.swift */,
+				7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */,
+			);
+			path = Infrastructure;
+			sourceTree = "<group>";
+		};
+		62185A30AD230562C842AEB6 /* WakeOnCueUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */,
+			);
+			path = WakeOnCueUITests;
+			sourceTree = "<group>";
+		};
+		668FBC924E6D27B132277DF1 /* Upload */ = {
+			isa = PBXGroup;
+			children = (
+				2AC5ED25FC04F1093E8FB6D3 /* BackgroundUploadCoordinator.swift */,
+			);
+			path = Upload;
+			sourceTree = "<group>";
+		};
+		762FBE8986157697A72EC117 /* Recording */ = {
+			isa = PBXGroup;
+			children = (
+				EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */,
+				5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */,
+				2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */,
+			);
+			path = Recording;
+			sourceTree = "<group>";
+		};
+		8FBC44E08F79949555631107 /* WakeOnCueWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				43EC47D0ECE07DF72FCBF3F0 /* Info.plist */,
+				AC92EB06720047F373C10DFC /* RecordingControlWidget.swift */,
+				2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */,
+				4F5D92341789174B478A1B2B /* WakeOnCueWidgets.entitlements */,
+				8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */,
+			);
+			path = WakeOnCueWidgets;
+			sourceTree = "<group>";
+		};
+		9C138B15FA5115EF6485DB8D /* Realtime */ = {
+			isa = PBXGroup;
+			children = (
+				EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */,
+				2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */,
+			);
+			path = Realtime;
+			sourceTree = "<group>";
+		};
+		B0C51E219CC93560234F89EB = {
+			isa = PBXGroup;
+			children = (
+				F24B1B3357D9837560525D4A /* Packages */,
+				BC6C8F3D769236CE92111178 /* Shared */,
+				BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */,
+				EDB8145834B4A82A2DB4E95C /* WakeOnCueTests */,
+				62185A30AD230562C842AEB6 /* WakeOnCueUITests */,
+				8FBC44E08F79949555631107 /* WakeOnCueWidgets */,
+				D05533EED996F08D17279212 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */ = {
+			isa = PBXGroup;
+			children = (
+				1C1600BD98E1C2C297C4FDF5 /* Infrastructure */,
+				DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */,
+				9C138B15FA5115EF6485DB8D /* Realtime */,
+				762FBE8986157697A72EC117 /* Recording */,
+				EA99173F170291CF0B9F5E68 /* UI */,
+				668FBC924E6D27B132277DF1 /* Upload */,
+				1B24D97BAA1B9EB3CE43D2B6 /* AppDelegate.swift */,
+				E745A03BE489FE9A6A44E7FF /* AppModel.swift */,
+				9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */,
+				6EB419A36E5FBD434A45BDA1 /* Info.plist */,
+				8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */,
+				9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */,
+				6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */,
+			);
+			path = WakeOnCue;
+			sourceTree = "<group>";
+		};
+		BC6C8F3D769236CE92111178 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				50E2E8DB3973F50512033610 /* Localizable.strings */,
+				D2B7CB564F864C828123FDD3 /* AppLanguage.swift */,
+				858D730FA216B5904F8363C8 /* InfoPlist.strings */,
+				D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */,
+				34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */,
+				430BD843F968775BC442DAE5 /* SharedRecordingState.swift */,
+				D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		D05533EED996F08D17279212 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F72C47A91F5199C598D60559 /* WakeOnCue.app */,
+				A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */,
+				FBD67A1E5C4EF7AEAF00AA9D /* WakeOnCueUITests.xctest */,
+				004ADFE12E5AC730D2E437EF /* WakeOnCueWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */,
+			);
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
+		EA99173F170291CF0B9F5E68 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */,
+				69A872A2ADA906883325D430 /* SettingsView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		EDB8145834B4A82A2DB4E95C /* WakeOnCueTests */ = {
+			isa = PBXGroup;
+			children = (
+				B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */,
+			);
+			path = WakeOnCueTests;
+			sourceTree = "<group>";
+		};
+		F24B1B3357D9837560525D4A /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				5C2C0A3BB0F7CB999F01D1E4 /* WakeOnCueCore */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		19562381A80A56EE9E63CF5D /* WakeOnCueUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EDACACFBC99D7FEA1FAF5C3B /* Build configuration list for PBXNativeTarget "WakeOnCueUITests" */;
+			buildPhases = (
+				FF067E8A576210BD5CD310EC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8913F6309500E5FCA9797DFF /* PBXTargetDependency */,
+			);
+			name = WakeOnCueUITests;
+			packageProductDependencies = (
+			);
+			productName = WakeOnCueUITests;
+			productReference = FBD67A1E5C4EF7AEAF00AA9D /* WakeOnCueUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		7AF0B4AF86BD6DF4524967DE /* WakeOnCueTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A5CCFCFB3862C2370DA9BB17 /* Build configuration list for PBXNativeTarget "WakeOnCueTests" */;
+			buildPhases = (
+				17F4532CDFF20ED7ECEA747E /* Sources */,
+				1A74B433043C6AE760524E97 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F742E24CFD3B4A117675059E /* PBXTargetDependency */,
+			);
+			name = WakeOnCueTests;
+			packageProductDependencies = (
+				33CCCFD5FC2D9005CF22D259 /* WakeOnCueCore */,
+			);
+			productName = WakeOnCueTests;
+			productReference = A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		85F277F2A36A7806BAF04573 /* WakeOnCueWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EF8396ABE9550BF46985D99C /* Build configuration list for PBXNativeTarget "WakeOnCueWidgets" */;
+			buildPhases = (
+				786DF70F984B74D9C052EBC9 /* Sources */,
+				743E09614320C6238832ED30 /* Resources */,
+				9A69F04712B0847172E37651 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WakeOnCueWidgets;
+			packageProductDependencies = (
+				DA526BAF013923BBC75EBC60 /* WakeOnCueCore */,
+			);
+			productName = WakeOnCueWidgets;
+			productReference = 004ADFE12E5AC730D2E437EF /* WakeOnCueWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B50B0250357195A8284C1B0D /* WakeOnCue */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4EF7E83C8DC098E6A4F5891A /* Build configuration list for PBXNativeTarget "WakeOnCue" */;
+			buildPhases = (
+				0168411CB1AC6DB400C1E3B6 /* Sources */,
+				5D8101937970D2F293EDBF1F /* Resources */,
+				589ACA587CA97422452DDBF3 /* Frameworks */,
+				A767F9B7F761B02165952A47 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				13F320C0901A18B07446B713 /* PBXTargetDependency */,
+			);
+			name = WakeOnCue;
+			packageProductDependencies = (
+				364E97881D72FF49F2C4F063 /* WakeOnCueCore */,
+			);
+			productName = WakeOnCue;
+			productReference = F72C47A91F5199C598D60559 /* WakeOnCue.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		22275792CBEC965A2CFAFCE6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					19562381A80A56EE9E63CF5D = {
+						DevelopmentTeam = TEAM_IDH;
+						ProvisioningStyle = Automatic;
+						TestTargetID = B50B0250357195A8284C1B0D;
+					};
+					7AF0B4AF86BD6DF4524967DE = {
+						DevelopmentTeam = TEAM_IDH;
+						ProvisioningStyle = Automatic;
+					};
+					85F277F2A36A7806BAF04573 = {
+						DevelopmentTeam = TEAM_IDH;
+						ProvisioningStyle = Automatic;
+					};
+					B50B0250357195A8284C1B0D = {
+						DevelopmentTeam = TEAM_IDH;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 1B3EEB0CA151C1EAFA44F160 /* Build configuration list for PBXProject "WakeOnCue" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hans",
+			);
+			mainGroup = B0C51E219CC93560234F89EB;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E1D5632A51A32B37D7646236 /* XCLocalSwiftPackageReference "Packages/WakeOnCueCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D05533EED996F08D17279212 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B50B0250357195A8284C1B0D /* WakeOnCue */,
+				85F277F2A36A7806BAF04573 /* WakeOnCueWidgets */,
+				7AF0B4AF86BD6DF4524967DE /* WakeOnCueTests */,
+				19562381A80A56EE9E63CF5D /* WakeOnCueUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5D8101937970D2F293EDBF1F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */,
+				06DFAB7913D853C72D246BD1 /* InfoPlist.strings in Resources */,
+				3EBC44400AD284B01FFE86D5 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		743E09614320C6238832ED30 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				741D5986552DDD76C5C88E68 /* InfoPlist.strings in Resources */,
+				9D9FE1273731021262DAF3D9 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0168411CB1AC6DB400C1E3B6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C307E723EF8DB4F282F6B14A /* AppDelegate.swift in Sources */,
+				982D1A7A9C67C37CF0258F03 /* AppLanguage.swift in Sources */,
+				B8EC165E40AC6C92613F52CD /* AppModel.swift in Sources */,
+				DAC32638A37AA865F8162814 /* AppSettings.swift in Sources */,
+				4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */,
+				140283C37E9E0E404CB1239D /* BackgroundUploadCoordinator.swift in Sources */,
+				A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */,
+				03F32A464D9F57116A9320C3 /* RealtimeGatewayDiscovery.swift in Sources */,
+				F1C2A96BFA1E3FDC3D3CB1E6 /* RealtimeProcessingClient.swift in Sources */,
+				FE9AB9FEA87CF11CD104CF6E /* RecordingActivityAttributes.swift in Sources */,
+				D4D41C76311F4AA5900B1D1B /* RecordingAudioAssembler.swift in Sources */,
+				B2C88683F77391BBC6E88D9D /* RecordingAudioFileProvider.swift in Sources */,
+				920E0E8B46A2126A7498B445 /* RecordingCommandObserver.swift in Sources */,
+				8AD40F5D04CE05D71749C948 /* RecordingFileLayout.swift in Sources */,
+				6021FF573FCC07D085701CE6 /* RecordingIntents.swift in Sources */,
+				3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */,
+				D47AE489BEE3831F69138029 /* RecordingRecoveryService.swift in Sources */,
+				EBD66C251B633A70DE738E31 /* RecordingShortcuts.swift in Sources */,
+				2FE5645F6B734B0B028E2502 /* RecordingStorageMaintenance.swift in Sources */,
+				B0F9A4F91F18B4AFE9C48CF4 /* S3StorageClient.swift in Sources */,
+				D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */,
+				77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */,
+				B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */,
+				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		17F4532CDFF20ED7ECEA747E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE9A905CC49C9DCE3B734AF3 /* RecordingFileLayoutTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		786DF70F984B74D9C052EBC9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				116DD06F75F19AB28F0D281A /* AppLanguage.swift in Sources */,
+				5F805F7A42983C06C29DF7E0 /* RecordingActivityAttributes.swift in Sources */,
+				B708A2B587B86D2DD7069F3F /* RecordingControlWidget.swift in Sources */,
+				53CD5F4C453E36D552D5B823 /* RecordingIntents.swift in Sources */,
+				DA336C5E9026EB01BB8684D5 /* RecordingLiveActivityWidget.swift in Sources */,
+				4B211C375A1E8FBFCBFFACAB /* SharedRecordingState.swift in Sources */,
+				7926AE919DB1149BFB9561E2 /* SpokenLanguage.swift in Sources */,
+				E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FF067E8A576210BD5CD310EC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B3C44F955BD28C6022EA8ACB /* RecordingStartupUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		13F320C0901A18B07446B713 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 85F277F2A36A7806BAF04573 /* WakeOnCueWidgets */;
+			targetProxy = 0921B2FA1383FE5740454635 /* PBXContainerItemProxy */;
+		};
+		8913F6309500E5FCA9797DFF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B50B0250357195A8284C1B0D /* WakeOnCue */;
+			targetProxy = B7D67B36BEEBAA2E0C5FDF56 /* PBXContainerItemProxy */;
+		};
+		F742E24CFD3B4A117675059E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B50B0250357195A8284C1B0D /* WakeOnCue */;
+			targetProxy = B94F5DFDAF5265AF85C9DE50 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		50E2E8DB3973F50512033610 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4A6F8EBA363AFC36576CBDC2 /* en */,
+				EDE36A0BFE6304551A90D527 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		07453B275D83158DB9B80BAE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeOnCue.app/WakeOnCue";
+			};
+			name = Debug;
+		};
+		184D04DC88CF71908502F63A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = WakeOnCue;
+			};
+			name = Release;
+		};
+		4544FC6AEC433A8AD433EFED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = WakeOnCue/WakeOnCue.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = WakeOnCue/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WakeOnCue;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue;
+				PRODUCT_NAME = WakeOnCue;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		620A416D6C3000D8B0DC8FF1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WakeOnCueWidgets/WakeOnCueWidgets.entitlements;
+				INFOPLIST_FILE = WakeOnCueWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.widgets;
+				PRODUCT_NAME = WakeOnCueWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		6D60DDC5F4BEB5FD4B0F31CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = WakeOnCue/WakeOnCue.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = WakeOnCue/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WakeOnCue;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue;
+				PRODUCT_NAME = WakeOnCue;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		8F761A61836A4E14F3016F79 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeOnCue.app/WakeOnCue";
+			};
+			name = Release;
+		};
+		BF771C3AE8E5C16C03F780D3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WakeOnCueWidgets/WakeOnCueWidgets.entitlements;
+				INFOPLIST_FILE = WakeOnCueWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.widgets;
+				PRODUCT_NAME = WakeOnCueWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D0D0C164D8F1BE03C9087A05 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = TEAM_IDH;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = TEAM_IDH;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		FA7A59ECE93330EEEE313F15 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = WakeOnCue;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1B3EEB0CA151C1EAFA44F160 /* Build configuration list for PBXProject "WakeOnCue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DFB6DB29A349CB804D5DF5A5 /* Debug */,
+				D0D0C164D8F1BE03C9087A05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4EF7E83C8DC098E6A4F5891A /* Build configuration list for PBXNativeTarget "WakeOnCue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D60DDC5F4BEB5FD4B0F31CB /* Debug */,
+				4544FC6AEC433A8AD433EFED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A5CCFCFB3862C2370DA9BB17 /* Build configuration list for PBXNativeTarget "WakeOnCueTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				07453B275D83158DB9B80BAE /* Debug */,
+				8F761A61836A4E14F3016F79 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EDACACFBC99D7FEA1FAF5C3B /* Build configuration list for PBXNativeTarget "WakeOnCueUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA7A59ECE93330EEEE313F15 /* Debug */,
+				184D04DC88CF71908502F63A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EF8396ABE9550BF46985D99C /* Build configuration list for PBXNativeTarget "WakeOnCueWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BF771C3AE8E5C16C03F780D3 /* Debug */,
+				620A416D6C3000D8B0DC8FF1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		E1D5632A51A32B37D7646236 /* XCLocalSwiftPackageReference "Packages/WakeOnCueCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/WakeOnCueCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		33CCCFD5FC2D9005CF22D259 /* WakeOnCueCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WakeOnCueCore;
+		};
+		364E97881D72FF49F2C4F063 /* WakeOnCueCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WakeOnCueCore;
+		};
+		DA526BAF013923BBC75EBC60 /* WakeOnCueCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WakeOnCueCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 22275792CBEC965A2CFAFCE6 /* Project object */;
+}

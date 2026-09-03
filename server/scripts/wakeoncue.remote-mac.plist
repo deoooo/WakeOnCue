@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.deoooo.WakeOnCue.remote-mac</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/WakeOnCue/server/scripts/run_remote_mac_stack.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/WakeOnCue/server</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/path/to/WakeOnCue/server/.runtime/remote-mac/launch-agent.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/WakeOnCue/server/.runtime/remote-mac/launch-agent.err.log</string>
+</dict>
+</plist>

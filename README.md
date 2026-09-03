@@ -1,54 +1,77 @@
 # WakeOnCue
 
-> 现实事件驱动的 Agent 主动唤醒层  
-> A proactive agent activation layer for real-world cues.
+WakeOnCue 是一个独立的 Native iOS 会议录音与云端同步 MVP。它不依赖 Omi，也不在 iPhone 内绑定任何 ASR、LLM 或 Agent。
 
-WakeOnCue 让 Agent 不必一直等待用户输入 Prompt。它接收来自 Omi、手机、Home Assistant、浏览器或 Webhook 的现实世界信号，将信号理解为可判断的 Cue，在正确时机选择：
+```text
+iPhone microphone
+  → continuous local PCM source (Source of Truth)
+  → 10-second AAC chunks
+  → local completion (default)
+  → optional persistent SQLite upload queue
+  → user-configured S3 / S3-compatible storage
+```
 
-<p align="center"><strong>IGNORE · OBSERVE_MORE · WAKE_AGENT</strong></p>
+可靠性优先级是：本地录音 > 不丢数据 > 云端同步 > 交互 > 上传延迟 > 视觉效果。网络和服务端不参与麦克风到本地文件的写入路径。
 
-WakeOnCue 不实现通用 Agent，也不代替 OpenClaw、Pi Agent 等运行时执行工具。它负责的是两者之间缺失的一层：
+现在也提供可选的实时分析旁路：iPhone 把 0.5 秒 PCM 帧发送到稳定 Realtime Gateway，由可替换 Processor 返回带说话人字段和 revision 的实时字幕。Gateway/Processor 故障不会影响本地录音；Mac 只是当前首个 Processor 运行环境，App 协议不依赖 Mac。
 
-~~~text
-现实世界信号 → Cue 理解 → 主动触发决策 → 唤醒 Agent → 结果回流
-~~~
+用户可在 iOS 设置中直接配置 AWS S3 或 S3 兼容存储；保存时由 iPhone 真实执行一次临时对象的写入、读取与删除验证，通过后才启用。凭据保存在 iOS Keychain。完成时 App 把 Chunk 合成为兼容性广、体积较小的 AAC-LC `.m4a`，用于 S3 最终文件、本地播放和系统分享。
 
-## 核心边界
+未配置 S3 时，录音结束后由本机数据库直接完成；App 只展示“Saved locally”，不会显示 Uploading、Synced 或 Waiting。启用 S3 后才创建上传任务并展示按录音时长计算的云端同步进度。Recording API 暂不参与 App 链路，保留的服务端代码仅供后续 Agent/API 阶段重新接入。
 
-- **主动触发优先**：核心价值是从现实事件发现值得 Agent 介入的时机。
-- **感知供应商可替换**：Omi、ASR、CV、IoT 和应用事件通过统一 Source Adapter 接入。
-- **执行归 Agent**：规划、MCP/Tool 调用与执行循环仍由外部 Agent Runtime 负责。
-- **敏感操作必须确认**：运行时在具体 Tool Attempt 形成后调用授权接口；没有一次性 Permit 就不能执行。
-- **证据链是基础能力**：事件、决策、唤醒、授权和结果均可关联，但 Trace 不是产品主叙事。
-- **结果必须闭环**：执行状态、验证结果、通知回执和用户反馈重新成为事件。
+## 当前实现
 
-## 文档
+- iOS 18、SwiftUI、AVAudioEngine / AVAudioConverter；
+- 连续 `24 kHz / mono / 16-bit PCM CAF` 本地源文件；
+- 约 10 秒一个 `64 kbps AAC-LC .m4a` 上传 Chunk；
+- `Recording / Chunk / UploadTask` 三表 SQLite（WAL + FULL synchronous）；
+- `Background URLSession` 文件上传、断网等待、指数退避、进程恢复；
+- AWS Signature Version 4 直连 S3，支持自定义 endpoint 与 path-style；
+- Start / Pause / Resume / Finish 保持同一 `recording_id`；
+- Live Activity、App Shortcuts、iOS 18 Control Center / Lock Screen Control、可选 Action Button；
+- 本机合并并分享标准 AAC-LC M4A；
+- 可选 Realtime Gateway、断线重连/事件补放和 App 内实时字幕；
+- 可替换 Mac Processor：Qwen3-ASR-1.7B 实时初稿/原位修订（MLX Whisper 回退）+ sherpa-onnx 说话人分割与声纹聚类；
+- Swift 核心单元测试、真实 S3 兼容端点 round-trip 和真实 AAC/M4A 验证。
+
+详细说明：
 
 - [系统架构](docs/architecture.md)
-- [MVP 设计](docs/mvp.md)
-- [可直接交给 Codex 长期执行的 MVP Goal Prompt](MVP_GOAL_PROMPT.md)
-- [可交互 HTML 架构图](docs/architecture.html)
+- [Recording API Contract](docs/api-contract.md)
+- [本地开发与真机启动](docs/development.md)
+- [MVP 范围与验收](docs/mvp.md)
+- [验证结果](docs/verification.md)
+- [实时处理协议与部署](docs/realtime-processing.md)
 
-## MVP
+## 配置存储
 
-第一版只证明一件事：
+默认无需任何服务，录音保存在 iPhone。需要云端同步时，在 App 设置中启用 S3，填写 Bucket、Region、Access Key、Secret Key；非 AWS 的兼容服务再填写自定义 Endpoint，并按服务要求启用 path-style。Save 验证成功后，仅后续新录音会直接同步到该存储。
 
-> 一段现实对话或外部事件，可以在没有新 Prompt 的情况下，低打扰地形成一个有证据的 Agent 任务；敏感操作会在执行前向用户确认，结果可以回到同一条任务时间线。
+## 打开 iOS 工程
 
-首批范围：
+仓库包含可直接打开的 [WakeOnCue.xcodeproj](ios/WakeOnCue.xcodeproj/project.pbxproj)。需要安装带 iOS 18+ SDK 的完整 Xcode：
 
-- Source：通用 Webhook + Omi transcript；
-- 决策：规则、去重、冷却和结构化 LLM Judge；
-- 输出：Shadow、通知或唤醒一个 Agent Runtime；
-- 安全：只读自动执行，外发/写入/设备控制逐次确认；
-- 产品面：Cue 时间线、Wake 决策、审批和执行结果。
+```bash
+open ios/WakeOnCue.xcodeproj
+```
 
-## 项目状态
+在 Xcode 中设置自己的 Development Team，并为 App 与 Widget Extension 配置同一个 App Group。默认标识为 `group.com.deoooo.WakeOnCue`；若修改，请同步修改 `ios/project.yml`、两个 entitlements 和 `SharedRecordingState.appGroup`，再运行：
 
-当前处于架构与 MVP 定义阶段。仓库暂为私有，尚未承诺稳定 API。
+```bash
+cd ios
+xcodegen generate
+```
 
-## 名称
+第一次请从 App 内授权麦克风并成功开始一次录音，再配置 Control Center、锁屏 Control 或 Action Button。
 
-**WakeOnCue** 表达的是“在现实 Cue 出现时唤醒合适的 Agent”。
+## 可在 macOS 命令行执行的测试
 
-<strong>Wake 不等于 Execute。</strong> 主动唤醒不会绕过用户授权。
+```bash
+cd ios/Packages/WakeOnCueCore
+swift test
+
+cd ../../../..
+PYTHONPATH=server python3 -m unittest discover -s server/tests -v
+```
+
+完整 Xcode 构建和真机可靠性步骤见 [开发说明](docs/development.md)。当前仓库不会把命令行 Swift 测试、fixture 或服务端合成音频测试描述成 iPhone 真机录音证明。
