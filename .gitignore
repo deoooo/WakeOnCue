@@ -12,6 +12,7 @@ coverage/
 *.db-shm
 *.db-wal
 .runtime/
+.artifacts/
 data/
 .local/
 __pycache__/
