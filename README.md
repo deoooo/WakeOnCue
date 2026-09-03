@@ -43,6 +43,11 @@ iPhone microphone
 - [验证结果](docs/verification.md)
 - [实时处理协议与部署](docs/realtime-processing.md)
 
+想在自己的 MacBook 上直接跑实时服务，可从仓库根目录执行
+`server/scripts/setup_mac.sh` 后运行 `server/scripts/run_local_mac_stack.sh`；连接
+iPhone 后运行 `ios/install_device.sh <device-id-or-udid>` 完成构建和安装。首次使用只需
+在 Xcode 选择自己的 Development Team，并在 iPhone 上允许麦克风和本地网络访问。
+
 ## 配置存储
 
 默认无需任何服务，录音保存在 iPhone。需要云端同步时，在 App 设置中启用 S3，填写 Bucket、Region、Access Key、Secret Key；非 AWS 的兼容服务再填写自定义 Endpoint，并按服务要求启用 path-style。Save 验证成功后，仅后续新录音会直接同步到该存储。

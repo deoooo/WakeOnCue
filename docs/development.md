@@ -13,6 +13,30 @@ brew install ffmpeg xcodegen
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ```
 
+## 1.1 Open-source Mac quick start
+
+从 GitHub clone 后，在仓库根目录执行：
+
+```bash
+server/scripts/setup_mac.sh
+server/scripts/run_local_mac_stack.sh
+```
+
+这会创建服务端虚拟环境、安装 Gateway/Processor 依赖，并在 macOS Keychain
+生成随机的实时 Gateway token。默认使用 MLX Whisper 回退处理器，适合先验证流程；
+如果已经准备好 Qwen3-ASR-1.7B 模型，可执行：
+
+```bash
+WAKEONCUE_ASR_BACKEND=qwen server/scripts/setup_mac.sh
+WAKEONCUE_ASR_BACKEND=qwen WAKEONCUE_QWEN_MODEL=/absolute/path/to/Qwen3-ASR-1.7B \
+  server/scripts/run_local_mac_stack.sh
+```
+
+`run_local_mac_stack.sh` 只启动局域网 Gateway，不需要 Cloudflare、固定公网域名或
+同一台机器上的额外服务。保持终端运行，iPhone 与 Mac 连接同一 Wi-Fi 后，App 会通过
+Bonjour 自动发现 Mac；若局域网不可用，才使用 App 设置中配置的公网 Gateway。第一次
+运行 macOS 防火墙或 iOS “本地网络”权限提示时请选择允许。
+
 当前 Mac 的系统级 `xcode-select` 仍可能指向 Command Line Tools；上面的 `DEVELOPER_DIR` 可直接使用完整 Xcode，无需管理员权限。若要全局切换，可手动运行 `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`。
 
 ## 2. Storage
@@ -34,6 +58,17 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 5. 修改 project.yml 后运行 `cd ios && xcodegen generate`。
 
 App target 需要 Background Modes / Audio。Widget Extension 承载 Live Activity 与 iOS 18 Control。
+
+项目不再写死任何开发者 Team ID。连接已解锁并信任的 iPhone 后，也可以直接运行：
+
+```bash
+ios/install_device.sh <device-id-or-udid>
+```
+
+脚本会重新生成 Xcode 工程、执行签名构建并安装 App；如自动签名无法选择 Team，先在
+Xcode 的 Signing & Capabilities 选择自己的 Team，或设置 `DEVELOPMENT_TEAM` 环境变量。
+App Group 和 Bundle ID 必须在自己的 Apple Developer 账号下唯一，开源使用者应按账号
+需要修改 `ios/project.yml` 与两个 entitlements。
 
 ## 4. Run on iPhone
 

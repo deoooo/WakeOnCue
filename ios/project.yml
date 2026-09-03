@@ -13,7 +13,6 @@ packages:
 settings:
   base:
     SWIFT_VERSION: 6.0
-    DEVELOPMENT_TEAM: "TEAM_IDH"
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 0.1.0
