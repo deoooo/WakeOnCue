@@ -40,6 +40,8 @@
 	<array>
 		<string>_wakeoncue._tcp</string>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>WakeOnCue uses the camera only to scan a self-hosted service pairing QR code.</string>
 	<key>NSLocalNetworkUsageDescription</key>

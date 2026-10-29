@@ -138,6 +138,25 @@ public actor RecordingStore {
     return try recording(id: recordingID)
   }
 
+  /// Merges values into the recording's durable metadata, replacing keys that already exist.
+  @discardableResult
+  public func updateRecordingMetadata(
+    recordingID: String,
+    values: [String: String],
+    now: Date = Date()
+  ) throws -> RecordingRecord {
+    var metadata = try recording(id: recordingID).metadata
+    metadata.merge(values) { _, new in new }
+    try run(
+      "UPDATE recordings SET metadata_json = ?, updated_at = ? WHERE id = ?",
+      [
+        .text(Self.encodeMetadata(metadata)), .double(now.timeIntervalSince1970),
+        .text(recordingID),
+      ]
+    )
+    return try recording(id: recordingID)
+  }
+
   /// Searches custom titles across the complete local data set without an implicit result cap.
   public func recordings(matchingTitle query: String) throws -> [RecordingRecord] {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)

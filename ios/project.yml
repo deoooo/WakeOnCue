@@ -51,6 +51,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: WakeOnCue needs microphone access to record meetings you explicitly start.
         NSCameraUsageDescription: WakeOnCue uses the camera only to scan a self-hosted service pairing QR code.
+        NSCalendarsFullAccessUsageDescription: WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.
         NSLocalNetworkUsageDescription: WakeOnCue connects to user-configured storage and realtime processing services.
         NSBonjourServices:
           - _wakeoncue._tcp
@@ -70,6 +71,7 @@ targets:
     entitlements:
       path: WakeOnCue/WakeOnCue.entitlements
       properties:
+        com.apple.developer.usernotifications.time-sensitive: true
         com.apple.security.application-groups:
           - group.com.deoooo.WakeOnCue
 

@@ -40,6 +40,7 @@ final class AppModel {
 
   let settings: AppSettings
   let places = PlaceAutomation()
+  let meetings = CalendarAutomation()
 
   @ObservationIgnored private let fileLayout: RecordingFileLayout
   @ObservationIgnored private let store: RecordingStore
@@ -103,6 +104,8 @@ final class AppModel {
       if self.currentRecording == nil { await self.startRecording() }
     }
     places.start()
+    meetings.onStartRequested = places.onStartRequested
+    meetings.start()
   }
 
   private func handlePlace(
@@ -304,6 +307,10 @@ final class AppModel {
       publishSharedState(isRecording: true, isPaused: false, recordingID: recordingID)
       await liveActivity.start(recording: recording, usesS3: s3Enabled)
       if s3Enabled { uploader.schedule() }
+      let meetingMetadata = meetings.recordingMetadata(startingAt: now)
+      if !meetingMetadata.isEmpty {
+        _ = try? await store.updateRecordingMetadata(recordingID: recordingID, values: meetingMetadata)
+      }
       await refresh()
       if let realtimeClient {
         Task {

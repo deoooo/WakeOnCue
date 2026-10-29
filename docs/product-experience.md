@@ -127,6 +127,17 @@ Done in this round:
   exists, and an on-device Apple Intelligence summary (title, overview, key points,
   follow-ups) for every transcript; AirPods high-quality recording; importing audio
   files from Files.
+- Calendar-driven recording, off by default: with full calendar access, a recording
+  started during a meeting (or up to 10 minutes before it) takes the event's title,
+  identifier and attendee names, and the detail page shows the linked meeting. An
+  optional time-sensitive reminder at the start (or 1, 5 or 10 minutes before) has a
+  Start Recording action; recording never starts without that tap. Reminders are
+  rescheduled on launch, on becoming active and on calendar changes, capped at 32
+  pending notifications (iOS allows 64). Users can limit which calendars count and
+  require other attendees or a video link. After the meeting, "Send notes to
+  attendees" builds plain text from the title, date and on-device summary and opens
+  Mail with the attendees' addresses (or the share sheet); the user reviews and sends.
+  Place and calendar notifications share one notification router.
 
 Not done yet:
 
@@ -136,10 +147,10 @@ Not done yet:
 | Live on-device captions | P0 | Feed SpeechAnalyzer from the capture buffers for realtime text without a Mac. |
 | Mac menu-bar app | P1 | Bundled Processor with pairing QR; online-meeting capture (microphone + system audio). |
 | Answers with citations and self-hosted MCP | P1 | Timestamped sources that seek playback; MCP served by the Mac Processor or Gateway. |
-| Calendar-driven recording | P1 | Name recordings from events, remind or start at meeting time, send notes to attendees. |
 | Daily timeline page | Later | One long page per day with recordings, summaries and AI-generated illustrations; not in the first version. |
 | Location history | Not planned | Places are used only as triggers, not recorded as a history. |
 
 Unverified on device: place notifications and background relaunch, Shortcuts Arrive
 automation, AirPods high-quality input, on-device transcription quality and summary
-quality, remembered-voice matching with real voices.
+quality, remembered-voice matching with real voices, meeting reminders firing and their
+Start Recording action from the lock screen, Mail compose with attendee addresses.
