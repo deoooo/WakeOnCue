@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.deoooo
   deploymentTarget:
     iOS: "18.0"
+    watchOS: "11.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -15,6 +16,9 @@ settings:
     SWIFT_VERSION: 6.0
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 1
+    # Signing team comes from the environment so xcodegen never discards it, e.g.
+    # `DEVELOPMENT_TEAM=ABCDE12345 ios/install_device.sh <device>`.
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
     MARKETING_VERSION: 0.1.0
     ENABLE_USER_SCRIPT_SANDBOXING: true
 
@@ -25,9 +29,12 @@ targets:
     sources:
       - path: WakeOnCue
       - path: Shared
+      - path: WatchShared
     dependencies:
       - package: WakeOnCueCore
       - target: WakeOnCueWidgets
+        embed: true
+      - target: WakeOnCueWatch
         embed: true
     settings:
       base:
@@ -43,6 +50,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: WakeOnCue needs microphone access to record meetings you explicitly start.
+        NSCameraUsageDescription: WakeOnCue uses the camera only to scan a self-hosted service pairing QR code.
         NSLocalNetworkUsageDescription: WakeOnCue connects to user-configured storage and realtime processing services.
         NSBonjourServices:
           - _wakeoncue._tcp
@@ -94,6 +102,84 @@ targets:
         com.apple.security.application-groups:
           - group.com.deoooo.WakeOnCue
 
+  WakeOnCueWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: WakeOnCueWatch
+      - path: WatchShared
+      - path: WatchResources
+    dependencies:
+      - target: WakeOnCueWatchWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.watchkitapp
+        PRODUCT_NAME: WakeOnCueWatch
+        TARGETED_DEVICE_FAMILY: "4"
+        SKIP_INSTALL: true
+    info:
+      path: WakeOnCueWatch/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.deoooo.WakeOnCue
+        NSMicrophoneUsageDescription: WakeOnCue records on your Watch only after you tap Record, and sends the recording to your iPhone.
+        UIBackgroundModes:
+          - audio
+        CFBundleURLTypes:
+          - CFBundleURLName: com.deoooo.WakeOnCue.watch
+            CFBundleURLSchemes:
+              - wakeoncue
+    entitlements:
+      path: WakeOnCueWatch/WakeOnCueWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.deoooo.WakeOnCue
+
+  WakeOnCueWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: WakeOnCueWatchWidgets
+      - path: WatchShared
+      - path: WatchResources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.watchkitapp.widgets
+        PRODUCT_NAME: WakeOnCueWatchWidgets
+        TARGETED_DEVICE_FAMILY: "4"
+        SKIP_INSTALL: true
+        APPLICATION_EXTENSION_API_ONLY: true
+    info:
+      path: WakeOnCueWatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WakeOnCueWatchWidgets/WakeOnCueWatchWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.deoooo.WakeOnCue
+
+  WakeOnCueWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    sources:
+      - path: WakeOnCueWatchUITests
+    dependencies:
+      - target: WakeOnCueWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.watchkitapp.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: WakeOnCueWatch
+
   WakeOnCueTests:
     type: bundle.unit-test
     platform: iOS
@@ -121,6 +207,17 @@ targets:
         TEST_TARGET_NAME: WakeOnCue
 
 schemes:
+  WakeOnCueWatch:
+    build:
+      targets:
+        WakeOnCueWatch: all
+        WakeOnCueWatchWidgets: all
+        WakeOnCueWatchUITests: [test]
+    run:
+      config: Debug
+    test:
+      targets:
+        - WakeOnCueWatchUITests
   WakeOnCue:
     build:
       targets:

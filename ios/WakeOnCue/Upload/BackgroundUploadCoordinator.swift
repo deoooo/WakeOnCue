@@ -106,6 +106,8 @@ final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
     let tasks = try await store.eligibleUploadTasks(limit: 12)
     guard let currentConfiguration = stateLock.withLock({ configuration }) else { return }
     for task in tasks {
+      let recording = try await store.recording(id: task.recordingID)
+      guard currentConfiguration.matchesRecordedLocation(recording.metadata) else { continue }
       let chunk: ChunkRecord?
       if let chunkID = task.chunkID {
         chunk = try await store.chunk(id: chunkID)

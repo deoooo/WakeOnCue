@@ -31,6 +31,8 @@ Content-Type: application/json
 }
 ```
 
+可选字段 `speaker_diarization` 与 `known_voiceprints` 控制是否区分说话人以及可识别的已保存声音，见下方[区分说话人与记住声音](#区分说话人与记住声音)。
+
 返回 `session_id`、短期 `session_token` 和 `websocket_url`。WebSocket 使用 `Authorization: Bearer <session-token>`，token 不放在 URL 中。
 
 App 发送：
@@ -42,7 +44,7 @@ App 发送：
 Processor 返回：
 
 - `transcript.upsert`：相同 `segment_id` 可被更高 revision 修订；
-- `speaker.corrected`：后续 diarization 或身份匹配可以纠正说话人；
+- `speaker.corrected`：后续 diarization 修订说话人簇，匹配上已保存声音时带 `person_id`；
 - `session.completed`：本次实时处理结束。
 
 字幕示例：
@@ -60,7 +62,7 @@ Processor 返回：
   "is_final": true,
   "speaker": {
     "cluster_id": "speaker_1",
-    "person_id": null,
+    "person_id": "self",
     "display_name": "Speaker 1",
     "confidence": 0.87
   }
@@ -91,6 +93,48 @@ export WAKEONCUE_REALTIME_API_TOKEN='same-token'
 wakeoncue-mac-processor --gateway http://127.0.0.1:8090 --backend whisper
 ```
 
+## Pair an iPhone with a self-hosted Gateway
+
+WakeOnCue pairing payloads use this versioned JSON contract:
+
+```json
+{
+  "type": "wakeoncue.realtime-gateway",
+  "version": 1,
+  "gateway_url": "https://gateway.example.com",
+  "gateway_token": "the-existing-gateway-bearer-token"
+}
+```
+
+`gateway_url` must be an HTTP or HTTPS base URL without embedded credentials, query,
+or fragment. `gateway_token` is the existing long-lived Gateway bearer token. Pairing
+does not make it short-lived and the App does not describe it as expiring. The JSON and
+QR code must therefore be handled as secrets.
+
+Create the JSON and a real QR PNG from a token already held in an environment variable:
+
+```bash
+cd server
+export WAKEONCUE_REALTIME_API_TOKEN='same-token-used-by-the-gateway'
+python scripts/generate_realtime_pairing.py \
+  --url 'https://gateway.example.com' \
+  --token-env WAKEONCUE_REALTIME_API_TOKEN \
+  --json-output .runtime/pairing.json \
+  --qr-output .runtime/pairing.png
+```
+
+Or read the token from a private file with `--token-file /path/to/token`. The command
+never accepts the token itself as a command-line argument and never prints the token or
+payload. Both output files are created with owner-only permissions. Delete them after
+pairing.
+
+In iOS Settings, enable Live transcription, choose Pair self-hosted service, then scan
+the QR or paste the complete JSON. The App shows the URL, transport, and a masked token
+for explicit review. Verify and save calls the authenticated `/v1/realtime/validate`
+endpoint before anything is persisted. A scanned or stored token alone is not treated
+as proof that the service is currently reachable. Local recording remains the source of
+truth if transcription is disabled or unavailable.
+
 当前 Mac Processor 默认使用 `Qwen3-ASR-1.7B`。建议单独使用 Python 3.12 环境，避免 Qwen/PyTorch 与 MLX 的依赖互相影响：
 
 ```bash
@@ -104,15 +148,47 @@ export WAKEONCUE_QWEN_MODEL='/absolute/path/to/Qwen3-ASR-1.7B'
 
 模型在 Processor 启动时加载一次并驻留内存。每句话在约 4 秒时发布初稿，随着音频增长使用相同 `segment_id` 原位修订；检测到约 0.7 秒停顿或达到 16 秒上限后定稿。语言未被用户明确指定时，每句话独立自动检测，因此普通话、英语和粤语可以在同一录音中切换。会话结束时会用已完成的句子和上下文再校正一次。`WAKEONCUE_ASR_GLOSSARY` 可提供会议专有名词；`WAKEONCUE_ASR_BACKEND=whisper` 可立即回退到 MLX Whisper。
 
-Whisper 回退路径使用 16 秒窗口、4 秒步进，按词级时间戳只发布新内容；自动模式会在第一次可靠检测后锁定本次录音语言。低可信静音、异常压缩率和机械重复片段会被过滤。说话人识别使用 sherpa-onnx 的公开 pyannote segmentation ONNX 与 3D-Speaker embedding 模型；实时字幕先出现，滚动 diarization 完成后以 `speaker.corrected` 把 Unknown speaker 修订成 Speaker 1/2/3。
+Whisper 回退路径使用 16 秒窗口、4 秒步进，按词级时间戳只发布新内容；自动模式会在第一次可靠检测后锁定本次录音语言。低可信静音、异常压缩率和机械重复片段会被过滤。
 
-模型来源和 Python API 示例见 [sherpa-onnx 官方示例](https://github.com/k2-fsa/sherpa-onnx/blob/master/python-api-examples/offline-speaker-diarization.py)。默认自动估算人数；已知固定参会人数时可提高聚类稳定性：
+## 区分说话人与记住声音
 
-```bash
-wakeoncue-mac-processor --gateway http://127.0.0.1:8090 --speaker-count 4
+做法参照 AideMemo：默认不区分；用户开启后按「说话人 1 / 2 / …」匿名区分，可以在每条录音里命名；另有一个默认关闭的「记住声音」，用于在之后的录音里自动认出已命名的人。
+
+- **区分说话人（默认关闭）**：iOS 设置 › 说话人。开启后会话请求带 `"speaker_diarization": true`，Processor 才运行 diarization；不带时不做任何说话人分析，字幕保持 Unknown speaker。
+- **我的声音**：用户同意后朗读 20 秒，App 把样本发到 `POST /v1/voiceprints/enroll`，得到的声纹只存在 iPhone Keychain（`ThisDeviceOnly`，不进备份、iCloud 或 S3）。会话里以 `person_id = "self"` 下发，匹配上的那一类说话人显示为「我」。
+- **命名**：在录音的「说话人名称」里输入名字，或从通讯录选择（使用系统联系人选择器，App 不需要通讯录权限）。名字只属于这条录音。
+- **记住声音（默认关闭，开启前弹出生物识别说明）**：为说话人命名后可选「记住声音」。App 从这条录音里取出该说话人的片段（最多 20 秒），发到同一个登记接口，得到的声纹以随机 `person_id` 存在 iPhone Keychain。之后的会话通过 `known_voiceprints` 下发；Processor 把会话内的说话人簇与它们比对，只回传 `person_id`，名字从不离开 iPhone。一年没再听到的声音自动删除；关闭「记住声音」会删除全部已保存的声音，录音里已起的名字保留。
+- **Gateway 与 Processor 不落盘**：登记样本和声纹都不保存；会话期间 Gateway 只在内存保存 `known_voiceprints`，Processor 发出 `session.completed` 后即清除。
+
+```json
+{
+  "protocol_version": 1,
+  "recording_id": "rec_xxx",
+  "audio": {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1},
+  "speaker_diarization": true,
+  "known_voiceprints": [
+    {"person_id": "self", "model": "3dspeaker_...", "embedding": [0.01, -0.02]},
+    {"person_id": "6F1C…", "model": "3dspeaker_...", "embedding": [0.03, 0.01]}
+  ]
+}
 ```
 
-实时处理使用约 30 秒的有限滚动窗口（20 秒推进、10 秒重叠），不会随会议时长反复重算全部音频。跨窗口 speaker label 通过 512 维声纹 embedding 匹配到稳定 cluster。自动聚类阈值默认 0.95，以降低真实手机麦克风和扬声器回放环境中的过度拆分。这里的 Speaker 1/2 表示“同一个声音的人”，并不等于真实姓名；真实姓名需要后续增加用户确认或声纹 enrollment。可通过 `--diarization-interval`、`--diarization-overlap` 和 `--speaker-clustering-threshold` 调整延迟与稳定性的取舍。
+`speaker.corrected` 事件里的 `speaker` 形如 `{"cluster_id": "speaker_2", "person_id": "self" | "<id>" | null, "display_name": "Speaker 2"}`。声纹的 `model` 与当前 Processor 的 embedding 模型不一致时，该声音被忽略（仍会匿名区分）；更换模型后需要重新登记或重新记住。
+
+```http
+POST /v1/voiceprints/enroll
+Authorization: Bearer <gateway-token>
+
+{"protocol_version": 1,
+ "audio": {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1},
+ "audio_base64": "<最多 25 秒 PCM>"}
+
+200 {"protocol_version": 1, "voiceprint": {"model": "...", "embedding": [...]}, "speech_ms": 19946}
+```
+
+Processor 只取样本中时长最长的那个声音计算 embedding；不足 8 秒清晰语音时返回 422 `insufficient_speech`。Processor 通过 `processor.register` 的 `capabilities.voiceprint_model` 声明自己能计算声纹；Gateway 只把登记请求转给这样的 Processor（WebSocket 消息 `voiceprint.enroll` → `voiceprint.enrolled` / `voiceprint.failed`），没有时返回 503。
+
+说话人分割使用 sherpa-onnx 的公开 pyannote segmentation ONNX 与 3D-Speaker embedding 模型，模型来源见 [sherpa-onnx 官方示例](https://github.com/k2-fsa/sherpa-onnx/blob/master/python-api-examples/offline-speaker-diarization.py)。滚动窗口约 30 秒（20 秒推进、10 秒重叠）；跨窗口通过 512 维 embedding 匹配到会话内稳定的簇。已知固定参会人数时可用 `--speaker-count` 提高稳定性；`--voice-match-threshold`（默认 0.5）控制与已保存声音匹配的余弦相似度阈值，`--speaker-clustering-threshold`（默认 0.95）、`--diarization-interval`、`--diarization-overlap` 调整分割的延迟与稳定性。用 macOS `say` 合成的两种中文声音验证时，本人相似度约 0.96、他人约 0.12；真人、远场和嘈杂环境下的阈值尚未在真机校准。
 
 真机不能使用 `127.0.0.1` 访问 Mac。开发时可使用同一局域网地址；远程使用建议把 Gateway 部署为稳定 HTTPS/WSS 服务，或短期用 Cloudflare Tunnel 暴露 Gateway。Processor 自己只需向 Gateway 发起出站 WebSocket，不需要给 Mac 开入站端口。
 

@@ -11,7 +11,12 @@ from recording_service.mac_processor import (
     MacRealtimeProcessor,
     _is_credible_segment,
 )
-from recording_service.speaker_diarization import DiarizationResult, SpeakerTurn
+from recording_service.speaker_diarization import (
+    DiarizationResult,
+    SpeakerTurn,
+    Voiceprint,
+    VoiceprintEnrollment,
+)
 
 
 class FakeSocket:
@@ -77,11 +82,33 @@ class FakeRevisingASRBackend(FakeASRBackend):
 
 
 class FakeDiarizer:
+    model_id = "fake-embedding"
+
+    def __init__(self) -> None:
+        self.diarize_calls = 0
+        self.enrollment_audio: list[bytes] = []
+
     async def diarize(self, pcm: bytes, sample_rate: int) -> DiarizationResult:
+        self.diarize_calls += 1
         return DiarizationResult(
             turns=[SpeakerTurn(0, 1000, "model_speaker_a")],
             embeddings={"model_speaker_a": (1.0, 0.0)},
         )
+
+    async def extract_voiceprint(
+        self, pcm: bytes, sample_rate: int, min_speech_ms: int
+    ) -> VoiceprintEnrollment | None:
+        self.enrollment_audio.append(pcm)
+        speech_ms = int(len(pcm) / 2 / sample_rate * 1000)
+        if speech_ms < min_speech_ms:
+            return None
+        return VoiceprintEnrollment(
+            voiceprint=Voiceprint(model=self.model_id, embedding=(1.0, 0.0)),
+            speech_ms=speech_ms,
+        )
+
+
+SELF_VOICEPRINT = {"person_id": "self", "model": "fake-embedding", "embedding": [0.9, 0.1]}
 
 
 class MacRealtimeProcessorTest(unittest.IsolatedAsyncioTestCase):
@@ -104,6 +131,8 @@ class MacRealtimeProcessorTest(unittest.IsolatedAsyncioTestCase):
                 "session_id": "session_1",
                 "language": "en",
                 "audio": {"sample_rate": 100},
+                "speaker_diarization": True,
+                "known_voiceprints": [SELF_VOICEPRINT],
             },
         )
         await processor._handle(
@@ -123,9 +152,139 @@ class MacRealtimeProcessorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(transcript["speaker"]["cluster_id"], "speaker_unknown")
         self.assertEqual(correction["segment_id"], transcript["segment_id"])
         self.assertEqual(correction["speaker"]["cluster_id"], "speaker_1")
+        self.assertEqual(correction["speaker"]["person_id"], "self")
         self.assertEqual(correction["speaker"]["display_name"], "Speaker 1")
         self.assertEqual(len(session.diarization_pcm), 0)
         self.assertEqual(session.diarization_buffer_start_ms, 1000)
+
+    async def test_does_not_tell_speakers_apart_unless_requested(self) -> None:
+        for flag in (None, False):
+            socket = FakeSocket()
+            diarizer = FakeDiarizer()
+            processor = MacRealtimeProcessor(
+                "http://gateway.invalid",
+                "token",
+                "processor",
+                FakeASRBackend(),
+                speaker_diarizer=diarizer,
+                window_seconds=1,
+                diarization_interval_seconds=1,
+                diarization_overlap_seconds=0,
+            )
+            started: dict[str, Any] = {
+                "type": "session.started",
+                "session_id": "session_1",
+                "audio": {"sample_rate": 100},
+            }
+            if flag is not None:
+                started["speaker_diarization"] = flag
+                started["known_voiceprints"] = [SELF_VOICEPRINT]
+            await processor._handle(socket, started)
+            await processor._handle(
+                socket,
+                {
+                    "type": "audio.append",
+                    "session_id": "session_1",
+                    "audio_base64": base64.b64encode(bytes(200)).decode(),
+                },
+            )
+            await processor._handle(
+                socket, {"type": "session.finish", "session_id": "session_1"}
+            )
+            self.assertEqual(diarizer.diarize_calls, 0)
+            self.assertFalse(
+                any(message["type"] == "speaker.corrected" for message in socket.messages)
+            )
+
+    async def test_ignores_saved_voices_from_another_embedding_model(self) -> None:
+        socket = FakeSocket()
+        processor = MacRealtimeProcessor(
+            "http://gateway.invalid",
+            "token",
+            "processor",
+            FakeASRBackend(),
+            speaker_diarizer=FakeDiarizer(),
+            window_seconds=1,
+            diarization_interval_seconds=1,
+            diarization_overlap_seconds=0,
+        )
+        await processor._handle(
+            socket,
+            {
+                "type": "session.started",
+                "session_id": "session_1",
+                "audio": {"sample_rate": 100},
+                "speaker_diarization": True,
+                "known_voiceprints": [
+                    {"person_id": "self", "model": "older-model", "embedding": [1.0, 0.0]}
+                ],
+            },
+        )
+        await processor._handle(
+            socket,
+            {
+                "type": "audio.append",
+                "session_id": "session_1",
+                "audio_base64": base64.b64encode(bytes(200)).decode(),
+            },
+        )
+        session = processor.sessions["session_1"]
+        if session.diarization_task is not None:
+            await session.diarization_task
+        correction = next(m for m in socket.messages if m["type"] == "speaker.corrected")
+        self.assertEqual(correction["speaker"]["cluster_id"], "speaker_1")
+        self.assertIsNone(correction["speaker"]["person_id"])
+
+    async def test_enrolls_voiceprint_without_keeping_audio(self) -> None:
+        socket = FakeSocket()
+        diarizer = FakeDiarizer()
+        processor = MacRealtimeProcessor(
+            "http://gateway.invalid",
+            "token",
+            "processor",
+            FakeASRBackend(),
+            speaker_diarizer=diarizer,
+            min_enrollment_speech_seconds=1,
+        )
+        await processor._handle(
+            socket,
+            {
+                "type": "voiceprint.enroll",
+                "request_id": "vpe_1",
+                "audio": {"sample_rate": 100},
+                "audio_base64": base64.b64encode(bytes(400)).decode(),
+            },
+        )
+        await processor._handle(
+            socket,
+            {
+                "type": "voiceprint.enroll",
+                "request_id": "vpe_2",
+                "audio": {"sample_rate": 100},
+                "audio_base64": base64.b64encode(bytes(100)).decode(),
+            },
+        )
+        enrolled, failed = socket.messages
+        self.assertEqual(enrolled["type"], "voiceprint.enrolled")
+        self.assertEqual(enrolled["request_id"], "vpe_1")
+        self.assertEqual(
+            enrolled["voiceprint"], {"model": "fake-embedding", "embedding": [1.0, 0.0]}
+        )
+        self.assertEqual(enrolled["speech_ms"], 2000)
+        self.assertEqual(failed["type"], "voiceprint.failed")
+        self.assertEqual(failed["reason"], "insufficient_speech")
+        self.assertEqual(processor.sessions, {})
+
+    async def test_reports_unavailable_voiceprint_without_diarizer(self) -> None:
+        socket = FakeSocket()
+        processor = MacRealtimeProcessor(
+            "http://gateway.invalid", "token", "processor", FakeASRBackend()
+        )
+        await processor._handle(
+            socket,
+            {"type": "voiceprint.enroll", "request_id": "vpe_1", "audio_base64": ""},
+        )
+        self.assertEqual(socket.messages[0]["reason"], "voiceprint_unavailable")
 
     async def test_uses_overlapping_windows_without_republishing_old_audio(self) -> None:
         socket = FakeSocket()

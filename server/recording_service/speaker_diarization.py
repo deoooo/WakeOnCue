@@ -15,7 +15,7 @@ class SpeakerTurn:
 
 
 @dataclass(frozen=True)
-class StableSpeakerTurn:
+class LabeledSpeakerTurn:
     start_ms: int
     end_ms: int
     cluster_id: str
@@ -26,6 +26,7 @@ class SpeakerAssignment:
     cluster_id: str
     display_name: str
     confidence: float
+    person_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -47,15 +48,85 @@ class DiarizationResult:
         )
 
 
+MAX_VOICEPRINT_DIMENSIONS = 1024
+MAX_KNOWN_VOICEPRINTS = 100
+
+
+@dataclass(frozen=True)
+class Voiceprint:
+    """A saved voice. Only the user's iPhone stores voiceprints; the processor
+    receives them per session and drops them when the session ends."""
+
+    model: str
+    embedding: tuple[float, ...]
+
+    @classmethod
+    def from_payload(cls, payload: object) -> Voiceprint | None:
+        if not isinstance(payload, dict):
+            return None
+        model = payload.get("model")
+        embedding = payload.get("embedding")
+        if not isinstance(model, str) or not model or not isinstance(embedding, list):
+            return None
+        if not 0 < len(embedding) <= MAX_VOICEPRINT_DIMENSIONS:
+            return None
+        if not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value)
+            for value in embedding
+        ):
+            return None
+        return cls(model=model, embedding=tuple(float(value) for value in embedding))
+
+    def payload(self) -> dict[str, object]:
+        return {"model": self.model, "embedding": list(self.embedding)}
+
+
+def known_voiceprints_from_payload(payload: object) -> dict[str, Voiceprint] | None:
+    """Parses `[{"person_id", "model", "embedding"}]`; None when malformed."""
+    if not isinstance(payload, list) or len(payload) > MAX_KNOWN_VOICEPRINTS:
+        return None
+    voices: dict[str, Voiceprint] = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            return None
+        person_id = item.get("person_id")
+        voiceprint = Voiceprint.from_payload(item)
+        if not isinstance(person_id, str) or not person_id or voiceprint is None:
+            return None
+        voices[person_id] = voiceprint
+    return voices
+
+
+@dataclass(frozen=True)
+class VoiceprintEnrollment:
+    voiceprint: Voiceprint
+    speech_ms: int
+
+
 class SpeakerDiarizer(Protocol):
+    model_id: str
+
     async def diarize(self, pcm: bytes, sample_rate: int) -> DiarizationResult: ...
+
+    async def extract_voiceprint(
+        self, pcm: bytes, sample_rate: int, min_speech_ms: int
+    ) -> VoiceprintEnrollment | None: ...
 
 
 class StableSpeakerTracker:
     """Keeps processor-local labels stable across overlapping diarization windows."""
 
-    def __init__(self, embedding_match_threshold: float = 0.45) -> None:
-        self.turns: list[StableSpeakerTurn] = []
+    def __init__(
+        self,
+        embedding_match_threshold: float = 0.45,
+        known_voices: dict[str, Voiceprint] | None = None,
+        identity_threshold: float = 0.5,
+    ) -> None:
+        self.known_voices = known_voices or {}
+        self.identity_threshold = identity_threshold
+        self.cluster_people: dict[str, str] = {}
+        self.turns: list[LabeledSpeakerTurn] = []
         self.next_cluster_index = 1
         self.embedding_match_threshold = embedding_match_threshold
         self.cluster_embeddings: dict[str, tuple[float, ...]] = {}
@@ -83,8 +154,9 @@ class StableSpeakerTracker:
                 mapping[source_label] = f"speaker_{self.next_cluster_index}"
                 self.next_cluster_index += 1
         self._update_cluster_embeddings(mapping, result.embeddings)
+        self._identify_clusters()
         self.turns = [
-            StableSpeakerTurn(
+            LabeledSpeakerTurn(
                 start_ms=turn.start_ms,
                 end_ms=turn.end_ms,
                 cluster_id=mapping[turn.source_label],
@@ -107,7 +179,29 @@ class StableSpeakerTracker:
             cluster_id=cluster_id,
             display_name=f"Speaker {number}",
             confidence=min(1.0, overlap / duration),
+            person_id=self.cluster_people.get(cluster_id),
         )
+
+    def _identify_clusters(self) -> None:
+        """Matches session clusters to saved voices, each voice to at most one cluster.
+
+        The processor only learns opaque person IDs; names stay on the iPhone.
+        """
+        scores = [
+            (_cosine_similarity(centroid, voice.embedding), cluster_id, person_id)
+            for cluster_id, centroid in self.cluster_embeddings.items()
+            for person_id, voice in self.known_voices.items()
+        ]
+        people: dict[str, str] = {}
+        claimed: set[str] = set()
+        for score, cluster_id, person_id in sorted(scores, reverse=True):
+            if score < self.identity_threshold:
+                break
+            if cluster_id in people or person_id in claimed:
+                continue
+            people[cluster_id] = person_id
+            claimed.add(person_id)
+        self.cluster_people = people
 
     def _match_existing_clusters(
         self, turns: list[SpeakerTurn], source_labels: list[str]
@@ -227,11 +321,54 @@ class SherpaOnnxSpeakerDiarizer:
         self._embedding_extractor = sherpa_onnx.SpeakerEmbeddingExtractor(
             embedding_config
         )
+        self.model_id = embedding_model.stem
 
     async def diarize(self, pcm: bytes, sample_rate: int) -> DiarizationResult:
         return await asyncio.to_thread(self._diarize_sync, pcm, sample_rate)
 
-    def _diarize_sync(self, pcm: bytes, sample_rate: int) -> DiarizationResult:
+    async def extract_voiceprint(
+        self, pcm: bytes, sample_rate: int, min_speech_ms: int
+    ) -> VoiceprintEnrollment | None:
+        return await asyncio.to_thread(
+            self._extract_voiceprint_sync, pcm, sample_rate, min_speech_ms
+        )
+
+    def _extract_voiceprint_sync(
+        self, pcm: bytes, sample_rate: int, min_speech_ms: int
+    ) -> VoiceprintEnrollment | None:
+        import numpy as np
+
+        samples, target_rate = self._resampled(pcm, sample_rate)
+        result = self._diarizer.process(samples).sort_by_start_time()
+        durations: dict[str, int] = {}
+        for segment in result:
+            label = str(segment.speaker)
+            durations[label] = durations.get(label, 0) + int(
+                (segment.end - segment.start) * 1000
+            )
+        if not durations:
+            return None
+        # Only the dominant voice is enrolled, so a background talker is not captured.
+        dominant, speech_ms = max(durations.items(), key=lambda item: item[1])
+        if speech_ms < min_speech_ms:
+            return None
+        pieces = [
+            samples[int(segment.start * target_rate) : int(segment.end * target_rate)]
+            for segment in result
+            if str(segment.speaker) == dominant
+        ]
+        pieces = [piece for piece in pieces if len(piece) > 0]
+        if not pieces:
+            return None
+        embedding = self._embedding(np.concatenate(pieces), target_rate)
+        if embedding is None:
+            return None
+        return VoiceprintEnrollment(
+            voiceprint=Voiceprint(model=self.model_id, embedding=embedding),
+            speech_ms=speech_ms,
+        )
+
+    def _resampled(self, pcm: bytes, sample_rate: int):  # type: ignore[no-untyped-def]
         import numpy as np
 
         samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
@@ -242,6 +379,20 @@ class SherpaOnnxSpeakerDiarizer:
             samples = np.interp(positions, np.arange(len(samples)), samples).astype(
                 np.float32
             )
+        return samples, target_rate
+
+    def _embedding(self, audio, sample_rate: int) -> tuple[float, ...] | None:  # type: ignore[no-untyped-def]
+        stream = self._embedding_extractor.create_stream()
+        stream.accept_waveform(sample_rate, audio)
+        stream.input_finished()
+        if not self._embedding_extractor.is_ready(stream):
+            return None
+        return tuple(float(value) for value in self._embedding_extractor.compute(stream))
+
+    def _diarize_sync(self, pcm: bytes, sample_rate: int) -> DiarizationResult:
+        import numpy as np
+
+        samples, target_rate = self._resampled(pcm, sample_rate)
         result = self._diarizer.process(samples).sort_by_start_time()
         turns = [
             SpeakerTurn(
@@ -265,14 +416,9 @@ class SherpaOnnxSpeakerDiarizer:
             pieces = [piece for piece in pieces if len(piece) > 0]
             if not pieces:
                 continue
-            speaker_audio = np.concatenate(pieces)
-            stream = self._embedding_extractor.create_stream()
-            stream.accept_waveform(target_rate, speaker_audio)
-            stream.input_finished()
-            if self._embedding_extractor.is_ready(stream):
-                embeddings[source_label] = tuple(
-                    float(value) for value in self._embedding_extractor.compute(stream)
-                )
+            embedding = self._embedding(np.concatenate(pieces), target_rate)
+            if embedding is not None:
+                embeddings[source_label] = embedding
         return DiarizationResult(turns=turns, embeddings=embeddings)
 
 

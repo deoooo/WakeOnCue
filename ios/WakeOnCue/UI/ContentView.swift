@@ -5,10 +5,20 @@ import WakeOnCueCore
 
 struct ContentView: View {
   @Environment(AppModel.self) private var model
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
+  @State private var dismissedRecordingID: String?
 
   private let accent = Color(red: 1.0, green: 0.25, blue: 0.34)
-  private let canvas = Color(red: 0.035, green: 0.055, blue: 0.09)
-  private let panel = Color.white.opacity(0.065)
+  private let canvas = Color(uiColor: .systemGroupedBackground)
+  private let panel = Color(uiColor: .secondarySystemGroupedBackground)
+  private let border = Color(uiColor: .separator).opacity(0.55)
+
+  private var isCaptureActive: Bool {
+    guard let status = model.currentRecording?.status else { return false }
+    return status == .recording || status == .paused
+  }
 
   var body: some View {
     @Bindable var model = model
@@ -21,11 +31,22 @@ struct ContentView: View {
             if model.microphonePermission != .granted {
               permissionBanner
             }
-            recorderPanel
-            if model.realtimeState.isEnabled || !model.liveTranscriptSegments.isEmpty {
-              liveTranscriptPanel
+            if isCaptureActive {
+              activeRecorderPanel
+              if model.realtimeState.isEnabled || !model.liveTranscriptSegments.isEmpty {
+                liveTranscriptPanel
+              }
+              allRecordingsLink
+            } else {
+              recorderPanel
+              if let finished = model.lastFinishedRecording, dismissedRecordingID != finished.id {
+                RecordingCompletionCard(recording: finished) {
+                  dismissedRecordingID = finished.id
+                }
+                .id(finished.id)
+              }
+              recentRecordings
             }
-            recentRecordings
           }
           .padding(.horizontal, 20)
           .padding(.top, 10)
@@ -33,10 +54,14 @@ struct ContentView: View {
         }
       }
       .toolbar(.hidden, for: .navigationBar)
+      .safeAreaInset(edge: .bottom, spacing: 0) {
+        if isCaptureActive {
+          persistentRecordingControls
+        }
+      }
       .sheet(isPresented: $model.settingsPresented) {
         SettingsView()
           .environment(model)
-          .preferredColorScheme(.dark)
       }
       .sheet(item: $model.shareItem) { item in
         RecordingShareSheet(fileURL: item.url)
@@ -54,7 +79,6 @@ struct ContentView: View {
       }
     }
     .environment(\.locale, model.settings.language.locale)
-    .preferredColorScheme(.dark)
   }
 
   private var liveTranscriptPanel: some View {
@@ -76,17 +100,38 @@ struct ContentView: View {
           .padding(.vertical, 10)
       } else {
         ScrollViewReader { proxy in
-          ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 14) {
-              ForEach(model.liveTranscriptSegments.suffix(6)) { segment in
-                transcriptRow(segment)
-                  .id(segment.id)
+          VStack(spacing: 10) {
+            ScrollView(.vertical, showsIndicators: true) {
+              LazyVStack(alignment: .leading, spacing: 14) {
+                ForEach(model.liveTranscriptSegments) { segment in
+                  transcriptRow(segment)
+                    .id(segment.id)
+                }
               }
             }
+            .frame(maxHeight: 320)
+            .simultaneousGesture(
+              DragGesture(minimumDistance: 2)
+                .onChanged { _ in
+                  _ = transcriptFollowPolicy.handle(.manualScrollBegan)
+                }
+            )
+
+            if !transcriptFollowPolicy.isFollowingPlayback {
+              Button {
+                _ = transcriptFollowPolicy.handle(.returnToPlayback)
+                scrollToLatestTranscript(using: proxy, animated: true)
+              } label: {
+                Label("Return to live", systemImage: "arrow.down.to.line.compact")
+                  .font(.subheadline.weight(.semibold))
+              }
+              .buttonStyle(.bordered)
+              .accessibilityIdentifier("return-to-live-transcript")
+            }
           }
-          .frame(maxHeight: 250)
           .onAppear { scrollToLatestTranscript(using: proxy, animated: false) }
           .onChange(of: model.realtimeUpdateSequence) {
+            guard transcriptFollowPolicy.isFollowingPlayback else { return }
             scrollToLatestTranscript(using: proxy, animated: true)
           }
         }
@@ -95,12 +140,12 @@ struct ContentView: View {
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(0.07)))
+    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(border))
   }
 
   private func scrollToLatestTranscript(using proxy: ScrollViewProxy, animated: Bool) {
     guard let id = model.liveTranscriptSegments.last?.id else { return }
-    if animated {
+    if animated && !reduceMotion {
       withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo(id, anchor: .bottom) }
     } else {
       proxy.scrollTo(id, anchor: .bottom)
@@ -144,7 +189,12 @@ struct ContentView: View {
         .frame(width: 38, alignment: .leading)
 
       VStack(alignment: .leading, spacing: 4) {
-        Text(localizedSpeakerName(segment.speaker, language: model.settings.language))
+        Text(
+          localizedSpeakerName(
+            segment.speaker,
+            language: model.settings.language,
+            personNames: model.settings.personNames
+          ))
           .font(.caption.weight(.semibold))
           .foregroundStyle(.cyan)
         Text(segment.text)
@@ -173,53 +223,81 @@ struct ContentView: View {
         endRadius: 360
       )
       .ignoresSafeArea()
-      LinearGradient(
-        colors: [Color.white.opacity(0.035), .clear],
-        startPoint: .top,
-        endPoint: .center
-      )
-      .ignoresSafeArea()
     }
   }
 
   private var header: some View {
+    Group {
+      if dynamicTypeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack {
+            brandTitle
+            Spacer(minLength: 12)
+            settingsButton
+          }
+          brandSubtitle
+        }
+      } else {
+        standardHeader
+      }
+    }
+  }
+
+  private var brandTitle: some View {
+    Text("WakeOnCue")
+      .font(.title3.weight(.bold))
+      .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+      .lineLimit(1)
+      .minimumScaleFactor(0.8)
+  }
+
+  private var brandSubtitle: some View {
+    Text("Never miss a meeting")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+  }
+
+  private var standardHeader: some View {
     HStack(spacing: 12) {
       ZStack {
         Circle().fill(accent.opacity(0.16))
         Image(systemName: "waveform")
-          .font(.system(size: 18, weight: .bold))
+          .font(.headline.weight(.bold))
           .foregroundStyle(accent)
       }
       .frame(width: 42, height: 42)
+      .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 2) {
-        Text("WakeOnCue")
-          .font(.title3.weight(.bold))
-        Text("Never miss a meeting")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        brandTitle
+        brandSubtitle
       }
 
       Spacer()
 
-      Button {
+      settingsButton
+    }
+  }
+
+  private var settingsButton: some View {
+    Button {
         model.settingsPresented = true
       } label: {
         Image(systemName: "slider.horizontal.3")
-          .font(.system(size: 16, weight: .semibold))
-          .frame(width: 42, height: 42)
+          .font(.body.weight(.semibold))
+          .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+          .frame(minWidth: 44, minHeight: 44)
           .background(panel, in: Circle())
-          .overlay(Circle().stroke(.white.opacity(0.08)))
+          .overlay(Circle().stroke(border))
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("Recording storage settings")
-    }
+      .accessibilityLabel("Settings")
   }
 
   private var permissionBanner: some View {
     HStack(spacing: 13) {
       Image(systemName: "mic.badge.plus")
-        .font(.system(size: 19, weight: .semibold))
+        .font(.title3.weight(.semibold))
         .foregroundStyle(accent)
         .frame(width: 40, height: 40)
         .background(accent.opacity(0.13), in: Circle())
@@ -251,7 +329,7 @@ struct ContentView: View {
     }
     .padding(14)
     .background(panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.08)))
+    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(border))
   }
 
   private var recorderPanel: some View {
@@ -260,9 +338,9 @@ struct ContentView: View {
         .padding(.top, 25)
 
       Text(duration(model.elapsed))
-        .font(.system(size: 54, weight: .medium, design: .rounded))
+        .font(.system(.largeTitle, design: .rounded, weight: .medium))
         .monospacedDigit()
-        .contentTransition(.numericText())
+        .minimumScaleFactor(0.7)
         .padding(.top, 16)
 
       if let recordingSubtitle {
@@ -275,29 +353,87 @@ struct ContentView: View {
       controls
         .padding(.vertical, 28)
 
-      if !model.settings.useS3 {
-        Divider()
-          .overlay(.white.opacity(0.08))
-          .padding(.horizontal, 20)
-        localStorageIndicator
-          .padding(16)
-      }
+      Divider()
+        .overlay(border)
+        .padding(.horizontal, 20)
+      localStorageIndicator
+        .padding(16)
     }
     .frame(maxWidth: .infinity)
     .background(
-      LinearGradient(
-        colors: [Color.white.opacity(0.095), Color.white.opacity(0.045)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      ),
+      panel,
       in: RoundedRectangle(cornerRadius: 30, style: .continuous)
     )
     .overlay(
       RoundedRectangle(cornerRadius: 30, style: .continuous)
-        .stroke(.white.opacity(0.1))
+        .stroke(border)
     )
-    .shadow(color: .black.opacity(0.25), radius: 26, y: 16)
+    .shadow(color: Color.primary.opacity(0.12), radius: 26, y: 16)
     .accessibilityElement(children: .contain)
+  }
+
+  private var activeRecorderPanel: some View {
+    VStack(spacing: 18) {
+      statusPill
+
+      Text(duration(model.elapsed))
+        .font(.system(.largeTitle, design: .rounded, weight: .medium))
+        .monospacedDigit()
+        .minimumScaleFactor(0.7)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityLabel("Elapsed recording time")
+
+      if let recordingSubtitle {
+        Text(recordingSubtitle)
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+      }
+
+      CaptureFeedbackView(feedback: model.captureFeedback) {
+        Task { await model.resumeRecording() }
+      }
+
+      if let current = model.currentRecording {
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            BookmarkButton(recordingID: current.id, position: model.elapsed)
+              .buttonStyle(.bordered)
+              .frame(minHeight: 44)
+            Spacer()
+            localStorageCompactStatus
+          }
+          VStack(alignment: .leading, spacing: 10) {
+            BookmarkButton(recordingID: current.id, position: model.elapsed)
+              .buttonStyle(.bordered)
+              .frame(minHeight: 44)
+            localStorageCompactStatus
+          }
+        }
+      }
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity)
+    .background(
+      Color(uiColor: .secondarySystemBackground),
+      in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 24, style: .continuous)
+        .stroke(Color(uiColor: .separator).opacity(0.5))
+    )
+    .accessibilityElement(children: .contain)
+  }
+
+  private var localStorageCompactStatus: some View {
+    let presentation = model.currentRecording.map { recordingStatusPresentation(for: $0) }
+    return Label(
+      localStorageTitle(presentation?.localFile ?? .notStarted),
+      systemImage: localStorageIcon(presentation?.localFile ?? .notStarted)
+    )
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(localStorageColor(presentation?.localFile ?? .notStarted))
+    .accessibilityElement(children: .combine)
   }
 
   private var statusPill: some View {
@@ -322,22 +458,8 @@ struct ContentView: View {
   @ViewBuilder
   private var controls: some View {
     switch model.currentRecording?.status {
-    case .recording:
-      activeControls(
-        primaryTitle: model.settings.language.localized("Pause"),
-        primaryIcon: "pause.fill",
-        primaryColor: .orange
-      ) {
-        await model.pauseRecording()
-      }
-    case .paused:
-      activeControls(
-        primaryTitle: model.settings.language.localized("Resume"),
-        primaryIcon: "play.fill",
-        primaryColor: .green
-      ) {
-        await model.resumeRecording()
-      }
+    case .recording, .paused:
+      EmptyView()
     case .finishing, .uploading:
       VStack(spacing: 12) {
         ProgressView()
@@ -365,26 +487,31 @@ struct ContentView: View {
       Button {
         Task { await model.startRecording() }
       } label: {
-        ZStack {
-          Circle()
-            .fill(accent.opacity(0.14))
-            .frame(width: 152, height: 152)
-          Circle()
-            .stroke(accent.opacity(0.28), lineWidth: 1)
-            .frame(width: 136, height: 136)
-          Circle()
-            .fill(
-              LinearGradient(
-                colors: [Color(red: 1, green: 0.36, blue: 0.4), accent],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+        VStack(spacing: 12) {
+          ZStack {
+            Circle()
+              .fill(accent.opacity(0.14))
+              .frame(width: 152, height: 152)
+            Circle()
+              .stroke(accent.opacity(0.28), lineWidth: 1)
+              .frame(width: 136, height: 136)
+            Circle()
+              .fill(
+                LinearGradient(
+                  colors: [Color(red: 1, green: 0.36, blue: 0.4), accent],
+                  startPoint: .topLeading,
+                  endPoint: .bottomTrailing
+                )
               )
-            )
-            .frame(width: 112, height: 112)
-            .shadow(color: accent.opacity(0.38), radius: 22, y: 10)
-          Image(systemName: "mic.fill")
-            .font(.system(size: 38, weight: .semibold))
-            .foregroundStyle(.white)
+              .frame(width: 112, height: 112)
+              .shadow(color: accent.opacity(0.38), radius: 22, y: 10)
+            Image(systemName: "mic.fill")
+              .font(.largeTitle.weight(.semibold))
+              .foregroundStyle(.white)
+          }
+          Text("Start recording")
+            .font(.headline)
+            .foregroundStyle(.primary)
         }
       }
       .buttonStyle(RecordButtonStyle())
@@ -394,22 +521,55 @@ struct ContentView: View {
     }
   }
 
-  private func activeControls(
-    primaryTitle: String,
-    primaryIcon: String,
-    primaryColor: Color,
-    primaryAction: @escaping () async -> Void
-  ) -> some View {
-    HStack(spacing: 34) {
-      roundAction(primaryTitle, icon: primaryIcon, color: primaryColor, action: primaryAction)
-      roundAction(model.settings.language.localized("Finish"), icon: "stop.fill", color: accent) {
+  @ViewBuilder
+  private var persistentRecordingControls: some View {
+    Group {
+      if dynamicTypeSize.isAccessibilitySize {
+        VStack(spacing: 10) { persistentRecordingActions }
+      } else {
+        HStack(spacing: 12) { persistentRecordingActions }
+      }
+    }
+    .padding(.horizontal, 20)
+    .padding(.vertical, 12)
+    .background(.bar)
+    .overlay(alignment: .top) { Divider() }
+  }
+
+  @ViewBuilder
+  private var persistentRecordingActions: some View {
+      switch model.currentRecording?.status {
+      case .recording:
+        persistentAction(
+          model.settings.language.localized("Pause"),
+          icon: "pause.fill",
+          color: .orange
+        ) {
+          await model.pauseRecording()
+        }
+      case .paused:
+        persistentAction(
+          model.settings.language.localized("Resume"),
+          icon: "play.fill",
+          color: .green
+        ) {
+          await model.resumeRecording()
+        }
+      default:
+        EmptyView()
+      }
+
+      persistentAction(
+        model.settings.language.localized("Finish"),
+        icon: "stop.fill",
+        color: accent
+      ) {
         await model.finishRecording()
       }
       .accessibilityIdentifier("finish-recording")
-    }
   }
 
-  private func roundAction(
+  private func persistentAction(
     _ title: String,
     icon: String,
     color: Color,
@@ -418,20 +578,26 @@ struct ContentView: View {
     Button {
       Task { await action() }
     } label: {
-      VStack(spacing: 9) {
-        Image(systemName: icon)
-          .font(.system(size: 23, weight: .bold))
-          .frame(width: 62, height: 62)
-          .background(color.opacity(0.16), in: Circle())
-          .overlay(Circle().stroke(color.opacity(0.25)))
-          .foregroundStyle(color)
-        Text(title)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.primary)
-      }
+      Label(title, systemImage: icon)
+        .font(.headline)
+        .frame(maxWidth: .infinity, minHeight: 48)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.borderedProminent)
+    .tint(color)
     .disabled(model.isBusy)
+  }
+
+  private var allRecordingsLink: some View {
+    NavigationLink {
+      RecordingLibraryView()
+        .environment(model)
+    } label: {
+      Label("All recordings", systemImage: "waveform.badge.magnifyingglass")
+        .font(.subheadline.weight(.semibold))
+        .frame(maxWidth: .infinity, minHeight: 44)
+    }
+    .buttonStyle(.bordered)
+    .accessibilityIdentifier("all-recordings")
   }
 
   private var recentRecordings: some View {
@@ -440,9 +606,14 @@ struct ContentView: View {
         Text("Recent recordings")
           .font(.headline)
         Spacer()
-        Text("Stored locally")
+        NavigationLink {
+          RecordingLibraryView()
+            .environment(model)
+        } label: {
+          Text("All recordings")
+        }
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("all-recordings")
       }
 
       if model.recentRecordings.isEmpty {
@@ -473,6 +644,7 @@ struct ContentView: View {
 
   private func recordingRow(_ recording: RecordingRecord) -> some View {
     let progress = model.recentSyncProgress[recording.id] ?? .init()
+    let presentation = recordingStatusPresentation(for: recording)
     let audioAvailable = [.uploading, .completed, .failed].contains(recording.status)
     return HStack(spacing: 13) {
       NavigationLink {
@@ -480,23 +652,23 @@ struct ContentView: View {
           .environment(model)
       } label: {
         HStack(spacing: 13) {
-          Image(systemName: recording.status == .completed ? "checkmark" : "waveform")
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(recording.status == .completed ? .green : .orange)
+          Image(systemName: recordingIcon(presentation))
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(recordingColor(presentation))
             .frame(width: 38, height: 38)
             .background(
-              (recording.status == .completed ? Color.green : Color.orange).opacity(0.12),
+              recordingColor(presentation).opacity(0.12),
               in: Circle()
             )
           VStack(alignment: .leading, spacing: 3) {
-            Text(formattedStartDate(recording.startedAt, language: model.settings.language))
+            Text(recording.libraryDisplayTitle(language: model.settings.language))
               .font(.subheadline.weight(.semibold))
-            Text("\(duration(recording.duration)) · \(recordingStateLabel(recording.status))")
+            Text("\(duration(recording.duration)) · \(recordingStateLabel(presentation))")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
           Spacer(minLength: 6)
-          if model.settings.useS3 && progress.pendingDuration > 0.5 {
+          if presentation.cloudBackup == .pending && progress.pendingDuration > 0.5 {
             Text("\(shortDuration(progress.pendingDuration)) waiting")
               .font(.caption.monospacedDigit().weight(.semibold))
               .padding(.horizontal, 9)
@@ -511,6 +683,9 @@ struct ContentView: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityLabel(
+        "\(formattedStartDate(recording.startedAt, language: model.settings.language)), \(recordingStateLabel(presentation))"
+      )
       .accessibilityIdentifier("recording-details-\(recording.id)")
 
       if audioAvailable {
@@ -546,49 +721,53 @@ struct ContentView: View {
     }
     .padding(14)
     .background(panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.055)))
+    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(border))
   }
 
   private var localStorageIndicator: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "iphone")
-        .font(.system(size: 17, weight: .semibold))
-        .foregroundStyle(.green)
+    let presentation = model.currentRecording.map { recordingStatusPresentation(for: $0) }
+    return HStack(spacing: 12) {
+      Image(systemName: localStorageIcon(presentation?.localFile ?? .notStarted))
+        .font(.headline.weight(.semibold))
+        .foregroundStyle(localStorageColor(presentation?.localFile ?? .notStarted))
         .frame(width: 38, height: 38)
-        .background(.green.opacity(0.12), in: Circle())
+        .background(
+          localStorageColor(presentation?.localFile ?? .notStarted).opacity(0.12), in: Circle()
+        )
       VStack(alignment: .leading, spacing: 2) {
-        Text("Saved locally")
+        Text(localStorageTitle(presentation?.localFile ?? .notStarted))
           .font(.subheadline.weight(.semibold))
-        Text("No cloud storage configured")
+        Text(storageCaption(presentation))
           .font(.caption)
           .foregroundStyle(.secondary)
       }
       Spacer()
-      Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(.green)
+      if presentation?.localFile == .saved {
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(.green)
+          .accessibilityHidden(true)
+      }
     }
     .padding(12)
-    .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+    .background(
+      Color(uiColor: .tertiarySystemGroupedBackground),
+      in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+    )
     .accessibilityElement(children: .combine)
   }
 
   private var recordingSubtitle: String? {
-    switch model.currentRecording?.status {
-    case .recording: nil
-    case .paused: model.settings.language.localized("Capture paused · session preserved")
-    case .finishing, .uploading:
-      model.settings.useS3
-        ? model.settings.language.localized("Finalizing and syncing your meeting")
-        : model.settings.language.localized("Finishing local recording")
-    case .completed:
-      model.settings.useS3
-        ? model.settings.language.localized("Everything is safely synced")
-        : model.settings.language.localized("Saved safely on this iPhone")
-    case .failed:
-      model.settings.useS3
-        ? model.settings.language.localized("Local audio is safe · sync needs attention")
-        : model.settings.language.localized("Local audio is safe")
-    default: model.settings.language.localized("Tap once when your meeting begins")
+    guard let recording = model.currentRecording else {
+      return model.settings.language.localized("Tap once when your meeting begins")
+    }
+    let presentation = recordingStatusPresentation(for: recording)
+    return switch presentation.capture {
+    case .recording: model.settings.language.localized("Saving on this iPhone")
+    case .paused: model.settings.language.localized("Paused · recording remains on this iPhone")
+    case .finishing: model.settings.language.localized("Finishing the recording on this iPhone")
+    case .finalized: recordingStateLabel(presentation)
+    case .failed: recordingStateLabel(presentation)
+    case .ready: model.settings.language.localized("Tap once when your meeting begins")
     }
   }
 
@@ -604,38 +783,85 @@ struct ContentView: View {
   }
 
   private func statusTitle(_ status: RecordingStatus) -> String {
-    switch status {
-    case .ready: model.settings.language.localized("Ready")
+    let presentation = model.currentRecording.map { recordingStatusPresentation(for: $0) }
+    return switch presentation?.capture {
     case .recording: model.settings.language.localized("Recording")
     case .paused: model.settings.language.localized("Paused")
     case .finishing: model.settings.language.localized("Finishing")
-    case .uploading:
-      model.settings.useS3
-        ? model.settings.language.localized("Syncing")
-        : model.settings.language.localized("Finishing")
-    case .completed: model.settings.language.localized("Completed")
+    case .finalized: model.settings.language.localized("Finished")
     case .failed: model.settings.language.localized("Needs attention")
+    case .ready, nil: model.settings.language.localized("Ready")
     }
   }
 
-  private func recordingStateLabel(_ status: RecordingStatus) -> String {
-    switch status {
-    case .ready: model.settings.language.localized("Ready")
-    case .recording: model.settings.language.localized("Recording")
-    case .paused: model.settings.language.localized("Paused")
-    case .finishing: model.settings.language.localized("Finishing")
-    case .uploading:
-      model.settings.useS3
-        ? model.settings.language.localized("Syncing")
-        : model.settings.language.localized("Finalizing")
-    case .completed:
-      model.settings.useS3
-        ? model.settings.language.localized("Synced")
-        : model.settings.language.localized("Saved locally")
-    case .failed:
-      model.settings.useS3
-        ? model.settings.language.localized("Sync needs attention")
-        : model.settings.language.localized("Saved locally")
+  private func recordingStateLabel(_ presentation: RecordingStatusPresentation) -> String {
+    presentation.storageStatusText(language: model.settings.language)
+  }
+
+  private func recordingStatusPresentation(for recording: RecordingRecord)
+    -> RecordingStatusPresentation
+  {
+    recording.storagePresentation
+  }
+
+  private func localStorageTitle(_ state: RecordingStatusPresentation.LocalFileState) -> String {
+    RecordingStatusPresentation(
+      capture: .ready,
+      localFile: state,
+      cloudBackup: .notRequested,
+      transcription: .notRequested
+    ).localFileStatusText(language: model.settings.language)
+  }
+
+  private func storageCaption(_ presentation: RecordingStatusPresentation?) -> String {
+    guard let presentation else {
+      return model.settings.useS3
+        ? model.settings.language.localized("Cloud backup is ready for new recordings")
+        : model.settings.language.localized("Cloud backup is optional")
+    }
+    return switch presentation.cloudBackup {
+    case .notRequested: model.settings.language.localized("Cloud backup off for this recording")
+    case .pending: model.settings.language.localized("Cloud backup pending")
+    case .synced: model.settings.language.localized("Cloud backup complete")
+    case .failed: model.settings.language.localized("Cloud backup needs attention")
+    case .abandoned: model.settings.language.localized("Cloud backup skipped; kept on this iPhone")
+    }
+  }
+
+  private func localStorageIcon(_ state: RecordingStatusPresentation.LocalFileState) -> String {
+    switch state {
+    case .notStarted, .saving, .saved: "iphone"
+    case .unavailable: "iphone.slash"
+    case .unknown: "questionmark.circle"
+    }
+  }
+
+  private func localStorageColor(_ state: RecordingStatusPresentation.LocalFileState) -> Color {
+    switch state {
+    case .saved: .green
+    case .saving: .cyan
+    case .unavailable: .red
+    case .unknown: .orange
+    case .notStarted: .secondary
+    }
+  }
+
+  private func recordingIcon(_ presentation: RecordingStatusPresentation) -> String {
+    switch presentation.localFile {
+    case .saved: "checkmark"
+    case .unavailable: "exclamationmark"
+    case .unknown: "questionmark"
+    case .notStarted, .saving: "waveform"
+    }
+  }
+
+  private func recordingColor(_ presentation: RecordingStatusPresentation) -> Color {
+    switch presentation.localFile {
+    case .saved: presentation.cloudBackup == .failed ? .orange : .green
+    case .unavailable: .red
+    case .unknown: .orange
+    case .notStarted: .secondary
+    case .saving: .cyan
     }
   }
 
@@ -658,354 +884,6 @@ struct ContentView: View {
   }
 }
 
-private struct RecordingDetailView: View {
-  @Environment(AppModel.self) private var model
-  let recording: RecordingRecord
-
-  @State private var transcript: [RealtimeTranscriptEvent] = []
-  @State private var transcriptLoaded = false
-  @State private var transcriptError: String?
-  @State private var scrubberPosition: TimeInterval = 0
-  @State private var isScrubbing = false
-  @State private var activeSegmentID: String?
-
-  private let panel = Color.white.opacity(0.065)
-
-  var body: some View {
-    ScrollView(showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 18) {
-        summary
-        transcriptSection
-      }
-      .padding(20)
-      .padding(.bottom, 24)
-    }
-    .background(Color(red: 0.035, green: 0.055, blue: 0.09).ignoresSafeArea())
-    .navigationTitle("Recording details")
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar(.visible, for: .navigationBar)
-    .task(id: "\(recording.id)-\(model.transcriptVersion)") { await loadTranscript() }
-    .onChange(of: model.playbackPosition) {
-      guard model.playingRecordingID == recording.id else { return }
-      if !isScrubbing { scrubberPosition = model.playbackPosition }
-      activeSegmentID = segment(at: model.playbackPosition)?.id
-    }
-  }
-
-  private var summary: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack {
-        Label("Recording file", systemImage: "waveform")
-          .font(.headline)
-        Spacer()
-        Text(statusLabel)
-          .font(.caption.weight(.bold))
-          .foregroundStyle(recording.status == .completed ? .green : .orange)
-      }
-
-      Divider().overlay(.white.opacity(0.08))
-      detailRow(
-        "Started",
-        formattedStartDate(recording.startedAt, language: model.settings.language)
-      )
-      detailRow("Duration", formattedDuration(recording.duration))
-      detailRow("Device", recording.deviceModel)
-
-      HStack(spacing: 12) {
-        Button {
-          Task { await model.togglePlayback(for: recording) }
-        } label: {
-          Label(
-            isPlayingThisRecording ? "Pause recording" : "Play recording",
-            systemImage: isPlayingThisRecording ? "pause.fill" : "play.fill"
-          )
-          .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.blue)
-
-        Button {
-          Task { await model.share(recording: recording) }
-        } label: {
-          Label("Share", systemImage: "square.and.arrow.up")
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-      }
-
-      VStack(spacing: 8) {
-        Slider(
-          value: $scrubberPosition,
-          in: 0...max(playbackTotalDuration, 0.01),
-          onEditingChanged: { editing in
-            isScrubbing = editing
-            if !editing {
-              Task {
-                await model.seekPlayback(
-                  for: recording,
-                  to: scrubberPosition,
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            }
-          }
-        )
-        .tint(.cyan)
-        .accessibilityIdentifier("recording-playback-slider")
-
-        HStack {
-          Text(playbackTimestamp(scrubberPosition))
-          Spacer()
-          HStack(spacing: 22) {
-            Button {
-              Task {
-                await model.seekPlayback(
-                  for: recording,
-                  to: max(0, scrubberPosition - 15),
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            } label: {
-              Image(systemName: "gobackward.15")
-            }
-            .accessibilityLabel(model.settings.language.localized("Back 15 seconds"))
-
-            Button {
-              Task {
-                await model.seekPlayback(
-                  for: recording,
-                  to: min(playbackTotalDuration, scrubberPosition + 15),
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            } label: {
-              Image(systemName: "goforward.15")
-            }
-            .accessibilityLabel(model.settings.language.localized("Forward 15 seconds"))
-          }
-          .buttonStyle(.plain)
-          .foregroundStyle(.cyan)
-          Spacer()
-          Text(playbackTimestamp(playbackTotalDuration))
-        }
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
-      }
-
-      Button {
-        Task { await model.retranscribe(recording: recording) }
-      } label: {
-        Label(
-          "Retranscribe and identify speakers",
-          systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
-        )
-        .frame(maxWidth: .infinity)
-      }
-      .buttonStyle(.bordered)
-      .disabled(model.retranscribingRecordingID != nil)
-      .accessibilityIdentifier("retranscribe-recording")
-
-      if model.retranscribingRecordingID == recording.id {
-        VStack(alignment: .leading, spacing: 7) {
-          ProgressView(value: model.retranscriptionProgress)
-          Text(
-            model.retranscriptionStatusMessage
-              ?? model.settings.language.localized("Transcribing and identifying speakers…")
-          )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .accessibilityIdentifier("retranscription-progress")
-      }
-    }
-    .padding(16)
-    .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-  }
-
-  private var transcriptSection: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Label("Transcript", systemImage: "captions.bubble.fill")
-        .font(.headline)
-        .foregroundStyle(.primary)
-
-      if !transcriptLoaded {
-        ProgressView()
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 18)
-      } else if let transcriptError {
-        Text(transcriptError)
-          .font(.subheadline)
-          .foregroundStyle(.orange)
-      } else if transcript.isEmpty {
-        Text("No transcript was produced for this recording.")
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.vertical, 8)
-      } else {
-        ScrollViewReader { proxy in
-          ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: 8) {
-              ForEach(transcript) { segment in
-                HStack(alignment: .top, spacing: 10) {
-                  Text(timestamp(segment.startMilliseconds))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(
-                      activeSegmentID == segment.id ? Color.white : Color.secondary
-                    )
-                    .frame(width: 42, alignment: .leading)
-                  VStack(alignment: .leading, spacing: 4) {
-                    Text(localizedSpeakerName(segment.speaker, language: model.settings.language))
-                      .font(.caption.weight(.semibold))
-                      .foregroundStyle(.cyan)
-                    Text(segment.text)
-                      .font(.body)
-                      .textSelection(.enabled)
-                      .frame(maxWidth: .infinity, alignment: .leading)
-                  }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .background(
-                  activeSegmentID == segment.id ? Color.cyan.opacity(0.16) : Color.clear,
-                  in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture { seek(to: segment) }
-                .id(segment.id)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint(
-                  model.settings.language.localized("Play from this transcript position")
-                )
-                .accessibilityIdentifier("recording-transcript-segment-\(segment.id)")
-              }
-            }
-          }
-          .frame(minHeight: 220, maxHeight: 430)
-          .onChange(of: activeSegmentID) {
-            guard model.playingRecordingID == recording.id,
-              model.playbackIsPlaying,
-              let activeSegmentID
-            else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-              proxy.scrollTo(activeSegmentID, anchor: .center)
-            }
-          }
-          .simultaneousGesture(
-            DragGesture(minimumDistance: 44).onEnded { value in
-              guard abs(value.translation.height) > abs(value.translation.width) else { return }
-              switchTranscript(by: value.translation.height < 0 ? 1 : -1)
-            }
-          )
-        }
-      }
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .accessibilityIdentifier("recording-transcript")
-  }
-
-  private func detailRow(_ title: LocalizedStringKey, _ value: String) -> some View {
-    HStack(alignment: .firstTextBaseline) {
-      Text(title).foregroundStyle(.secondary)
-      Spacer()
-      Text(value).multilineTextAlignment(.trailing)
-    }
-    .font(.subheadline)
-  }
-
-  private var statusLabel: String {
-    switch recording.status {
-    case .ready: model.settings.language.localized("Ready")
-    case .recording: model.settings.language.localized("Recording")
-    case .paused: model.settings.language.localized("Paused")
-    case .finishing: model.settings.language.localized("Finishing")
-    case .uploading: model.settings.language.localized("Finalizing")
-    case .completed: model.settings.language.localized("Completed")
-    case .failed: model.settings.language.localized("Needs attention")
-    }
-  }
-
-  private func loadTranscript() async {
-    defer { transcriptLoaded = true }
-    do {
-      transcript = try await model.transcript(for: recording.id)
-      if model.playingRecordingID == recording.id {
-        scrubberPosition = model.playbackPosition
-        activeSegmentID = segment(at: model.playbackPosition)?.id
-      }
-      transcriptError = nil
-    } catch {
-      transcriptError = String(
-        format: model.settings.language.localized("Could not load transcript: %@"),
-        error.localizedDescription
-      )
-    }
-  }
-
-  private func formattedDuration(_ interval: TimeInterval) -> String {
-    let seconds = max(0, Int(interval.rounded(.down)))
-    return String(
-      format: "%02d:%02d:%02d",
-      seconds / 3_600,
-      seconds % 3_600 / 60,
-      seconds % 60
-    )
-  }
-
-  private func timestamp(_ milliseconds: Int) -> String {
-    let seconds = max(0, milliseconds / 1_000)
-    return String(format: "%02d:%02d", seconds / 60, seconds % 60)
-  }
-
-  private var isPlayingThisRecording: Bool {
-    model.playingRecordingID == recording.id && model.playbackIsPlaying
-  }
-
-  private var playbackTotalDuration: TimeInterval {
-    if model.playingRecordingID == recording.id, model.playbackDuration > 0 {
-      return model.playbackDuration
-    }
-    return max(0, recording.duration)
-  }
-
-  private func playbackTimestamp(_ interval: TimeInterval) -> String {
-    let seconds = max(0, Int(interval.rounded(.down)))
-    if seconds >= 3_600 {
-      return String(format: "%d:%02d:%02d", seconds / 3_600, seconds % 3_600 / 60, seconds % 60)
-    }
-    return String(format: "%02d:%02d", seconds / 60, seconds % 60)
-  }
-
-  private func segment(at time: TimeInterval) -> RealtimeTranscriptEvent? {
-    let milliseconds = Int(max(0, time) * 1_000)
-    if let containing = transcript.first(where: {
-      $0.startMilliseconds <= milliseconds
-        && $0.endMilliseconds > milliseconds
-    }) {
-      return containing
-    }
-    return transcript.last { $0.startMilliseconds <= milliseconds }
-  }
-
-  private func seek(to segment: RealtimeTranscriptEvent) {
-    activeSegmentID = segment.id
-    scrubberPosition = TimeInterval(segment.startMilliseconds) / 1_000
-    Task { await model.seekPlayback(for: recording, to: scrubberPosition) }
-  }
-
-  private func switchTranscript(by offset: Int) {
-    guard !transcript.isEmpty else { return }
-    let currentIndex = activeSegmentID.flatMap { id in
-      transcript.firstIndex(where: { $0.id == id })
-    } ?? 0
-    let destination = min(max(0, currentIndex + offset), transcript.count - 1)
-    seek(to: transcript[destination])
-  }
-}
-
 private struct RecordingShareSheet: UIViewControllerRepresentable {
   let fileURL: URL
 
@@ -1023,8 +901,14 @@ func formattedStartDate(_ date: Date, language: AppLanguage) -> String {
   )
 }
 
-func localizedSpeakerName(_ speaker: RealtimeSpeaker?, language: AppLanguage) -> String {
+func localizedSpeakerName(
+  _ speaker: RealtimeSpeaker?,
+  language: AppLanguage,
+  personNames: [String: String] = [:]
+) -> String {
   guard let speaker else { return language.localized("Unknown speaker") }
+  if speaker.personID == RealtimeSpeaker.selfPersonID { return language.localized("Me") }
+  if let personID = speaker.personID, let name = personNames[personID] { return name }
   let parts = speaker.displayName.split(separator: " ", omittingEmptySubsequences: true)
   if parts.count == 2, parts[0].localizedCaseInsensitiveCompare("Speaker") == .orderedSame,
     let number = Int(parts[1])
@@ -1038,10 +922,15 @@ func localizedSpeakerName(_ speaker: RealtimeSpeaker?, language: AppLanguage) ->
 }
 
 private struct RecordButtonStyle: ButtonStyle {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .scaleEffect(configuration.isPressed ? 0.95 : 1)
+      .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.95 : 1))
       .opacity(configuration.isPressed ? 0.9 : 1)
-      .animation(.spring(response: 0.26, dampingFraction: 0.72), value: configuration.isPressed)
+      .animation(
+        reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.72),
+        value: configuration.isPressed
+      )
   }
 }

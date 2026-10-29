@@ -1,7 +1,34 @@
 import Foundation
 import Observation
 import Security
+import SwiftUI
 import WakeOnCueCore
+
+enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
+  case system
+  case light
+  case dark
+
+  static let preferenceKey = "app-appearance"
+
+  var id: String { rawValue }
+
+  var title: LocalizedStringKey {
+    switch self {
+    case .system: "Follow System"
+    case .light: "Light"
+    case .dark: "Dark"
+    }
+  }
+
+  var colorScheme: ColorScheme? {
+    switch self {
+    case .system: nil
+    case .light: .light
+    case .dark: .dark
+    }
+  }
+}
 
 @MainActor
 @Observable
@@ -25,6 +52,12 @@ final class AppSettings {
   static let spokenLanguageKey = "realtime-processing.spoken-language"
   private static let realtimeKeychainService = "com.deoooo.WakeOnCue.realtime"
   private static let realtimeTokenAccount = "gateway-token"
+  private static let selfVoiceprintAccount = "self-voiceprint"
+  private static let savedVoicesAccount = "saved-voices"
+  private static let speakerDiarizationKey = "speakers.diarization-enabled"
+  private static let rememberVoicesKey = "speakers.remember-voices"
+  /// Saved voices not heard in a recording for this long are deleted.
+  static let savedVoiceExpiry: TimeInterval = 365 * 24 * 60 * 60
 
   var useS3 = false
   var s3EndpointURL = ""
@@ -47,11 +80,30 @@ final class AppSettings {
   var language = AppLanguage.system {
     didSet { language.persist() }
   }
+  var appearance = AppAppearance.system {
+    didSet {
+      UserDefaults.standard.set(appearance.rawValue, forKey: AppAppearance.preferenceKey)
+    }
+  }
   private(set) var s3HasStoredCredentials = false
   private(set) var realtimeHasStoredToken = false
+  /// When the device owner enrolled their voice; nil when no voiceprint is stored.
+  private(set) var selfVoiceprintEnrolledAt: Date?
+  /// Voices of people the user named, kept only while "Remember voices" is on.
+  private(set) var savedVoices: [SavedVoice] = []
+  /// Off by default; recordings are only split by speaker after the user turns it on.
+  var speakerDiarizationEnabled = false {
+    didSet { UserDefaults.standard.set(speakerDiarizationEnabled, forKey: Self.speakerDiarizationKey) }
+  }
+  private(set) var rememberVoicesEnabled = false
 
   init() {
     language = AppLanguage.current
+    if let rawAppearance = UserDefaults.standard.string(forKey: AppAppearance.preferenceKey),
+      let storedAppearance = AppAppearance(rawValue: rawAppearance)
+    {
+      appearance = storedAppearance
+    }
     restorePersistedSettings()
     #if DEBUG
       if let configuration = Self.debugRealtimeConfiguration {
@@ -63,16 +115,154 @@ final class AppSettings {
   }
 
   var activeS3Configuration: S3Configuration? {
+    #if DEBUG && targetEnvironment(simulator)
+      let environment = ProcessInfo.processInfo.environment
+      if environment["WAKEONCUE_EXPERIENCE_FIXTURES"] == "1",
+        environment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] == "1"
+      {
+        return S3Configuration(
+          endpointURL: URL(string: "http://127.0.0.1:1"), region: "test",
+          bucket: "offline-fixture", accessKeyID: "fixture", secretAccessKey: "fixture",
+          forcePathStyle: true
+        )
+      }
+    #endif
     guard UserDefaults.standard.bool(forKey: Self.s3EnabledKey) else { return nil }
     return persistedS3Configuration()
   }
 
   var activeRealtimeConfiguration: RealtimeProcessingConfiguration? {
     #if DEBUG
-      if let configuration = Self.debugRealtimeConfiguration { return configuration }
+      if var configuration = Self.debugRealtimeConfiguration {
+        applySpeakerOptions(to: &configuration)
+        return configuration
+      }
     #endif
     guard UserDefaults.standard.bool(forKey: Self.realtimeEnabledKey) else { return nil }
     return persistedRealtimeConfiguration()
+  }
+
+  /// The Gateway to send a voice enrollment sample to: the saved one, or the one being edited.
+  func voiceEnrollmentConfiguration() throws -> RealtimeProcessingConfiguration {
+    if let configuration = activeRealtimeConfiguration { return configuration }
+    return try candidateRealtimeConfiguration()
+  }
+
+  /// Stored only in this device's Keychain: excluded from backups, iCloud and S3.
+  func persistSelfVoiceprint(_ voiceprint: RealtimeVoiceprint, enrolledAt: Date = .now) throws {
+    let record = SelfVoiceprintRecord(voiceprint: voiceprint, enrolledAt: enrolledAt)
+    let data = try JSONEncoder().encode(record)
+    try KeychainStore.save(
+      String(decoding: data, as: UTF8.self),
+      service: Self.realtimeKeychainService,
+      account: Self.selfVoiceprintAccount
+    )
+    selfVoiceprintEnrolledAt = enrolledAt
+  }
+
+  func deleteSelfVoiceprint() throws {
+    try KeychainStore.delete(
+      service: Self.realtimeKeychainService, account: Self.selfVoiceprintAccount)
+    selfVoiceprintEnrolledAt = nil
+  }
+
+  /// Names shown for person IDs the processor recognized, including the user.
+  var personNames: [String: String] {
+    var names = Dictionary(uniqueKeysWithValues: savedVoices.map { ($0.id, $0.name) })
+    names[RealtimeSpeaker.selfPersonID] = AppLanguage.localized("Me")
+    return names
+  }
+
+  func setRememberVoices(_ enabled: Bool) throws {
+    if !enabled { try deleteAllSavedVoices() }
+    rememberVoicesEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: Self.rememberVoicesKey)
+  }
+
+  func saveVoice(name: String, voiceprint: RealtimeVoiceprint, replacing id: String? = nil) throws {
+    let now = Date.now
+    var voices = savedVoices.filter { $0.id != id }
+    voices.append(
+      SavedVoice(
+        id: id ?? UUID().uuidString, name: name, voiceprint: voiceprint,
+        createdAt: now, lastHeardAt: now))
+    try persistSavedVoices(voices)
+  }
+
+  func renameSavedVoice(id: String, to name: String) throws {
+    try persistSavedVoices(savedVoices.map { $0.id == id ? $0.renamed(name) : $0 })
+  }
+
+  func deleteSavedVoice(id: String) throws {
+    try persistSavedVoices(savedVoices.filter { $0.id != id })
+  }
+
+  func deleteAllSavedVoices() throws {
+    try KeychainStore.delete(service: Self.realtimeKeychainService, account: Self.savedVoicesAccount)
+    savedVoices = []
+  }
+
+  /// Records that saved voices were recognized, so they do not expire.
+  func markVoicesHeard(_ ids: Set<String>, at date: Date = .now) {
+    guard
+      savedVoices.contains(where: {
+        ids.contains($0.id) && date.timeIntervalSince($0.lastHeardAt) > 86_400
+      })
+    else { return }
+    try? persistSavedVoices(savedVoices.map { ids.contains($0.id) ? $0.heard(at: date) : $0 })
+  }
+
+  private func persistSavedVoices(_ voices: [SavedVoice]) throws {
+    if voices.isEmpty {
+      try deleteAllSavedVoices()
+      return
+    }
+    let data = try JSONEncoder().encode(voices)
+    try KeychainStore.save(
+      String(decoding: data, as: UTF8.self),
+      service: Self.realtimeKeychainService,
+      account: Self.savedVoicesAccount
+    )
+    savedVoices = voices
+  }
+
+  private func restoreSpeakerSettings() {
+    let defaults = UserDefaults.standard
+    speakerDiarizationEnabled = defaults.bool(forKey: Self.speakerDiarizationKey)
+    rememberVoicesEnabled = defaults.bool(forKey: Self.rememberVoicesKey)
+    selfVoiceprintEnrolledAt = storedSelfVoiceprint()?.enrolledAt
+    let stored =
+      (try? KeychainStore.read(
+        service: Self.realtimeKeychainService, account: Self.savedVoicesAccount))
+      .flatMap { try? JSONDecoder().decode([SavedVoice].self, from: Data($0.utf8)) } ?? []
+    let cutoff = Date.now.addingTimeInterval(-Self.savedVoiceExpiry)
+    let current = stored.filter { $0.lastHeardAt >= cutoff }
+    savedVoices = current
+    if current.count != stored.count { try? persistSavedVoices(current) }
+  }
+
+  private func applySpeakerOptions(to configuration: inout RealtimeProcessingConfiguration) {
+    guard speakerDiarizationEnabled else { return }
+    configuration.speakerDiarization = true
+    var voices: [RealtimeKnownVoiceprint] = []
+    if let own = storedSelfVoiceprint()?.voiceprint {
+      voices.append(
+        RealtimeKnownVoiceprint(personID: RealtimeSpeaker.selfPersonID, voiceprint: own))
+    }
+    if rememberVoicesEnabled {
+      voices += savedVoices.map {
+        RealtimeKnownVoiceprint(personID: $0.id, voiceprint: $0.voiceprint)
+      }
+    }
+    configuration.knownVoiceprints = voices
+  }
+
+  private func storedSelfVoiceprint() -> SelfVoiceprintRecord? {
+    guard
+      let stored = try? KeychainStore.read(
+        service: Self.realtimeKeychainService, account: Self.selfVoiceprintAccount)
+    else { return nil }
+    return try? JSONDecoder().decode(SelfVoiceprintRecord.self, from: Data(stored.utf8))
   }
 
   #if DEBUG
@@ -201,6 +391,12 @@ final class AppSettings {
     return RealtimeProcessingConfiguration(gatewayURL: url, bearerToken: token)
   }
 
+  func applyRealtimePairing(_ pairing: RealtimeServicePairing) {
+    useRealtimeProcessing = true
+    realtimeGatewayURL = pairing.gatewayURL.absoluteString
+    realtimeGatewayToken = pairing.gatewayToken
+  }
+
   func persistRealtimeConfiguration(_ configuration: RealtimeProcessingConfiguration) throws {
     try KeychainStore.save(
       configuration.bearerToken,
@@ -257,6 +453,7 @@ final class AppSettings {
     }
     realtimeGatewayURL = defaults.string(forKey: Self.realtimeGatewayURLKey) ?? ""
     realtimeGatewayToken = ""
+    restoreSpeakerSettings()
     spokenLanguage = SpokenLanguage(
       rawValue: defaults.string(forKey: Self.spokenLanguageKey) ?? ""
     ) ?? .automatic
@@ -269,7 +466,9 @@ final class AppSettings {
         service: Self.realtimeKeychainService, account: Self.realtimeTokenAccount),
       !token.isEmpty
     else { return nil }
-    return RealtimeProcessingConfiguration(gatewayURL: url, bearerToken: token)
+    var configuration = RealtimeProcessingConfiguration(gatewayURL: url, bearerToken: token)
+    applySpeakerOptions(to: &configuration)
+    return configuration
   }
 
   private func persistedS3Configuration() -> S3Configuration? {
@@ -318,6 +517,32 @@ final class AppSettings {
 struct RealtimeProcessingConfiguration: Equatable, Sendable {
   let gatewayURL: URL
   let bearerToken: String
+  var speakerDiarization = false
+  var knownVoiceprints: [RealtimeKnownVoiceprint] = []
+}
+
+/// A named person's voiceprint. It never leaves this device except to the user's own
+/// realtime service for the length of a session.
+struct SavedVoice: Codable, Equatable, Identifiable, Sendable {
+  let id: String
+  let name: String
+  let voiceprint: RealtimeVoiceprint
+  let createdAt: Date
+  let lastHeardAt: Date
+
+  func renamed(_ name: String) -> SavedVoice {
+    SavedVoice(
+      id: id, name: name, voiceprint: voiceprint, createdAt: createdAt, lastHeardAt: lastHeardAt)
+  }
+
+  func heard(at date: Date) -> SavedVoice {
+    SavedVoice(id: id, name: name, voiceprint: voiceprint, createdAt: createdAt, lastHeardAt: date)
+  }
+}
+
+private struct SelfVoiceprintRecord: Codable {
+  let voiceprint: RealtimeVoiceprint
+  let enrolledAt: Date
 }
 
 enum RealtimeSettingsError: LocalizedError {
@@ -379,6 +604,18 @@ enum KeychainStore {
       throw KeychainError.status(status)
     }
     return String(data: data, encoding: .utf8)
+  }
+
+  static func delete(service: String, account: String) throws {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+    ]
+    let status = SecItemDelete(query as CFDictionary)
+    guard status == errSecSuccess || status == errSecItemNotFound else {
+      throw KeychainError.status(status)
+    }
   }
 }
 

@@ -30,8 +30,15 @@ iPhone microphone
 - Start / Pause / Resume / Finish 保持同一 `recording_id`；
 - Live Activity、App Shortcuts、iOS 18 Control Center / Lock Screen Control、可选 Action Button；
 - 本机合并并分享标准 AAC-LC M4A；
+- 本地完成后即可开始下一场，云端备份独立继续；录音中展示真实收音电平、输入设备和中断状态；
+- Apple Watch：查看与遥控 iPhone 录音；iPhone 开不了时由手表全程录音（60 秒分段同步到 iPhone 合成）；录音中「记下刚才」标记最近 2 分钟并打待办/重要/想法标签；表盘复杂功能；
+- 完整录音库、持久化命名、本地字幕搜索、重点标记及 TXT/SRT 导出；
+- 区分说话人（默认关闭）：匿名的说话人 1 / 2，可按录音命名或从通讯录选择；登记本人声音后标为「我」；可选「记住声音」自动认出已命名的人，声纹只存在 iPhone Keychain，一年未出现自动删除；
+- iOS 26+ 设备端免费转写（SpeechAnalyzer）与摘要（Apple 智能），没有实时服务也能用；支持 AirPods 高质量录音和导入音频文件；
+- 地点：到达或离开设定地点时结束录音，到达时提醒一键开始（iOS 不允许后台自动打开麦克风）；
+- 系统自适应浅深色、大字体布局；实时服务支持二维码或粘贴配对、连接测试与验证后保存；
 - 可选 Realtime Gateway、断线重连/事件补放和 App 内实时字幕；
-- 可替换 Mac Processor：Qwen3-ASR-1.7B 实时初稿/原位修订（MLX Whisper 回退）+ sherpa-onnx 说话人分割与声纹聚类；
+- 可替换 Mac Processor：Qwen3-ASR-1.7B 实时初稿/原位修订（MLX Whisper 回退）+ sherpa-onnx 说话人分割、会话内聚类与已保存声音匹配；
 - Swift 核心单元测试、真实 S3 兼容端点 round-trip 和真实 AAC/M4A 验证。
 
 详细说明：
@@ -41,7 +48,9 @@ iPhone microphone
 - [本地开发与真机启动](docs/development.md)
 - [MVP 范围与验收](docs/mvp.md)
 - [验证结果](docs/verification.md)
+- [录音体验改进与验证范围](docs/product-experience.md)
 - [实时处理协议与部署](docs/realtime-processing.md)
+- [Apple Watch 接入](docs/apple-watch.md)
 
 想在自己的 MacBook 上直接跑实时服务，可从仓库根目录执行
 `server/scripts/setup_mac.sh` 后运行 `server/scripts/run_local_mac_stack.sh`；连接
@@ -80,3 +89,12 @@ PYTHONPATH=server python3 -m unittest discover -s server/tests -v
 ```
 
 完整 Xcode 构建和真机可靠性步骤见 [开发说明](docs/development.md)。当前仓库不会把命令行 Swift 测试、fixture 或服务端合成音频测试描述成 iPhone 真机录音证明。
+
+## 许可
+
+WakeOnCue 按组件分别授权，详见 [LICENSE](LICENSE)：
+
+- `ios/`（iOS、watchOS、小组件与 WakeOnCueCore）：[AGPL-3.0-only](ios/LICENSE)
+- `server/`（Gateway、Processor、Recording API）及其余文件：[Apache-2.0](server/LICENSE)
+
+「WakeOnCue」名称与图标不随代码授权，发布修改版请更换名称和图标，见 [TRADEMARKS.md](TRADEMARKS.md)。贡献代码前请签署 [CLA](CLA.md)，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。commit `ffaf4b3` 及之前的版本仍按 MIT 协议提供。

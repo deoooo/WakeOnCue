@@ -9,11 +9,13 @@ import WidgetKit
 @Observable
 final class AppModel {
   private(set) var currentRecording: RecordingRecord?
+  private(set) var lastFinishedRecording: RecordingRecord?
   private(set) var recentRecordings: [RecordingRecord] = []
   private(set) var currentSyncProgress = RecordingSyncProgress()
   private(set) var recentSyncProgress: [String: RecordingSyncProgress] = [:]
   private(set) var elapsed: TimeInterval = 0
   private(set) var microphonePermission = AVAudioApplication.shared.recordPermission
+  private(set) var captureFeedback = RecordingCaptureFeedback.idle
   private(set) var isBusy = false
   private(set) var isSavingSettings = false
   private(set) var settingsStatusMessage: String?
@@ -30,11 +32,14 @@ final class AppModel {
   private(set) var retranscriptionProgress = 0.0
   private(set) var retranscriptionStatusMessage: String?
   private(set) var transcriptVersion = 0
+  /// Recordings being transcribed or summarized on this iPhone.
+  private(set) var onDeviceProcessingRecordingIDs: Set<String> = []
   var errorMessage: String?
   var settingsPresented = false
   var shareItem: RecordingShareItem?
 
   let settings: AppSettings
+  let places = PlaceAutomation()
 
   @ObservationIgnored private let fileLayout: RecordingFileLayout
   @ObservationIgnored private let store: RecordingStore
@@ -77,6 +82,48 @@ final class AppModel {
       await self.start()
       await self.handle(command: command)
     }
+    PhoneWatchBridge.shared.install(
+      requestHandler: { [weak self] request in
+        guard let self else { return WatchBridgeReply(failure: .failed("iPhone app is closing")) }
+        return await self.handle(watchRequest: request)
+      },
+      inboxHandler: { [weak self] in
+        guard let self else { return }
+        await self.start()
+        await self.importWatchRecordings()
+      }
+    )
+    PhoneWatchBridge.shared.activate()
+    places.onTrigger = { [weak self] action, place, arrived in
+      await self?.handlePlace(action, at: place, arrived: arrived)
+    }
+    places.onStartRequested = { [weak self] in
+      guard let self else { return }
+      await self.start()
+      if self.currentRecording == nil { await self.startRecording() }
+    }
+    places.start()
+  }
+
+  private func handlePlace(
+    _ action: PlaceTriggerAction, at place: RecordingPlace, arrived: Bool
+  ) async {
+    await start()
+    switch action {
+    case .none:
+      return
+    case .start:
+      guard currentRecording == nil else { return }
+      if UIApplication.shared.applicationState == .active {
+        await startRecording()
+      } else {
+        await places.postStartPrompt(for: place)
+      }
+    case .finish:
+      guard currentRecording != nil else { return }
+      await finishRecording()
+      await places.postFinishedNotice(for: place, arrived: arrived)
+    }
   }
 
   static func bootstrap() -> AppModel {
@@ -110,14 +157,17 @@ final class AppModel {
       let interrupted = try await uploader.activate(uploadsEnabled: s3Enabled)
       let recovery = RecordingRecoveryService(fileLayout: fileLayout)
       for recordingID in interrupted {
+        let interruptedRecording = try await store.recording(id: recordingID)
+        let needsCloudBackup = interruptedRecording.metadata[S3Configuration.metadataBucketKey] != nil
+          && interruptedRecording.metadata["cloud_sync_abandoned"] != "true"
         try await recovery.recoverUnindexedChunks(
           recordingID: recordingID,
           store: store,
-          enqueueUpload: s3Enabled
+          enqueueUpload: needsCloudBackup
         )
         let chunks = try await store.chunks(recordingID: recordingID)
         let duration = chunks.reduce(0) { $0 + $1.duration }
-        if !s3Enabled {
+        if !needsCloudBackup {
           if !chunks.isEmpty { _ = try? await prepareM4A(recordingID: recordingID) }
           try await store.completeLocally(recordingID: recordingID, duration: duration)
         } else if chunks.isEmpty {
@@ -139,14 +189,13 @@ final class AppModel {
             duration: duration
           )
         }
-      }
-      if !s3Enabled,
-        let active = try await store.activeRecording(),
-        [.finishing, .uploading].contains(active.status)
-      {
-        try await store.completeLocally(recordingID: active.id, duration: active.duration)
+        let recovered = try await store.recording(id: recordingID)
+        if [.uploading, .completed].contains(recovered.status) {
+          rememberLastFinished(recovered)
+        }
       }
       if s3Enabled { uploader.schedule() }
+      await importWatchRecordings()
       await refresh()
       await performStorageMaintenance()
       await liveActivity.removeStaleActivities(activeRecordingID: currentRecording?.id)
@@ -298,6 +347,8 @@ final class AppModel {
       try capture.pause()
       await realtimeClient?.pause()
       try await recordPause(recordingID: recording.id, duration: capture.duration)
+      if var paused = currentRecording { paused.status = .paused; currentRecording = paused }
+      PhoneWatchBridge.shared.publish(watchSnapshot())
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -313,6 +364,8 @@ final class AppModel {
       try capture.resume()
       await realtimeClient?.resume()
       try await recordResume(recordingID: recording.id, duration: capture.duration)
+      if var resumed = currentRecording { resumed.status = .recording; currentRecording = resumed }
+      PhoneWatchBridge.shared.publish(watchSnapshot())
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -327,10 +380,14 @@ final class AppModel {
     defer { isBusy = false }
     do {
       try capture.stop()
-      await realtimeClient?.finish()
+      let finishingRealtimeClient = realtimeClient
+      realtimeClient = nil
       if liveTranscriptRecordingID == recording.id {
         persistLiveTranscript(recordingID: recording.id)
         await enqueueTranscriptPersistence(recordingID: recording.id)
+      }
+      if let finishingRealtimeClient {
+        Task { await finishingRealtimeClient.finish() }
       }
       let duration = capture.duration
       await chunkConsumer?.value
@@ -341,6 +398,12 @@ final class AppModel {
         to: .finishing,
         duration: duration
       )
+      var finishingRecording = try await store.recording(id: recording.id)
+      finishingRecording.duration = duration
+      currentRecording = finishingRecording
+      elapsed = duration
+      publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
+      await refresh()
       let shareableAudio = try await prepareM4A(recordingID: recording.id)
       if s3Enabled {
         try await store.enqueueControlTask(
@@ -356,35 +419,68 @@ final class AppModel {
       } else {
         try await store.completeLocally(recordingID: recording.id, duration: duration)
       }
+      let finishedRecording = try await store.recording(id: recording.id)
+      rememberLastFinished(finishedRecording)
+      currentRecording = nil
+      currentSyncProgress = .init()
+      elapsed = 0
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
-      await refresh()
-      if let currentRecording {
+      let progress = try await syncProgress(for: finishedRecording)
+      if finishedRecording.status == .completed {
+        await liveActivity.end(
+          recording: finishedRecording,
+          progress: progress,
+          usesS3: s3Enabled
+        )
+      } else {
         await liveActivity.update(
-          recording: currentRecording,
-          progress: currentSyncProgress,
+          recording: finishedRecording,
+          progress: progress,
           usesS3: s3Enabled
         )
       }
+      await refresh()
       if s3Enabled { uploader.schedule() }
+      Task { await self.processOnDevice(recording: finishedRecording, audioURL: shareableAudio) }
     } catch {
+      if self.capture == nil {
+        await refresh()
+        if var stranded = currentRecording,
+          [.recording, .paused].contains(stranded.status)
+        {
+          stranded.status = .finishing
+          currentRecording = stranded
+        }
+        publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
+      }
       errorMessage = error.localizedDescription
     }
   }
 
   func finishLocally() async {
-    guard let recording = currentRecording,
+    guard let recording = currentRecording ?? lastFinishedRecording,
       [.finishing, .uploading, .failed].contains(recording.status),
       !isBusy
     else { return }
     isBusy = true
     defer { isBusy = false }
     do {
-      _ = try? await prepareM4A(recordingID: recording.id)
+      _ = try await prepareM4A(recordingID: recording.id)
       try await store.completeLocally(
         recordingID: recording.id,
         duration: recording.duration
       )
+      let finishedRecording = try await store.recording(id: recording.id)
+      rememberLastFinished(finishedRecording)
+      if currentRecording?.id == recording.id { currentRecording = nil }
+      currentSyncProgress = .init()
+      elapsed = 0
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
+      await liveActivity.end(
+        recording: finishedRecording,
+        progress: try await syncProgress(for: finishedRecording),
+        usesS3: s3Configuration(for: finishedRecording) != nil
+      )
       await refresh()
     } catch {
       errorMessage = String(
@@ -425,6 +521,23 @@ final class AppModel {
       let s3Configuration = try settings.useS3 ? settings.candidateS3Configuration() : nil
       let realtimeConfiguration =
         try settings.useRealtimeProcessing ? settings.candidateRealtimeConfiguration() : nil
+
+      if let s3Configuration {
+        var offset = 0
+        while true {
+          let page = try await store.recordings(limit: 100, offset: offset)
+          if page.contains(where: {
+            [.finishing, .uploading].contains($0.status)
+              && !s3Configuration.matchesRecordedLocation($0.metadata)
+          }) {
+            throw S3SettingsError.invalid(AppLanguage.localized(
+              "Pending backups use a different destination. Reconnect that storage and finish backing up before changing destinations."
+            ))
+          }
+          if page.count < 100 { break }
+          offset += page.count
+        }
+      }
 
       if let s3Configuration {
         try await S3StorageClient.validate(configuration: s3Configuration)
@@ -752,12 +865,6 @@ final class AppModel {
 
   func refresh() async {
     do {
-      if !s3Enabled, capture == nil,
-        let active = try await store.activeRecording(),
-        [.finishing, .uploading].contains(active.status)
-      {
-        try await store.completeLocally(recordingID: active.id, duration: active.duration)
-      }
       if let currentID = currentRecording?.id,
         let stored = try? await store.recording(id: currentID)
       {
@@ -768,8 +875,8 @@ final class AppModel {
         } else {
           elapsed = stored.duration
         }
-        currentRecording = displayed
         if stored.status == .completed {
+          rememberLastFinished(stored)
           let progress = try await syncProgress(for: stored)
           await liveActivity.end(
             recording: stored,
@@ -779,7 +886,13 @@ final class AppModel {
           currentRecording = nil
           currentSyncProgress = .init()
           elapsed = 0
-        } else if [.recording, .paused, .finishing, .uploading].contains(stored.status) {
+        } else if [.uploading, .failed].contains(stored.status) {
+          if stored.status == .uploading { rememberLastFinished(stored) }
+          currentRecording = nil
+          currentSyncProgress = .init()
+          elapsed = 0
+        } else if [.recording, .paused, .finishing].contains(stored.status) {
+          currentRecording = displayed
           let progress = try await syncProgress(for: displayed)
           currentSyncProgress = progress
           await liveActivity.update(
@@ -798,11 +911,33 @@ final class AppModel {
         }
       }
       recentRecordings = try await store.recordings(limit: 20)
+      if let lastFinishedID = lastFinishedRecording?.id,
+        let refreshedLastFinished = recentRecordings.first(where: { $0.id == lastFinishedID })
+      {
+        lastFinishedRecording = refreshedLastFinished
+      }
       var progressByRecording: [String: RecordingSyncProgress] = [:]
       for recording in recentRecordings {
         progressByRecording[recording.id] = try await syncProgress(for: recording)
       }
       recentSyncProgress = progressByRecording
+      if let lastFinishedRecording,
+        let progress = progressByRecording[lastFinishedRecording.id]
+      {
+        if lastFinishedRecording.status == .completed {
+          await liveActivity.end(
+            recording: lastFinishedRecording,
+            progress: progress,
+            usesS3: s3Configuration(for: lastFinishedRecording) != nil
+          )
+        } else {
+          await liveActivity.update(
+            recording: lastFinishedRecording,
+            progress: progress,
+            usesS3: s3Configuration(for: lastFinishedRecording) != nil
+          )
+        }
+      }
       let isRecording =
         currentRecording.map {
           [.recording, .paused].contains($0.status)
@@ -829,6 +964,11 @@ final class AppModel {
     return persisted.includingUnindexedDuration(recording.duration)
   }
 
+  private func rememberLastFinished(_ recording: RecordingRecord) {
+    guard (lastFinishedRecording?.createdAt ?? .distantPast) <= recording.createdAt else { return }
+    lastFinishedRecording = recording
+  }
+
   private func handle(command: RecordingCommand) async {
     switch command {
     case .start: await startRecording()
@@ -842,6 +982,11 @@ final class AppModel {
     _ capture: AudioCaptureService,
     realtimeClient: RealtimeProcessingClient?
   ) {
+    captureFeedback = .idle
+    capture.onCaptureFeedback = { [weak self, weak capture] feedback in
+      guard let self, let capture, self.capture === capture else { return }
+      self.captureFeedback = feedback
+    }
     capture.onCaptureError = { [weak self] error in
       Task { @MainActor in
         self?.errorMessage = String(
@@ -892,6 +1037,109 @@ final class AppModel {
     #endif
   }
 
+  func summary(for recordingID: String) -> RecordingSummary? {
+    guard let url = try? fileLayout.summaryURL(recordingID: recordingID),
+      let data = try? Data(contentsOf: url)
+    else { return nil }
+    return try? JSONDecoder().decode(RecordingSummary.self, from: data)
+  }
+
+  /// Transcribes on this iPhone when no realtime transcript exists, then writes a summary.
+  /// `regenerateSummary` replaces an existing summary.
+  func processOnDevice(
+    recording: RecordingRecord,
+    audioURL: URL? = nil,
+    regenerateSummary: Bool = false
+  ) async {
+    guard !onDeviceProcessingRecordingIDs.contains(recording.id) else { return }
+    onDeviceProcessingRecordingIDs.insert(recording.id)
+    defer { onDeviceProcessingRecordingIDs.remove(recording.id) }
+    do {
+      var segments = (try? await transcript(for: recording.id)) ?? []
+      if segments.isEmpty, OnDeviceIntelligence.canTranscribe {
+        let file: URL
+        if let audioURL {
+          file = audioURL
+        } else {
+          file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
+            for: recording,
+            chunks: try await store.chunks(recordingID: recording.id),
+            s3Configuration: s3Configuration(for: recording)
+          )
+        }
+        segments = try await OnDeviceIntelligence.transcribe(
+          audioURL: file,
+          recordingID: recording.id,
+          spokenLanguage: settings.spokenLanguage
+        )
+        guard !segments.isEmpty else { return }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let transcriptURL = try fileLayout.transcriptURL(recordingID: recording.id)
+        try encoder.encode(segments).write(to: transcriptURL, options: [.atomic])
+        try RecordingFileLayout.protect(transcriptURL)
+        await enqueueTranscriptPersistence(recordingID: recording.id)
+        transcriptVersion += 1
+      }
+      guard !segments.isEmpty, OnDeviceIntelligence.canSummarize,
+        regenerateSummary || summary(for: recording.id) == nil
+      else { return }
+      let summary = try await OnDeviceIntelligence.summarize(
+        segments,
+        title: recording.title,
+        language: AppLanguage.current
+      )
+      let summaryURL = try fileLayout.summaryURL(recordingID: recording.id)
+      try JSONEncoder().encode(summary).write(to: summaryURL, options: [.atomic])
+      try RecordingFileLayout.protect(summaryURL)
+      transcriptVersion += 1
+    } catch {
+      errorMessage = String(
+        format: AppLanguage.localized("Could not process this recording on iPhone: %@"),
+        error.localizedDescription
+      )
+    }
+  }
+
+  /// Saves the voice of one speaker in a finished recording under the name the user gave.
+  /// Only the passages labeled with that speaker are sent, once, to the user's own service.
+  func rememberVoice(
+    recording: RecordingRecord,
+    clusterID: String,
+    name: String,
+    transcript: [RealtimeTranscriptEvent],
+    replacing personID: String? = nil
+  ) async throws {
+    guard settings.rememberVoicesEnabled else { return }
+    let configuration = try settings.voiceEnrollmentConfiguration()
+    let ranges = transcript
+      .filter { $0.speaker?.clusterID == clusterID }
+      .map { $0.startMilliseconds..<$0.endMilliseconds }
+    let chunks = try await store.chunks(recordingID: recording.id)
+    let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
+      for: recording,
+      chunks: chunks,
+      s3Configuration: s3Configuration(for: recording)
+    )
+    let maximumBytes =
+      Int(RealtimeVoiceprintEnrollmentRequest.recommendedDuration) * RealtimeProtocol.sampleRate * 2
+    var sample = Data()
+    for try await frame in try await RealtimeAudioFileReader.frames(from: file) {
+      let start = frame.audio.startMilliseconds
+      let end = start + frame.audio.pcm16LittleEndian.count * 1_000 / (RealtimeProtocol.sampleRate * 2)
+      if ranges.contains(where: { $0.lowerBound <= start && end <= $0.upperBound }) {
+        sample.append(frame.audio.pcm16LittleEndian)
+        if sample.count >= maximumBytes { break }
+      }
+    }
+    guard !sample.isEmpty else { throw RealtimeClientError.voiceprintNeedsMoreSpeech }
+    let enrolled = try await RealtimeProcessingClient.enrollVoiceprint(
+      configuration: configuration,
+      pcm16LittleEndian: sample
+    )
+    try settings.saveVoice(name: name, voiceprint: enrolled.voiceprint, replacing: personID)
+  }
+
   private func makeRealtimeClient() -> RealtimeProcessingClient? {
     guard let configuration = settings.activeRealtimeConfiguration else {
       realtimeState = .disabled
@@ -908,6 +1156,9 @@ final class AppModel {
       realtimeState = state
     case .transcript(let transcript):
       guard transcript.recordingID == liveTranscriptRecordingID else { return }
+      if let personID = transcript.speaker?.personID {
+        settings.markVoicesHeard([personID])
+      }
       if let index = liveTranscriptSegments.firstIndex(where: { $0.id == transcript.id }) {
         guard transcript.revision >= liveTranscriptSegments[index].revision else { return }
         liveTranscriptSegments[index] = transcript
@@ -1000,10 +1251,15 @@ final class AppModel {
 
   private func prepareM4A(recordingID: String) async throws -> URL {
     let chunks = try await store.chunks(recordingID: recordingID)
-    return try await RecordingAudioAssembler(fileLayout: fileLayout).assemble(
+    let url = try await RecordingAudioAssembler(fileLayout: fileLayout).assemble(
       recordingID: recordingID,
       chunks: chunks
     )
+    let playbackProbe = try AVAudioPlayer(contentsOf: url)
+    guard playbackProbe.prepareToPlay(), playbackProbe.duration > 0 else {
+      throw RecordingUIError.playbackFailed
+    }
+    return url
   }
 
   private func s3Configuration(for recording: RecordingRecord) -> S3Configuration? {
@@ -1064,6 +1320,7 @@ final class AppModel {
     isPaused: Bool,
     recordingID: String?
   ) {
+    PhoneWatchBridge.shared.publish(watchSnapshot())
     let snapshot = SharedRecordingState.snapshot()
     guard
       snapshot.isRecording != isRecording || snapshot.isPaused != isPaused
@@ -1075,6 +1332,115 @@ final class AppModel {
       recordingID: recordingID
     )
     ControlCenter.shared.reloadControls(ofKind: SharedRecordingState.controlKind)
+  }
+}
+
+// MARK: - Apple Watch
+
+extension AppModel {
+  static let watchRecentMarkLimit: TimeInterval = 10 * 60
+
+  func watchSnapshot(now: Date = Date()) -> WatchRecordingSnapshot {
+    let phase: WatchRecordingPhase
+    switch currentRecording?.status {
+    case .recording: phase = .recording
+    case .paused: phase = .paused
+    case .finishing: phase = .finishing
+    default: phase = .idle
+    }
+    let calendar = Calendar.current
+    let todayCompleted = recentRecordings
+      .filter { $0.id != currentRecording?.id && calendar.isDate($0.startedAt, inSameDayAs: now) }
+      .reduce(0) { $0 + $1.duration }
+    return WatchRecordingSnapshot(
+      phase: phase,
+      recordingID: phase == .idle ? nil : currentRecording?.id,
+      elapsed: phase == .idle ? 0 : elapsed,
+      capturedAt: now,
+      todayCompletedDuration: todayCompleted
+    )
+  }
+
+  func handle(watchRequest request: WatchBridgeRequest) async -> WatchBridgeReply {
+    await start()
+    var reply = WatchBridgeReply()
+    switch request {
+    case .snapshot:
+      break
+    case .start:
+      errorMessage = nil
+      await startRecording()
+      if currentRecording == nil {
+        reply.failure = .failed(errorMessage ?? AppLanguage.localized("Open WakeOnCue on iPhone to start recording."))
+      }
+    case .pause:
+      await pauseRecording()
+    case .resume:
+      await resumeRecording()
+    case .finish:
+      await finishRecording()
+    case .bookmark:
+      reply = markWatchRange(seconds: 0)
+    case .markRecent(let seconds):
+      reply = markWatchRange(seconds: min(max(0, seconds), Self.watchRecentMarkLimit))
+    case .tagBookmark(let recordingID, let bookmarkID, let tag):
+      do {
+        try RecordingAnnotationsService.shared.setBookmarkTag(
+          recordingID: recordingID, bookmarkID: bookmarkID, tag: tag)
+      } catch {
+        reply.failure = .failed(error.localizedDescription)
+      }
+    }
+    let snapshot = watchSnapshot()
+    reply.snapshot = snapshot
+    PhoneWatchBridge.shared.publish(snapshot)
+    return reply
+  }
+
+  /// Imports audio files as local recordings, then transcribes and summarizes them on device.
+  func importAudioFiles(_ urls: [URL]) async {
+    for url in urls {
+      do {
+        let recording = try await AudioFileImporter(store: store, fileLayout: fileLayout)
+          .importFile(at: url)
+        await refresh()
+        Task { await self.processOnDevice(recording: recording) }
+      } catch {
+        errorMessage = String(
+          format: AppLanguage.localized("Could not import %@: %@"),
+          url.lastPathComponent,
+          error.localizedDescription
+        )
+      }
+    }
+  }
+
+  func importWatchRecordings() async {
+    let imported = await WatchRecordingImporter(
+      store: store, fileLayout: fileLayout, annotations: .shared
+    ).importPendingSessions()
+    if !imported.isEmpty { await refresh() }
+  }
+
+  /// `seconds == 0` drops a point bookmark at "now"; otherwise the span ending now is marked.
+  private func markWatchRange(seconds: TimeInterval) -> WatchBridgeReply {
+    guard let recording = currentRecording,
+      [.recording, .paused].contains(recording.status)
+    else { return WatchBridgeReply(failure: .notRecording) }
+    let end = elapsed
+    let start = max(0, end - seconds)
+    do {
+      let bookmark = try RecordingAnnotationsService.shared.addBookmark(
+        recordingID: recording.id,
+        position: start,
+        duration: seconds > 0 ? end - start : nil
+      )
+      return WatchBridgeReply(
+        mark: WatchMarkResult(
+          recordingID: recording.id, bookmarkID: bookmark.id, savedSeconds: end - start))
+    } catch {
+      return WatchBridgeReply(failure: .failed(error.localizedDescription))
+    }
   }
 }
 
