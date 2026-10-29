@@ -73,3 +73,36 @@ import Testing
   #expect(response.voiceprint == RealtimeVoiceprint(model: "m", embedding: [0.1, 0.2]))
   #expect(response.speechMilliseconds == 15_200)
 }
+
+@Test func realtimeSessionRequestSendsChannelOnlyWhenSet() throws {
+  let single = try #require(
+    JSONSerialization.jsonObject(
+      with: JSONEncoder().encode(RealtimeSessionRequest(recordingID: "rec", language: nil)))
+      as? [String: Any]
+  )
+  #expect(single["channel"] == nil)
+
+  let microphone = try #require(
+    JSONSerialization.jsonObject(
+      with: JSONEncoder().encode(
+        RealtimeSessionRequest(recordingID: "rec", language: nil, channel: .microphone)))
+      as? [String: Any]
+  )
+  #expect(microphone["channel"] as? String == "microphone")
+}
+
+@Test func channelTranscriptEventsHaveDistinctIdentities() throws {
+  func event(_ channel: String) throws -> RealtimeTranscriptEvent {
+    try JSONDecoder().decode(
+      RealtimeTranscriptEvent.self,
+      from: Data(
+        #"{"protocol_version":1,"type":"transcript.upsert","recording_id":"rec","segment_id":"seg_0","revision":1,"start_ms":0,"end_ms":900,"text":"Hi","is_final":true,"speaker":null,"channel":"\#(channel)"}"#
+          .utf8)
+    )
+  }
+  let microphone = try event("microphone")
+  let system = try event("system")
+  #expect(microphone.channel == .microphone)
+  #expect(system.channel == .system)
+  #expect(microphone.id != system.id)
+}

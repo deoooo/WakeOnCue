@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "18.0"
     watchOS: "11.0"
+    macOS: "15.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -167,6 +168,56 @@ targets:
         com.apple.security.application-groups:
           - group.com.deoooo.WakeOnCue
 
+  WakeOnCueMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: WakeOnCueMac
+    dependencies:
+      - package: WakeOnCueCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.mac
+        PRODUCT_NAME: WakeOnCue
+        # Launches the user's own Python Gateway and processor, so the app is not sandboxed.
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: false
+        COMBINE_HIDPI_IMAGES: true
+    info:
+      path: WakeOnCueMac/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.productivity
+        # Development builds find the checkout they were built from; users can pick another.
+        WakeOnCueSourceRoot: $(SRCROOT)/..
+        NSMicrophoneUsageDescription: WakeOnCue records your microphone only during a meeting recording you start.
+        NSAudioCaptureUsageDescription: WakeOnCue records audio played on this Mac, such as the other side of an online meeting, only during a recording you start.
+        NSLocalNetworkUsageDescription: WakeOnCue lets your iPhone find the realtime service running on this Mac.
+        NSBonjourServices:
+          - _wakeoncue._tcp
+    entitlements:
+      path: WakeOnCueMac/WakeOnCueMac.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+
+  WakeOnCueMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: WakeOnCueMacTests
+    dependencies:
+      - target: WakeOnCueMac
+      - package: WakeOnCueCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.mac.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/WakeOnCue.app/Contents/MacOS/WakeOnCue
+        BUNDLE_LOADER: $(TEST_HOST)
+
   WakeOnCueWatchUITests:
     type: bundle.ui-testing
     platform: watchOS
@@ -207,6 +258,16 @@ targets:
         TEST_TARGET_NAME: WakeOnCue
 
 schemes:
+  WakeOnCueMac:
+    build:
+      targets:
+        WakeOnCueMac: all
+        WakeOnCueMacTests: [test]
+    run:
+      config: Debug
+    test:
+      targets:
+        - WakeOnCueMacTests
   WakeOnCueWatch:
     build:
       targets:

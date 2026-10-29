@@ -220,6 +220,80 @@ class RealtimeGatewayTest(unittest.IsolatedAsyncioTestCase):
         await app.close()
         await processor.close()
 
+    async def test_channel_sessions_label_microphone_as_self(self) -> None:
+        processor = await self._register_processor({"voiceprint_model": "m"})
+        audio = {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+        response = await self.client.post(
+            self.server.make_url("/v1/realtime/sessions"),
+            headers={"Authorization": "Bearer test-realtime-token"},
+            json={"protocol_version": 1, "recording_id": "rec_x", "audio": audio, "channel": "left"},
+        )
+        self.assertEqual(response.status, 422)
+
+        voiceprints = [
+            {"person_id": "self", "model": "m", "embedding": [0.5, 0.5]},
+            {"person_id": "p1", "model": "m", "embedding": [0.1, 0.9]},
+        ]
+        sockets = {}
+        for channel in ("microphone", "system"):
+            response = await self.client.post(
+                self.server.make_url("/v1/realtime/sessions"),
+                headers={"Authorization": "Bearer test-realtime-token"},
+                json={
+                    "protocol_version": 1,
+                    "recording_id": "rec_meeting",
+                    "audio": audio,
+                    "channel": channel,
+                    "speaker_diarization": True,
+                    "known_voiceprints": voiceprints,
+                },
+            )
+            self.assertEqual(response.status, 201)
+            created = await response.json()
+            app = await self.client.ws_connect(
+                self.server.make_url(f"/v1/realtime/sessions/{created['session_id']}/stream"),
+                headers={"Authorization": f"Bearer {created['session_token']}"},
+            )
+            started = await processor.receive_json()
+            self.assertEqual(started["channel"], channel)
+            sockets[channel] = (created["session_id"], app, started)
+
+        microphone_started = sockets["microphone"][2]
+        self.assertNotIn("speaker_diarization", microphone_started)
+        system_started = sockets["system"][2]
+        self.assertTrue(system_started["speaker_diarization"])
+        self.assertEqual([v["person_id"] for v in system_started["known_voiceprints"]], ["p1"])
+
+        for channel, speaker in (
+            ("microphone", None),
+            ("system", {"cluster_id": "speaker_2", "person_id": "self", "display_name": "Speaker 2"}),
+        ):
+            session_id, app, _ = sockets[channel]
+            await processor.send_json(
+                {
+                    "type": "transcript.upsert",
+                    "session_id": session_id,
+                    "segment_id": "seg_0",
+                    "start_ms": 0,
+                    "end_ms": 900,
+                    "text": channel,
+                    "is_final": True,
+                    "speaker": speaker,
+                }
+            )
+            event = await app.receive_json()
+            while event["type"] != "transcript.upsert":
+                event = await app.receive_json()
+            self.assertEqual(event["channel"], channel)
+            self.assertEqual(event["recording_id"], "rec_meeting")
+            if channel == "microphone":
+                self.assertEqual(event["speaker"]["person_id"], "self")
+            else:
+                self.assertIsNone(event["speaker"]["person_id"])
+                self.assertEqual(event["speaker"]["cluster_id"], "speaker_2")
+            await app.close()
+        await processor.close()
+
     async def test_enrolls_voiceprint_through_processor(self) -> None:
         processor = await self._register_processor({"voiceprint_model": "m"})
         audio = {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
