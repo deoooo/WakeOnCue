@@ -89,6 +89,29 @@ actor RecordingLibraryService {
     )
   }
 
+  /// Local transcripts and summaries for answering questions. Like `search`, it never
+  /// downloads anything; recordings without a local transcript are skipped.
+  func questionSources(pageSize: Int = 100) async throws -> [RecordingQuestionSource] {
+    let decoder = JSONDecoder()
+    var sources: [RecordingQuestionSource] = []
+    for recording in try await allRecordings(pageSize: pageSize) {
+      try Task.checkCancellation()
+      let folder =
+        layout.root
+        .appending(path: "recordings", directoryHint: .isDirectory)
+        .appending(path: recording.id, directoryHint: .isDirectory)
+      guard
+        let data = try? Data(contentsOf: folder.appending(path: "transcript.json")),
+        let transcript = try? decoder.decode([RealtimeTranscriptEvent].self, from: data)
+      else { continue }
+      let summary = (try? Data(contentsOf: folder.appending(path: "summary.json")))
+        .flatMap { try? decoder.decode(RecordingSummary.self, from: $0) }
+      sources.append(
+        RecordingQuestionSource(recording: recording, transcript: transcript, summary: summary))
+    }
+    return sources
+  }
+
   private func allRecordings(pageSize: Int) async throws -> [RecordingRecord] {
     let safePageSize = max(1, pageSize)
     var result: [RecordingRecord] = []

@@ -12,6 +12,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from .mcp_server import McpServer
 from .speaker_diarization import Voiceprint, known_voiceprints_from_payload
 
 
@@ -49,9 +50,15 @@ class ProcessorConnection:
 class RealtimeGateway:
     """Versioned, processor-neutral realtime routing for WakeOnCue clients."""
 
-    def __init__(self, api_token: str, public_base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        api_token: str,
+        public_base_url: str | None = None,
+        mcp: McpServer | None = None,
+    ) -> None:
         self.api_token = api_token
         self.public_base_url = public_base_url
+        self.mcp = mcp
         self.sessions: dict[str, RealtimeSession] = {}
         self.processors: dict[str, ProcessorConnection] = {}
         self.pending_enrollments: dict[str, asyncio.Future[dict[str, Any]]] = {}
@@ -65,6 +72,8 @@ class RealtimeGateway:
         app.router.add_post("/v1/voiceprints/enroll", self.enroll_voiceprint)
         app.router.add_get("/v1/realtime/sessions/{session_id}/stream", self.app_stream)
         app.router.add_get("/v1/processors/connect", self.processor_stream)
+        if self.mcp is not None:
+            self.mcp.register(app)
         return app
 
     async def health(self, request: web.Request) -> web.Response:
@@ -385,5 +394,9 @@ class RealtimeGateway:
             raise web.HTTPUnauthorized(text="valid Bearer token required")
 
 
-def create_realtime_application(api_token: str, public_base_url: str | None = None) -> web.Application:
-    return RealtimeGateway(api_token, public_base_url).application()
+def create_realtime_application(
+    api_token: str,
+    public_base_url: str | None = None,
+    mcp: McpServer | None = None,
+) -> web.Application:
+    return RealtimeGateway(api_token, public_base_url, mcp).application()

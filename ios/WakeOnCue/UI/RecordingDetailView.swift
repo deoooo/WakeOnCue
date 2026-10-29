@@ -5,6 +5,8 @@ struct RecordingDetailView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let recording: RecordingRecord
+  /// Where playback starts when opened from a cited source, in seconds.
+  let initialSeek: TimeInterval?
 
   @State private var displayedRecording: RecordingRecord
   @State private var isEditingTitle = false
@@ -16,11 +18,13 @@ struct RecordingDetailView: View {
   @State private var isScrubbing = false
   @State private var activeSegmentID: String?
   @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
+  @State private var appliedInitialSeek = false
 
   private let panel = Color(uiColor: .secondarySystemBackground)
 
-  init(recording: RecordingRecord) {
+  init(recording: RecordingRecord, initialSeek: TimeInterval? = nil) {
     self.recording = recording
+    self.initialSeek = initialSeek
     _displayedRecording = State(initialValue: recording)
   }
 
@@ -64,6 +68,12 @@ struct RecordingDetailView: View {
           .accessibilityLabel(model.settings.language.localized("Return to playback"))
           .accessibilityIdentifier("transcript-follow-playback")
         }
+      }
+      .onChange(of: transcriptLoaded) {
+        guard transcriptLoaded, let initialSeek, !appliedInitialSeek else { return }
+        appliedInitialSeek = true
+        seek(to: initialSeek)
+        if let activeSegmentID { proxy.scrollTo(activeSegmentID, anchor: .center) }
       }
       .onScrollPhaseChange { _, newPhase in
         guard newPhase == .tracking || newPhase == .interacting else { return }

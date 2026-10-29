@@ -266,3 +266,7 @@ The checked-in `wakeoncue.remote-mac.plist` is a path-neutral template. Replace 
 - Processor 注册、`session.started`、`audio.append` 和结果事件。
 
 只替换 Processor 部署和模型实现。后处理 worker 可订阅录音完成事件或对象存储事件，读取完整 `source.m4a`，再通过相同 revision/upsert 语义生成最终校正版 transcript。
+
+## MCP
+
+设置 `WAKEONCUE_MCP_S3_BUCKET` 后，Gateway 会在 `/mcp` 提供只读 MCP 服务（Streamable HTTP，复用 Gateway token），让 Claude 等客户端检索 S3 中的转写文字并附带时间戳引用。它不读取音频，也不返回声纹或人名。配置和接入 Claude Code / Claude Desktop 的方法见 [提问与 MCP](mcp.md)。

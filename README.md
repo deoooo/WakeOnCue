@@ -50,6 +50,7 @@ iPhone microphone
 - [验证结果](docs/verification.md)
 - [录音体验改进与验证范围](docs/product-experience.md)
 - [实时处理协议与部署](docs/realtime-processing.md)
+- [提问与 MCP](docs/mcp.md)
 - [Apple Watch 接入](docs/apple-watch.md)
 
 想在自己的 MacBook 上直接跑实时服务，可从仓库根目录执行

@@ -456,3 +456,17 @@
 "On-device transcription and summaries need iOS 26 or later with Apple Intelligence." = "设备端转写和摘要需要 iOS 26 或更高版本，并开启 Apple 智能。";
 "Import audio" = "导入音频";
 "Could not import %@: %@" = "无法导入 %@：%@";
+
+/* Ask recordings */
+"Ask" = "提问";
+"Ask recordings" = "向录音提问";
+"Ask about your recordings" = "问问你的录音";
+"Answers are written on this iPhone from your local transcripts only." = "回答在这台 iPhone 上生成，只依据本机的转写文字。";
+"Apple Intelligence is not available, so matching passages are shown without a written answer." = "Apple 智能不可用，因此只显示匹配的原文段落，不生成回答。";
+"Searching your recordings…" = "正在检索你的录音…";
+"Sources" = "来源";
+"Matching passages" = "匹配的段落";
+"Nothing in your local transcripts matches this question." = "本机的转写文字里没有与这个问题相关的内容。";
+"The matching passages do not answer this question, so no answer was written." = "匹配到的段落无法回答这个问题，因此没有生成回答。";
+"Apple Intelligence is not available. These passages match your question." = "Apple 智能不可用。以下是与问题匹配的段落。";
+"Could not write an answer: %@. These passages match your question." = "无法生成回答：%@。以下是与问题匹配的段落。";
