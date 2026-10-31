@@ -19,6 +19,18 @@ PROTOCOL_VERSION = 1
 REALTIME_AUDIO_FORMAT = {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
 MAX_ENROLLMENT_SECONDS = 25
 ENROLLMENT_TIMEOUT_SECONDS = 60
+SELF_PERSON_ID = "self"
+# Optional per-session audio source. A recording captured from several sources (the Mac
+# app sends the microphone and system audio) opens one session per channel with the same
+# recording_id; sessions without a channel behave exactly as before.
+MICROPHONE_CHANNEL = "microphone"
+SYSTEM_CHANNEL = "system"
+AUDIO_CHANNELS = {MICROPHONE_CHANNEL, SYSTEM_CHANNEL}
+MICROPHONE_SPEAKER = {
+    "cluster_id": "microphone",
+    "person_id": SELF_PERSON_ID,
+    "display_name": "Me",
+}
 
 
 @dataclass
@@ -29,6 +41,7 @@ class RealtimeSession:
     expires_at: datetime
     audio: dict[str, Any]
     language: str | None
+    channel: str | None = None
     speaker_diarization: bool = False
     # Saved voices, held in memory only until the processor completes the session.
     known_voiceprints: list[dict[str, Any]] = field(default_factory=list)
@@ -102,6 +115,19 @@ class RealtimeGateway:
         known_voiceprints = payload.get("known_voiceprints") or []
         if known_voiceprints_from_payload(known_voiceprints) is None:
             raise web.HTTPUnprocessableEntity(text="invalid known_voiceprints")
+        channel = payload.get("channel")
+        if channel is not None and channel not in AUDIO_CHANNELS:
+            raise web.HTTPUnprocessableEntity(text="unsupported channel")
+        speaker_diarization = payload.get("speaker_diarization") is True
+        if channel == MICROPHONE_CHANNEL:
+            # The microphone channel is the user by definition; no speaker analysis runs.
+            speaker_diarization = False
+            known_voiceprints = []
+        elif channel == SYSTEM_CHANNEL:
+            # System audio carries the other participants, never the user's own voice.
+            known_voiceprints = [
+                voice for voice in known_voiceprints if voice.get("person_id") != SELF_PERSON_ID
+            ]
 
         session_id = f"rts_{secrets.token_hex(12)}"
         token = secrets.token_urlsafe(32)
@@ -113,7 +139,8 @@ class RealtimeGateway:
             expires_at=expires_at,
             audio=audio,
             language=payload.get("language"),
-            speaker_diarization=payload.get("speaker_diarization") is True,
+            channel=channel,
+            speaker_diarization=speaker_diarization,
             known_voiceprints=known_voiceprints,
         )
         async with self._lock:
@@ -329,6 +356,8 @@ class RealtimeGateway:
             "language": session.language,
             "audio": session.audio,
         }
+        if session.channel is not None:
+            started["channel"] = session.channel
         if session.speaker_diarization:
             started["speaker_diarization"] = True
             started["known_voiceprints"] = session.known_voiceprints
@@ -354,6 +383,10 @@ class RealtimeGateway:
         outgoing.pop("session_id", None)
         outgoing["protocol_version"] = PROTOCOL_VERSION
         outgoing["recording_id"] = session.recording_id
+        if session.channel is not None:
+            outgoing["channel"] = session.channel
+            if event_type in {"transcript.upsert", "speaker.corrected"}:
+                outgoing["speaker"] = self._channel_speaker(session.channel, outgoing.get("speaker"))
         if event_type in {"transcript.upsert", "speaker.corrected"}:
             session.revision += 1
             outgoing["revision"] = session.revision
@@ -361,6 +394,16 @@ class RealtimeGateway:
             session.events = session.events[-500:]
         if session.app_socket is not None and not session.app_socket.closed:
             await session.app_socket.send_json(outgoing)
+
+    @staticmethod
+    def _channel_speaker(channel: str, speaker: Any) -> dict[str, Any] | None:
+        if channel == MICROPHONE_CHANNEL:
+            return dict(MICROPHONE_SPEAKER)
+        if not isinstance(speaker, dict):
+            return None
+        if speaker.get("person_id") == SELF_PERSON_ID:
+            speaker = {**speaker, "person_id": None}
+        return speaker
 
     async def _replay(
         self, session: RealtimeSession, socket: web.WebSocketResponse, after_revision: int
