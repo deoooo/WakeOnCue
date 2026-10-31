@@ -470,3 +470,23 @@
 "The matching passages do not answer this question, so no answer was written." = "匹配到的段落无法回答这个问题，因此没有生成回答。";
 "Apple Intelligence is not available. These passages match your question." = "Apple 智能不可用。以下是与问题匹配的段落。";
 "Could not write an answer: %@. These passages match your question." = "无法生成回答：%@。以下是与问题匹配的段落。";
+
+/* Calendar meetings */
+"Calendar" = "日历";
+"Calendars" = "日历";
+"Link recordings to meetings" = "将录音关联到会议";
+"Remind before meetings" = "会议开始前提醒";
+"Remind" = "提醒时间";
+"When it starts" = "开始时";
+"%d min before" = "提前 %d 分钟";
+"All" = "全部";
+"Only meetings with others or a video link" = "仅限有其他参会人或视频链接的会议";
+"Allow full calendar access in iPhone Settings to link meetings." = "请在 iPhone 设置中允许完全访问日历，以便关联会议。";
+"Off by default. Recordings made during a meeting take its title and attendees. Reminders arrive when a meeting starts; tap Start Recording to begin. Calendar data stays on this iPhone." = "默认关闭。会议期间开始的录音会使用会议的标题和参会人。提醒会在会议开始时送达，点按「开始录音」即可开始。日历数据只保留在这台 iPhone 上。";
+"Meeting" = "会议";
+"Starting now. Tap Start Recording to capture it." = "即将开始。点按「开始录音」进行记录。";
+"Starts at %@. Tap Start Recording to capture it." = "%@ 开始。点按「开始录音」进行记录。";
+"Send notes to attendees" = "发送纪要给参会人";
+"Share notes" = "分享纪要";
+"Overview" = "概述";
+"Notes written on iPhone with WakeOnCue. Check them against the recording." = "纪要由 WakeOnCue 在 iPhone 上生成，请对照录音核对。";

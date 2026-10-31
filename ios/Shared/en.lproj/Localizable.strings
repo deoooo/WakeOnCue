@@ -459,3 +459,23 @@
 "The matching passages do not answer this question, so no answer was written." = "The matching passages do not answer this question, so no answer was written.";
 "Apple Intelligence is not available. These passages match your question." = "Apple Intelligence is not available. These passages match your question.";
 "Could not write an answer: %@. These passages match your question." = "Could not write an answer: %@. These passages match your question.";
+
+/* Calendar meetings */
+"Calendar" = "Calendar";
+"Calendars" = "Calendars";
+"Link recordings to meetings" = "Link recordings to meetings";
+"Remind before meetings" = "Remind before meetings";
+"Remind" = "Remind";
+"When it starts" = "When it starts";
+"%d min before" = "%d min before";
+"All" = "All";
+"Only meetings with others or a video link" = "Only meetings with others or a video link";
+"Allow full calendar access in iPhone Settings to link meetings." = "Allow full calendar access in iPhone Settings to link meetings.";
+"Off by default. Recordings made during a meeting take its title and attendees. Reminders arrive when a meeting starts; tap Start Recording to begin. Calendar data stays on this iPhone." = "Off by default. Recordings made during a meeting take its title and attendees. Reminders arrive when a meeting starts; tap Start Recording to begin. Calendar data stays on this iPhone.";
+"Meeting" = "Meeting";
+"Starting now. Tap Start Recording to capture it." = "Starting now. Tap Start Recording to capture it.";
+"Starts at %@. Tap Start Recording to capture it." = "Starts at %@. Tap Start Recording to capture it.";
+"Send notes to attendees" = "Send notes to attendees";
+"Share notes" = "Share notes";
+"Overview" = "Overview";
+"Notes written on iPhone with WakeOnCue. Check them against the recording." = "Notes written on iPhone with WakeOnCue. Check them against the recording.";

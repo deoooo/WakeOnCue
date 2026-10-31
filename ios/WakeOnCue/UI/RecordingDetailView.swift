@@ -19,6 +19,7 @@ struct RecordingDetailView: View {
   @State private var activeSegmentID: String?
   @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
   @State private var appliedInitialSeek = false
+  @State private var notesDraft: MeetingNotesDraft?
 
   private let panel = Color(uiColor: .secondarySystemBackground)
 
@@ -35,6 +36,11 @@ struct RecordingDetailView: View {
           titleSection
           playbackSection
           retranscriptionProgress
+          if let meetingLink {
+            LinkedMeetingSection(link: meetingLink)
+              .padding(16)
+              .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          }
           summarySection
           transcriptSection(using: proxy)
           RecordingOrganizationSection(
@@ -93,6 +99,10 @@ struct RecordingDetailView: View {
     .task(id: "\(recording.id)-\(model.transcriptVersion)") {
       await refreshDisplayedRecording()
       await loadTranscript()
+    }
+    .sheet(item: $notesDraft) { draft in
+      MeetingNotesComposer(draft: draft)
+        .ignoresSafeArea()
     }
     .sheet(isPresented: $isEditingTitle) {
       RecordingTitleEditor(recording: displayedRecording) { updated in
@@ -359,6 +369,25 @@ struct RecordingDetailView: View {
     .accessibilityIdentifier("recording-transcript")
   }
 
+  private var meetingLink: MeetingLink? {
+    MeetingLink(metadata: displayedRecording.metadata)
+  }
+
+  private func makeNotesDraft(summary: RecordingSummary) -> MeetingNotesDraft {
+    let language = model.settings.language
+    let title = displayedRecording.libraryDisplayTitle(language: language)
+    return MeetingNotesDraft(
+      subject: title,
+      body: MeetingNotes.text(
+        title: title,
+        date: meetingLink?.start ?? displayedRecording.startedAt,
+        summary: summary,
+        language: language
+      ),
+      recipients: meetingLink.map(model.meetings.recipients) ?? []
+    )
+  }
+
   private var isProcessingOnDevice: Bool {
     model.onDeviceProcessingRecordingIDs.contains(recording.id)
   }
@@ -411,6 +440,15 @@ struct RecordingDetailView: View {
           Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
             .font(.caption)
             .foregroundStyle(.secondary)
+          Button {
+            notesDraft = makeNotesDraft(summary: summary)
+          } label: {
+            Label(
+              meetingLink == nil ? "Share notes" : "Send notes to attendees",
+              systemImage: "paperplane")
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("send-meeting-notes")
         } else if isProcessingOnDevice {
           Text("Transcribing and summarizing on this iPhone…")
             .font(.subheadline)

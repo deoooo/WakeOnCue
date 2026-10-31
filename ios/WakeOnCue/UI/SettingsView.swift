@@ -239,6 +239,8 @@ struct SettingsView: View {
           Text("Start or finish recording when you arrive at or leave a place.")
         }
 
+        CalendarSettingsSection()
+
         if let message = model.settingsStatusMessage {
           Section {
             Label(

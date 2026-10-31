@@ -62,9 +62,7 @@ final class PlaceAutomation: NSObject {
     {
       places = stored
     }
-    let center = UNUserNotificationCenter.current()
-    center.delegate = self
-    center.setNotificationCategories([
+    NotificationRouter.shared.register(
       UNNotificationCategory(
         identifier: Self.startCategory,
         actions: [
@@ -76,7 +74,10 @@ final class PlaceAutomation: NSObject {
         ],
         intentIdentifiers: []
       )
-    ])
+    ) { [weak self] response in
+      guard response.actionIdentifier == Self.startAction || response.isDefaultAction else { return }
+      await self?.onStartRequested?()
+    }
   }
 
   /// Must run on every launch, including background launches caused by place events.
@@ -174,10 +175,6 @@ final class PlaceAutomation: NSObject {
     await onTrigger?(inside ? place.onArrival : place.onDeparture, place, inside)
   }
 
-  private func requestStart() async {
-    await onStartRequested?()
-  }
-
   func postStartPrompt(for place: RecordingPlace) async {
     let content = UNMutableNotificationContent()
     content.title = String(format: AppLanguage.localized("Arrived at %@"), place.name)
@@ -219,26 +216,6 @@ extension PlaceAutomation: CLLocationManagerDelegate {
         self.manager.requestAlwaysAuthorization()
       }
     }
-  }
-}
-
-extension PlaceAutomation: UNUserNotificationCenterDelegate {
-  nonisolated func userNotificationCenter(
-    _ center: UNUserNotificationCenter,
-    didReceive response: UNNotificationResponse
-  ) async {
-    guard response.notification.request.content.categoryIdentifier == Self.startCategory,
-      response.actionIdentifier == Self.startAction
-        || response.actionIdentifier == UNNotificationDefaultActionIdentifier
-    else { return }
-    await requestStart()
-  }
-
-  nonisolated func userNotificationCenter(
-    _ center: UNUserNotificationCenter,
-    willPresent notification: UNNotification
-  ) async -> UNNotificationPresentationOptions {
-    [.banner, .sound]
   }
 }
 

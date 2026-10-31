@@ -60,3 +60,27 @@ import Testing
   #expect(try await reopened.recording(id: "recording-01").title == "Orchid Retrospective")
   #expect(try await reopened.recordings(matchingTitle: "orchid").map(\.id) == ["recording-01"])
 }
+
+@Test func metadataUpdatesMergeWithExistingValues() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let recording = RecordingRecord(
+    id: "recording-meeting",
+    createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+    startedAt: Date(timeIntervalSince1970: 1_800_000_000),
+    status: .recording,
+    localAudioPath: root.appending(path: "meeting.m4a").path,
+    deviceModel: "test",
+    appVersion: "1",
+    metadata: ["storage_mode": "local"]
+  )
+  try await store.createRecording(recording, createPayloadPath: "", enqueueUpload: false)
+  let updated = try await store.updateRecordingMetadata(
+    recordingID: recording.id,
+    values: ["title": "Design review", "calendar_event_id": "evt-1"]
+  )
+  #expect(updated.title == "Design review")
+  #expect(updated.metadata["calendar_event_id"] == "evt-1")
+  #expect(updated.metadata["storage_mode"] == "local")
+}

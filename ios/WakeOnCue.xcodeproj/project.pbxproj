@@ -14,11 +14,14 @@
 		116DD06F75F19AB28F0D281A /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
 		117C3656F605152B067ED22D /* WatchCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CFD6A5039DEA1AD2FBC079 /* WatchCaptureUITests.swift */; };
 		12A9B9EEB60F435DF65D50AB /* OnDeviceIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94E0BAC6540587DC81151E7 /* OnDeviceIntelligence.swift */; };
+		13FFD4ADDAFC7A24C5C6DA8D /* MeetingCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35F0BC2386F45353193F618 /* MeetingCalendar.swift */; };
 		140283C37E9E0E404CB1239D /* BackgroundUploadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AC5ED25FC04F1093E8FB6D3 /* BackgroundUploadCoordinator.swift */; };
 		18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */; };
+		1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */; };
 		1F95FD0B7CEA6494AA98C2D2 /* TranscriptFollowPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */; };
 		1FE7723F996EA94497E68A81 /* RecordingStatusPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A758DD8574838E707D55EB7 /* RecordingStatusPresentationTests.swift */; };
 		1FF63B926E0930F806E1ED7E /* WatchRecordingImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43164E008733A4AB386A4FC9 /* WatchRecordingImporter.swift */; };
+		213370BEFE2F7DCADACB94F8 /* MeetingCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0B8189F97DC9CEAD26CCBE /* MeetingCalendarView.swift */; };
 		2203253C60FA4C13E05309D3 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA526BAF013923BBC75EBC60 /* WakeOnCueCore */; };
 		2611C68FCA6CC66A9B6C5979 /* RecordingCaptureFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */; };
 		269B7E6A0B56D4FE1DD779A4 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 364E97881D72FF49F2C4F063 /* WakeOnCueCore */; };
@@ -37,10 +40,12 @@
 		4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28875075914483902B567040 /* ContactNamePicker.swift */; };
 		49AD10C178774912B9BBF042 /* RealtimeServicePairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */; };
 		4B211C375A1E8FBFCBFFACAB /* SharedRecordingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430BD843F968775BC442DAE5 /* SharedRecordingState.swift */; };
+		4DB243F93C2B46B35F1CDACB /* NotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B22C931D5E3EC537DF952E2 /* NotificationRouter.swift */; };
 		4DF281C33F88AD3E15421D24 /* WakeOnCueWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4EF21E4EDA824902AE71BBF2 /* RecordingLibrarySearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE5A4F6E1123C866C22B26B /* RecordingLibrarySearchTests.swift */; };
 		50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
 		53CD5F4C453E36D552D5B823 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
+		54745C0C8A403912F0CFD139 /* CalendarAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693665B632273E1810A1B3F9 /* CalendarAutomation.swift */; };
 		5EDDBA01D724627D9BA91347 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549316D5BA7AB969C1FA358D /* WatchAudioRecorder.swift */; };
 		5F805F7A42983C06C29DF7E0 /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
 		6021FF573FCC07D085701CE6 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
@@ -242,6 +247,7 @@
 		3997A0D733F09923BCD17F13 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueMacTests.swift; sourceTree = "<group>"; };
 		3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWatchApp.swift; sourceTree = "<group>"; };
+		3D0B8189F97DC9CEAD26CCBE /* MeetingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarView.swift; sourceTree = "<group>"; };
 		40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusPresentation.swift; sourceTree = "<group>"; };
 		430BD843F968775BC442DAE5 /* SharedRecordingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedRecordingState.swift; sourceTree = "<group>"; };
 		43164E008733A4AB386A4FC9 /* WatchRecordingImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRecordingImporter.swift; sourceTree = "<group>"; };
@@ -256,6 +262,7 @@
 		549316D5BA7AB969C1FA358D /* WatchAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioRecorder.swift; sourceTree = "<group>"; };
 		5614BF55A5A2E34005C9B72B /* WatchRecordingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRecordingStore.swift; sourceTree = "<group>"; };
 		5A758DD8574838E707D55EB7 /* RecordingStatusPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusPresentationTests.swift; sourceTree = "<group>"; };
+		5B22C931D5E3EC537DF952E2 /* NotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRouter.swift; sourceTree = "<group>"; };
 		5C2C0A3BB0F7CB999F01D1E4 /* WakeOnCueCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WakeOnCueCore; path = Packages/WakeOnCueCore; sourceTree = SOURCE_ROOT; };
 		5C5114114E79A9EAFC6FD38A /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioAssembler.swift; sourceTree = "<group>"; };
@@ -263,10 +270,12 @@
 		63940CE303CB1C58ED20C263 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		64CFD6A5039DEA1AD2FBC079 /* WatchCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureUITests.swift; sourceTree = "<group>"; };
 		67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailView.swift; sourceTree = "<group>"; };
+		693665B632273E1810A1B3F9 /* CalendarAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAutomation.swift; sourceTree = "<group>"; };
 		69A872A2ADA906883325D430 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueApp.swift; sourceTree = "<group>"; };
 		6BF08F571BBECD7CDB5A1624 /* RecordingOrganization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOrganization.swift; sourceTree = "<group>"; };
 		6EB419A36E5FBD434A45BDA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarTests.swift; sourceTree = "<group>"; };
 		76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppModel.swift; sourceTree = "<group>"; };
 		77D935DF36510C3E4241B30D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		7AF18675D8D6F18ECE0790B9 /* RealtimeServicePairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeServicePairing.swift; sourceTree = "<group>"; };
@@ -323,6 +332,7 @@
 		E0300EF5377E5E2A270B213C /* WakeOnCueMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCueMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1367632068864972664C459 /* RealtimeChannelStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeChannelStream.swift; sourceTree = "<group>"; };
 		E1860311F68A96DF19E7DD88 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		E35F0BC2386F45353193F618 /* MeetingCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendar.swift; sourceTree = "<group>"; };
 		E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartupUITests.swift; sourceTree = "<group>"; };
 		E745A03BE489FE9A6A44E7FF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		EC66F4DB820A5BEF37B9B2FE /* ProductExperienceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductExperienceUITests.swift; sourceTree = "<group>"; };
@@ -396,6 +406,7 @@
 			children = (
 				3997A0D733F09923BCD17F13 /* AppSettings.swift */,
 				AE9976BCB1134AB12DBA8FC2 /* ExperienceFixtures.swift */,
+				5B22C931D5E3EC537DF952E2 /* NotificationRouter.swift */,
 				0D617E1495504C52549F0C12 /* PlaceAutomation.swift */,
 				7AF18675D8D6F18ECE0790B9 /* RealtimeServicePairing.swift */,
 				20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */,
@@ -455,6 +466,15 @@
 				38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */,
 			);
 			path = Host;
+			sourceTree = "<group>";
+		};
+		3CA1FDEB2749552379120AF4 /* Calendar */ = {
+			isa = PBXGroup;
+			children = (
+				693665B632273E1810A1B3F9 /* CalendarAutomation.swift */,
+				E35F0BC2386F45353193F618 /* MeetingCalendar.swift */,
+			);
+			path = Calendar;
 			sourceTree = "<group>";
 		};
 		4D0ABFD7CAAD9749579DA20A /* WakeOnCueWatch */ = {
@@ -601,6 +621,7 @@
 		BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */ = {
 			isa = PBXGroup;
 			children = (
+				3CA1FDEB2749552379120AF4 /* Calendar */,
 				1C1600BD98E1C2C297C4FDF5 /* Infrastructure */,
 				D658166ED83E134030839806 /* Intelligence */,
 				DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */,
@@ -675,6 +696,7 @@
 				285C45F948055C39CB834C56 /* CaptureFeedbackView.swift */,
 				28875075914483902B567040 /* ContactNamePicker.swift */,
 				A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */,
+				3D0B8189F97DC9CEAD26CCBE /* MeetingCalendarView.swift */,
 				8B804F0E376CE6B89B8E6699 /* PlacesView.swift */,
 				C5F42A8E0C58FFBD68D37782 /* RealtimePairingScanner.swift */,
 				976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */,
@@ -691,6 +713,7 @@
 		EDB8145834B4A82A2DB4E95C /* WakeOnCueTests */ = {
 			isa = PBXGroup;
 			children = (
+				716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */,
 				9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */,
 				FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */,
 				925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */,
@@ -1033,10 +1056,14 @@
 				4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */,
 				3D6088080012CF83F5AF8A3F /* AudioFileImporter.swift in Sources */,
 				140283C37E9E0E404CB1239D /* BackgroundUploadCoordinator.swift in Sources */,
+				54745C0C8A403912F0CFD139 /* CalendarAutomation.swift in Sources */,
 				B9FF50CB284BB7E39D70F7CB /* CaptureFeedbackView.swift in Sources */,
 				4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */,
 				A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */,
 				D1B1CC0D2F7682644B6444AD /* ExperienceFixtures.swift in Sources */,
+				13FFD4ADDAFC7A24C5C6DA8D /* MeetingCalendar.swift in Sources */,
+				213370BEFE2F7DCADACB94F8 /* MeetingCalendarView.swift in Sources */,
+				4DB243F93C2B46B35F1CDACB /* NotificationRouter.swift in Sources */,
 				12A9B9EEB60F435DF65D50AB /* OnDeviceIntelligence.swift in Sources */,
 				77D9A9DA2BB8B7A0E507A3EE /* PhoneWatchBridge.swift in Sources */,
 				D6CDA81B0D16B7D9BAFD4C57 /* PlaceAutomation.swift in Sources */,
@@ -1082,6 +1109,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */,
 				49AD10C178774912B9BBF042 /* RealtimeServicePairingTests.swift in Sources */,
 				8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */,
 				0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */,
