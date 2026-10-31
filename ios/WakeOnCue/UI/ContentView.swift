@@ -607,6 +607,14 @@ struct ContentView: View {
           .font(.headline)
         Spacer()
         NavigationLink {
+          AskRecordingsView()
+            .environment(model)
+        } label: {
+          Label("Ask", systemImage: "text.bubble")
+        }
+          .font(.caption)
+          .accessibilityIdentifier("ask-recordings-home")
+        NavigationLink {
           RecordingLibraryView()
             .environment(model)
         } label: {

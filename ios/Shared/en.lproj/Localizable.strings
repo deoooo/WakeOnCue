@@ -445,3 +445,17 @@
 "On-device transcription and summaries need iOS 26 or later with Apple Intelligence." = "On-device transcription and summaries need iOS 26 or later with Apple Intelligence.";
 "Import audio" = "Import audio";
 "Could not import %@: %@" = "Could not import %@: %@";
+
+/* Ask recordings */
+"Ask" = "Ask";
+"Ask recordings" = "Ask recordings";
+"Ask about your recordings" = "Ask about your recordings";
+"Answers are written on this iPhone from your local transcripts only." = "Answers are written on this iPhone from your local transcripts only.";
+"Apple Intelligence is not available, so matching passages are shown without a written answer." = "Apple Intelligence is not available, so matching passages are shown without a written answer.";
+"Searching your recordings…" = "Searching your recordings…";
+"Sources" = "Sources";
+"Matching passages" = "Matching passages";
+"Nothing in your local transcripts matches this question." = "Nothing in your local transcripts matches this question.";
+"The matching passages do not answer this question, so no answer was written." = "The matching passages do not answer this question, so no answer was written.";
+"Apple Intelligence is not available. These passages match your question." = "Apple Intelligence is not available. These passages match your question.";
+"Could not write an answer: %@. These passages match your question." = "Could not write an answer: %@. These passages match your question.";

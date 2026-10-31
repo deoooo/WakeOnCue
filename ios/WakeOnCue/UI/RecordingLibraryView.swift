@@ -81,6 +81,14 @@ struct RecordingLibraryView: View {
     .toolbar(.visible, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
+        NavigationLink {
+          AskRecordingsView().environment(model)
+        } label: {
+          Label("Ask recordings", systemImage: "text.bubble")
+        }
+        .accessibilityIdentifier("ask-recordings-link")
+      }
+      ToolbarItem(placement: .primaryAction) {
         Button {
           isImporting = true
         } label: {

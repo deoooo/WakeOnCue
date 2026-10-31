@@ -135,7 +135,7 @@ Not done yet:
 | Delete the last minutes | P0 | Must silence the source CAF, replace or delete 10 s chunks, drop transcript segments and remove already-uploaded S3 objects; touches the capture and upload core, so it gets its own change. |
 | Live on-device captions | P0 | Feed SpeechAnalyzer from the capture buffers for realtime text without a Mac. |
 | Mac menu-bar app | P1 | Bundled Processor with pairing QR; online-meeting capture (microphone + system audio). |
-| Answers with citations and self-hosted MCP | P1 | Timestamped sources that seek playback; MCP served by the Mac Processor or Gateway. |
+| Answers with citations and self-hosted MCP | P1 | Shipped v1: on-device Ask screen with timestamped sources that seek playback; read-only MCP on the Gateway (`docs/mcp.md`). Next: sync edited titles and summaries to S3. |
 | Calendar-driven recording | P1 | Name recordings from events, remind or start at meeting time, send notes to attendees. |
 | Daily timeline page | Later | One long page per day with recordings, summaries and AI-generated illustrations; not in the first version. |
 | Location history | Not planned | Places are used only as triggers, not recorded as a history. |
