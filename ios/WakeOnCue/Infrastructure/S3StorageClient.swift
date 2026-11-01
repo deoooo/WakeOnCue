@@ -60,6 +60,7 @@ enum S3StorageClient {
   ) async throws -> URL {
     let (temporaryURL, response) = try await session.download(for: request)
     guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+    if http.statusCode == 404 { throw S3StorageError.notFound }
     guard 200..<300 ~= http.statusCode else {
       throw S3StorageError.downloadFailed("S3 returned HTTP \(http.statusCode).")
     }
@@ -81,10 +82,13 @@ enum S3StorageClient {
 }
 
 enum S3StorageError: LocalizedError {
+  case notFound
   case downloadFailed(String)
 
   var errorDescription: String? {
     switch self {
+    case .notFound:
+      String(format: AppLanguage.localized("Could not download the recording: %@"), "HTTP 404")
     case .downloadFailed(let message):
       String(format: AppLanguage.localized("Could not download the recording: %@"), message)
     }

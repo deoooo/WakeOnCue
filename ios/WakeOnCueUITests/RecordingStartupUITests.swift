@@ -8,12 +8,14 @@ final class RecordingStartupUITests: XCTestCase {
     app.launchEnvironment["WAKEONCUE_UI_TEST_LANGUAGE"] = "en"
     app.launch()
 
-    let detailLink = app.buttons.matching(
-      NSPredicate(format: "identifier BEGINSWITH 'recording-details-experience-'")
-    ).firstMatch
-    for _ in 0..<8 where !detailLink.isHittable {
-      app.swipeUp()
-    }
+    let library = app.buttons["all-recordings"]
+    XCTAssertTrue(library.waitForExistence(timeout: 25))
+    library.tap()
+    let search = app.searchFields.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    search.tap()
+    search.typeText("Orchid")
+    let detailLink = app.buttons["library-recording-experience-12"]
     XCTAssertTrue(detailLink.waitForExistence(timeout: 20), "No recording detail link is visible")
     detailLink.tap()
 

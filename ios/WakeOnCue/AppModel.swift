@@ -558,11 +558,15 @@ final class AppModel {
       guard recording.uploadStatus == .completed,
         let configuration = await s3Configuration(for: recording)
       else { return [] }
-      _ = try await S3StorageClient.downloadTranscript(
-        recordingID: recordingID,
-        configuration: configuration,
-        destinationURL: url
-      )
+      do {
+        _ = try await S3StorageClient.downloadTranscript(
+          recordingID: recordingID,
+          configuration: configuration,
+          destinationURL: url
+        )
+      } catch S3StorageError.notFound {
+        return []
+      }
     }
     let segments = try JSONDecoder().decode(
       [RealtimeTranscriptEvent].self,

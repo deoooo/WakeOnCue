@@ -47,6 +47,11 @@ struct RecordingRecoveryService: Sendable {
     prepareAudio: @Sendable (String) async -> Void
   ) async -> Outcome {
     var outcome = Outcome()
+    do {
+      try await store.settleFinishedUploadStatuses()
+    } catch {
+      outcome.firstError = error.localizedDescription
+    }
     var offset = 0
     while true {
       let page: [RecordingRecord]

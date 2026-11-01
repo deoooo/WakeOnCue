@@ -430,7 +430,7 @@
 "Runs on this iPhone with iOS 26 or later. Audio does not leave the device." = "Runs on this iPhone with iOS 26 or later. Audio does not leave the device.";
 "Finished recordings are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions." = "Finished recordings are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions.";
 "Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device." = "Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device.";
-"Transcripts are sent to this service for summaries, and matching passages for questions. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain." = "Transcripts are sent to this service for summaries, and matching passages for questions. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain.";
+"Transcripts are sent to this service for summaries, and matching passages for questions, with recording titles. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain." = "Transcripts are sent to this service for summaries, and matching passages for questions, with recording titles. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain.";
 "Enter a valid HTTPS service URL. Plain HTTP only works on your local network." = "Enter a valid HTTPS service URL. Plain HTTP only works on your local network.";
 "Enter the model name to use." = "Enter the model name to use.";
 "Enter the API key for this service." = "Enter the API key for this service.";
@@ -439,3 +439,6 @@
 "Keeps this recording on this iPhone" = "Keeps this recording on this iPhone";
 "No account or network needed" = "No account or network needed";
 "Transcription needs iOS 26 or later, or a transcription service in Settings." = "Transcription needs iOS 26 or later, or a transcription service in Settings.";
+"Replace this transcript?" = "Replace this transcript?";
+"Replace transcript" = "Replace transcript";
+"The speaker labels and names in this transcript will be removed and cannot be recovered." = "The speaker labels and names in this transcript will be removed and cannot be recovered.";

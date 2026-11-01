@@ -96,10 +96,23 @@ final class AIProviderSettingsTests: XCTestCase {
     try saveLanguageModel(.openAICompatible, url: "https://one.example.com/v1", key: "stored")
     try clearProviders()
     XCTAssertNil(settings.activeLanguageModelProvider)
+    XCTAssertEqual(
+      try KeychainStore.read(service: "com.deoooo.WakeOnCue.ai", account: "language-model-api-key"),
+      "")
+  }
 
-    settings.languageModelEngine = .openAICompatible
-    settings.languageModelBaseURL = "https://one.example.com/v1"
-    settings.languageModelName = "model"
-    XCTAssertThrowsError(try settings.candidateLanguageModelProvider())
+  func testChoosingAnotherSpeechEngineClearsItsFields() {
+    settings.selectSpeechEngine(.openAICompatible)
+    settings.speechBaseURL = "https://groq.example.com/v1"
+    settings.speechModel = "whisper"
+    settings.speechAPIKey = "typed"
+
+    settings.selectSpeechEngine(.openAICompatible)
+    XCTAssertEqual(settings.speechBaseURL, "https://groq.example.com/v1")
+
+    settings.selectSpeechEngine(.apple)
+    XCTAssertEqual(settings.speechBaseURL, "")
+    XCTAssertEqual(settings.speechModel, "")
+    XCTAssertEqual(settings.speechAPIKey, "")
   }
 }

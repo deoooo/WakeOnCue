@@ -1,5 +1,7 @@
 # Recording experience improvements
 
+> **Note:** the iPhone app no longer uses S3 or the Gateway. Mentions of pairing, LAN discovery, backups and live captions below describe the earlier design.
+
 ## Product direction
 
 The core journey is start recording, confirm sound is being captured, finish locally,

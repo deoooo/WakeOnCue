@@ -184,6 +184,19 @@ public actor RecordingStore {
     ).filter { $0.metadata[Self.cloudSyncAbandonedMetadataKey] != "true" }
   }
 
+  /// Older versions marked a finished recording as uploading again whenever a later transcript
+  /// upload started, and never cleared it. Nothing uploads now, so finished recordings settle
+  /// here, which also lets their backed-up audio download again.
+  public func settleFinishedUploadStatuses(now: Date = Date()) throws {
+    try run(
+      """
+      UPDATE recordings SET upload_status = 'COMPLETED', updated_at = ?
+      WHERE status = 'COMPLETED' AND upload_status != 'COMPLETED'
+      """,
+      [.double(now.timeIntervalSince1970)]
+    )
+  }
+
   /// Whether S3 holds this recording: it was made for a bucket, or its final audio was
   /// acknowledged before recordings noted their bucket. Abandoned backups do not count.
   public func isBackedUpToS3(recordingID: String) throws -> Bool {

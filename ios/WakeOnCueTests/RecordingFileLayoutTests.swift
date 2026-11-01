@@ -183,6 +183,33 @@ final class RecordingFileLayoutTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: downloaded), S3DownloadURLProtocol.payload)
   }
 
+  func testMissingS3ObjectIsReportedAsNotFound() async throws {
+    let sessionConfiguration = URLSessionConfiguration.ephemeral
+    sessionConfiguration.protocolClasses = [S3NotFoundURLProtocol.self]
+    let session = URLSession(configuration: sessionConfiguration)
+    defer { session.invalidateAndCancel() }
+    let layout = try RecordingFileLayout()
+    let recordingID = "not_found_\(UUID().uuidString)"
+    defer { try? FileManager.default.removeItem(at: layout.directory(for: recordingID)) }
+    do {
+      _ = try await S3StorageClient.downloadTranscript(
+        recordingID: recordingID,
+        configuration: S3Configuration(
+          endpointURL: URL(string: "https://storage.example.com"),
+          region: "us-east-1",
+          bucket: "recordings",
+          accessKeyID: "test-access",
+          secretAccessKey: "test-secret",
+          forcePathStyle: true
+        ),
+        destinationURL: try layout.transcriptURL(recordingID: recordingID),
+        session: session
+      )
+      XCTFail("Expected notFound")
+    } catch S3StorageError.notFound {
+    }
+  }
+
   func testDownloadsMissingTranscriptFromS3IntoRecordingCache() async throws {
     let layout = try RecordingFileLayout()
     let recordingID = "rec_transcript_download_\(UUID().uuidString)"
@@ -213,6 +240,19 @@ final class RecordingFileLayoutTests: XCTestCase {
 
     XCTAssertEqual(downloaded, destination)
     XCTAssertEqual(try Data(contentsOf: downloaded), S3DownloadURLProtocol.payload)
+  }
+}
+
+private final class S3NotFoundURLProtocol: URLProtocol {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func stopLoading() {}
+
+  override func startLoading() {
+    let response = HTTPURLResponse(
+      url: request.url!, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: nil)!
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    client?.urlProtocolDidFinishLoading(self)
   }
 }
 

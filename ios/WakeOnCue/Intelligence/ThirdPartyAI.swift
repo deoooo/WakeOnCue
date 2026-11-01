@@ -122,6 +122,9 @@ enum ThirdPartyHTTP {
   }
 }
 
+/// Settings stay locked while Save checks a service, so a hung service must fail quickly.
+private let verificationTimeout: TimeInterval = 30
+
 private func requireSuccess(_ data: Data, _ response: URLResponse) throws {
   guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
   guard 200..<300 ~= http.statusCode else {
@@ -138,7 +141,7 @@ private func requireSuccess(_ data: Data, _ response: URLResponse) throws {
 /// One-shot text completion over the OpenAI Chat Completions or Anthropic Messages protocol.
 enum ThirdPartyLanguageModel {
   static func request(
-    system: String, user: String, provider: LanguageModelProvider
+    system: String, user: String, provider: LanguageModelProvider, timeout: TimeInterval = 180
   ) throws -> URLRequest {
     let endpoint = provider.endpoint
     var request: URLRequest
@@ -174,7 +177,7 @@ enum ThirdPartyLanguageModel {
       ]
     }
     request.httpMethod = "POST"
-    request.timeoutInterval = 180
+    request.timeoutInterval = timeout
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     return request
@@ -184,10 +187,11 @@ enum ThirdPartyLanguageModel {
     system: String,
     user: String,
     provider: LanguageModelProvider,
+    timeout: TimeInterval = 180,
     session: URLSession = ThirdPartyHTTP.session
   ) async throws -> String {
     let (data, response) = try await session.data(
-      for: request(system: system, user: user, provider: provider))
+      for: request(system: system, user: user, provider: provider, timeout: timeout))
     try requireSuccess(data, response)
     let decoder = JSONDecoder()
     let text: String?
@@ -216,7 +220,8 @@ enum ThirdPartyLanguageModel {
   /// Sends the smallest useful request so Save can confirm the URL, key and model.
   static func verify(provider: LanguageModelProvider, session: URLSession = ThirdPartyHTTP.session) async throws {
     _ = try await complete(
-      system: "Reply with the single word OK.", user: "OK", provider: provider, session: session)
+      system: "Reply with the single word OK.", user: "OK", provider: provider,
+      timeout: verificationTimeout, session: session)
   }
 
   /// Models often wrap JSON in prose or code fences, so only the outermost object is read.
@@ -394,6 +399,7 @@ enum ThirdPartyTranscriber {
     language: String?,
     partDuration: TimeInterval,
     endpoint: ThirdPartyEndpoint,
+    timeout: TimeInterval = 600,
     session: URLSession = ThirdPartyHTTP.session
   ) async throws -> [Segment] {
     struct Transcription: Decodable {
@@ -409,7 +415,7 @@ enum ThirdPartyTranscriber {
       let boundary = "WakeOnCue-\(UUID().uuidString)"
       var request = URLRequest(url: endpoint.baseURL.appending(path: "audio/transcriptions"))
       request.httpMethod = "POST"
-      request.timeoutInterval = 600
+      request.timeoutInterval = timeout
       request.setValue(
         "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
       if !endpoint.apiKey.isEmpty {
@@ -510,6 +516,7 @@ enum ThirdPartyTranscriber {
       language: nil,
       partDuration: 1,
       endpoint: endpoint,
+      timeout: verificationTimeout,
       session: session)
   }
 

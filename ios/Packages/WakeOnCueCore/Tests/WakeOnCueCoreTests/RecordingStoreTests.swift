@@ -965,12 +965,8 @@ import Testing
   try await make("located", metadata: [S3Configuration.metadataBucketKey: "bucket"])
   #expect(try await store.isBackedUpToS3(recordingID: "located") == true)
 
-  try await make(
-    "abandoned",
-    metadata: [
-      S3Configuration.metadataBucketKey: "bucket",
-      RecordingStore.cloudSyncAbandonedMetadataKey: "true",
-    ])
+  try await make("abandoned", metadata: [S3Configuration.metadataBucketKey: "bucket"], queue: true)
+  try await store.completeLocally(recordingID: "abandoned", duration: 1)
   #expect(try await store.isBackedUpToS3(recordingID: "abandoned") == false)
 
   try await make("legacy", queue: true)
@@ -986,4 +982,14 @@ import Testing
   try await store.claimUploadTask(id: eligible[0].id, backgroundTaskIdentifier: 2)
   try await store.markUploadTaskUploaded(id: eligible[0].id)
   #expect(try await store.isBackedUpToS3(recordingID: "legacy") == true)
+
+  // A later transcript upload left finished recordings marked as uploading.
+  try await store.enqueueTranscriptTask(
+    recordingID: "legacy", transcriptPath: directory.appending(path: "legacy.json").path)
+  eligible = try await store.eligibleUploadTasks()
+  try await store.claimUploadTask(id: eligible[0].id, backgroundTaskIdentifier: 3)
+  #expect(try await store.recording(id: "legacy").uploadStatus == .uploading)
+  try await store.settleFinishedUploadStatuses()
+  #expect(try await store.recording(id: "legacy").uploadStatus == .completed)
+  #expect(try await store.recording(id: "legacy").status == .completed)
 }

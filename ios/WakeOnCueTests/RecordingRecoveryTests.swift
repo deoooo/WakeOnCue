@@ -119,6 +119,48 @@ final class RecordingRecoveryTests: XCTestCase {
     XCTAssertEqual(keptDuration, 3)
   }
 
+  func testFinishedRecordingStuckUploadingSettlesSoItsBackupDownloads() async throws {
+    let id = "recovery_settle_\(UUID().uuidString.prefix(8))"
+    createdIDs.append(id)
+    try await store.createRecording(
+      RecordingRecord(
+        id: id, createdAt: .now, startedAt: .now, status: .recording,
+        localAudioPath: directory.appending(path: "\(id).caf").path,
+        deviceModel: "test", appVersion: "1"),
+      createPayloadPath: directory.appending(path: "\(id)-create.json").path,
+      enqueueUpload: true
+    )
+    func uploadNext(_ identifier: Int) async throws {
+      let eligible = try await store.eligibleUploadTasks()
+      let task = try XCTUnwrap(eligible.first { $0.recordingID == id })
+      try await store.claimUploadTask(id: task.id, backgroundTaskIdentifier: identifier)
+      try await store.markUploadTaskUploaded(id: task.id)
+    }
+    try await uploadNext(1)
+    try await store.transition(recordingID: id, to: .finishing, duration: 1)
+    try await store.enqueueControlTask(
+      recordingID: id, kind: .finish, payloadPath: directory.appending(path: "\(id).m4a").path)
+    try await uploadNext(2)
+    let transcript = directory.appending(path: "\(id).json")
+    try Data("[]".utf8).write(to: transcript)
+    try await store.enqueueTranscriptTask(recordingID: id, transcriptPath: transcript.path)
+    let pending = try await store.eligibleUploadTasks()
+    let task = try XCTUnwrap(pending.first { $0.recordingID == id })
+    try await store.claimUploadTask(id: task.id, backgroundTaskIdentifier: 3)
+    let stuck = try await store.recording(id: id)
+    XCTAssertEqual(stuck.status, .completed)
+    XCTAssertEqual(stuck.uploadStatus, .uploading)
+
+    let outcome = await RecordingRecoveryService(fileLayout: layout).finishRetiredUploads(
+      store: store, prepareAudio: noPreparation)
+
+    XCTAssertNil(outcome.firstError)
+    let settled = try await store.recording(id: id).uploadStatus
+    let backedUp = try await store.isBackedUpToS3(recordingID: id)
+    XCTAssertEqual(settled, .completed)
+    XCTAssertTrue(backedUp)
+  }
+
   @MainActor
   func testImportedFileBecomesACompletedRecording() async throws {
     let source = directory.appending(path: "Voice memo.m4a")

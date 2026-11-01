@@ -127,7 +127,7 @@ struct SettingsView: View {
             Text("Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device.")
           } else {
             Text(
-              "Transcripts are sent to this service for summaries, and matching passages for questions. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain."
+              "Transcripts are sent to this service for summaries, and matching passages for questions, with recording titles. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain."
             )
           }
         }

@@ -441,7 +441,7 @@
 "Runs on this iPhone with iOS 26 or later. Audio does not leave the device." = "在 iOS 26 或更高版本的这台 iPhone 上运行，音频不会离开设备。";
 "Finished recordings are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions." = "录音结束后会自动上传到此服务，并适用该服务的隐私条款和费用。保存时会发送一秒静音来检查设置。任何实现 /audio/transcriptions 的服务都可以使用。";
 "Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device." = "由这台 iPhone 上的 Apple 智能运行，转写内容不会离开设备。";
-"Transcripts are sent to this service for summaries, and matching passages for questions. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain." = "生成摘要时会发送转写内容，提问时会发送匹配的片段，并适用该服务的隐私条款和费用。说话人姓名不会发送。API 密钥保存在这台 iPhone 的钥匙串中。";
+"Transcripts are sent to this service for summaries, and matching passages for questions, with recording titles. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain." = "生成摘要时会发送转写内容，提问时会发送匹配的片段，也会发送录音标题，并适用该服务的隐私条款和费用。说话人姓名不会发送。API 密钥保存在这台 iPhone 的钥匙串中。";
 "Enter a valid HTTPS service URL. Plain HTTP only works on your local network." = "请输入有效的 HTTPS 服务地址。明文 HTTP 仅可用于局域网。";
 "Enter the model name to use." = "请输入要使用的模型名称。";
 "Enter the API key for this service." = "请输入此服务的 API 密钥。";
@@ -450,3 +450,6 @@
 "Keeps this recording on this iPhone" = "将这条录音保留在这台 iPhone 上";
 "No account or network needed" = "无需账号，也不依赖网络";
 "Transcription needs iOS 26 or later, or a transcription service in Settings." = "转写需要 iOS 26 或更高版本，或在设置中配置转写服务。";
+"Replace this transcript?" = "替换这份转写？";
+"Replace transcript" = "替换转写";
+"The speaker labels and names in this transcript will be removed and cannot be recovered." = "这份转写里的说话人标签和名字会被移除，且无法恢复。";
