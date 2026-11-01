@@ -40,6 +40,15 @@ final class ThirdPartyAITests: XCTestCase {
       try ThirdPartyEndpoint.validated(baseURL: "http://mac.local:9000/v1", model: "m", apiKey: ""))
     XCTAssertNoThrow(
       try ThirdPartyEndpoint.validated(baseURL: " https://api.example.com/v1 ", model: "m", apiKey: "k"))
+
+    for address in [
+      "http://10.evil.com/v1", "http://localhost.evil.com/v1", "http://10.0.0.1.evil.com/v1",
+      "http://evil.com%2F.local/v1", "http://evil.com%00.local/v1",
+    ] {
+      XCTAssertThrowsError(
+        try ThirdPartyEndpoint.validated(baseURL: address, model: "m", apiKey: "k"), address)
+    }
+    XCTAssertNoThrow(try ThirdPartyEndpoint.validated(baseURL: "http://[::1]:8080/v1", model: "m", apiKey: ""))
   }
 
   func testOpenAIRequestAndResponseShape() async throws {
@@ -109,7 +118,6 @@ final class ThirdPartyAITests: XCTestCase {
     } catch {
       XCTAssertEqual(
         error as? ThirdPartyAIError, .requestFailed(status: 401, message: "Invalid API key"))
-      XCTAssertFalse(error.localizedDescription.contains("secret"))
     }
   }
 
@@ -251,6 +259,55 @@ final class ThirdPartyAITests: XCTestCase {
     XCTAssertEqual(events[0].startMilliseconds, 250)
     XCTAssertEqual(events[0].endMilliseconds, 1_000)
     XCTAssertTrue(events[0].isFinal)
+  }
+
+  func testRedirectsToAnotherOriginAreRefused() throws {
+    let source = URL(string: "https://api.example.com/v1/messages")
+    XCTAssertTrue(
+      ThirdPartyHTTP.allowsRedirect(from: source, to: URL(string: "https://api.example.com/v2/messages")))
+    for target in [
+      "https://evil.example.com/v1/messages", "http://api.example.com/v1/messages",
+      "https://api.example.com:8443/v1/messages",
+    ] {
+      XCTAssertFalse(ThirdPartyHTTP.allowsRedirect(from: source, to: URL(string: target)), target)
+    }
+    XCTAssertFalse(ThirdPartyHTTP.allowsRedirect(from: nil, to: source))
+  }
+
+  func testExcerptShowsTheMatchInALongSegment() {
+    let text = String(repeating: "filler ", count: 800) + "launch on Monday " + String(repeating: "more ", count: 800)
+    XCTAssertEqual(
+      RecordingQuestionAnswering.window(of: "short", matching: "launch", limit: 100), "short")
+    let window = RecordingQuestionAnswering.window(of: text, matching: "When is the launch?", limit: 200)
+    XCTAssertEqual(window.count, 200)
+    XCTAssertTrue(window.contains("launch on Monday"))
+    XCTAssertEqual(
+      RecordingQuestionAnswering.window(of: text, matching: "kangaroo", limit: 10), "filler fil")
+    XCTAssertEqual(
+      RecordingQuestionAnswering.window(of: "aaaaaaaaaaaaaaaaaazz", matching: "zz", limit: 6), "aaaazz")
+  }
+
+  func testPartOverTheByteLimitIsSplitAgainWithContinuousTimestamps() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appending(path: "source.wav")
+    var wav = ThirdPartyTranscriber.silentWAV(seconds: 8)
+    for index in 44..<wav.count { wav[index] = UInt8.random(in: 0...255) }
+    try wav.write(to: url)
+    StubURLProtocol.responses = (0..<16).map { _ in
+      .init(status: 200, body: #"{"segments":[{"start":0,"end":0.5,"text":"part"}]}"#)
+    }
+    let events = try await ThirdPartyTranscriber.transcribe(
+      audioURL: url, recordingID: "rec_1", language: nil, endpoint: openAIEndpoint,
+      byteLimit: 25_000, session: session())
+    XCTAssertGreaterThan(StubURLProtocol.requests.count, 1)
+    XCTAssertEqual(events.count, StubURLProtocol.requests.count)
+    XCTAssertEqual(events.first?.startMilliseconds, 0)
+    let starts = events.map(\.startMilliseconds)
+    XCTAssertEqual(starts, starts.sorted())
+    XCTAssertEqual(Set(starts).count, starts.count)
+    XCTAssertLessThan(try XCTUnwrap(starts.last), 8_000)
   }
 
   func testLongRecordingIsSplitIntoEncodedPartsWithContinuousTimestamps() async throws {

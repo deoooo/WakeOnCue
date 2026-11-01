@@ -161,7 +161,7 @@ endpoint before anything is persisted. A scanned or stored token alone is not tr
 as proof that the service is currently reachable. Local recording remains the source of
 truth if transcription is disabled or unavailable.
 
-也可以不用终端：Mac 菜单栏 App（`ios/WakeOnCueMac`，见 README）以同样的参数启动 Gateway 和 Processor，用 Bonjour 广播，并在 App 内用 CoreImage 生成同一格式的配对二维码（只在用户点击后显示，不写文件）。
+也可以不用终端：Mac 菜单栏 App（`ios/WakeOnCueMac`，见 README）以相同的进程启动 Gateway 和 Processor，只监听本机。
 
 当前 Mac Processor 默认使用 `Qwen3-ASR-1.7B`。建议单独使用 Python 3.12 环境，避免 Qwen/PyTorch 与 MLX 的依赖互相影响：
 

@@ -138,20 +138,19 @@ final class AppModel {
       await Self.cancelRetiredBackgroundUploads()
       let interrupted = try await store.recoverAfterProcessTermination()
       let recovery = RecordingRecoveryService(fileLayout: fileLayout)
-      for recordingID in interrupted {
-        try await recovery.recoverUnindexedChunks(
-          recordingID: recordingID,
-          store: store,
-          enqueueUpload: false
-        )
-        let chunks = try await store.chunks(recordingID: recordingID)
-        let duration = chunks.reduce(0) { $0 + $1.duration }
-        if !chunks.isEmpty { _ = try? await prepareM4A(recordingID: recordingID) }
-        try await store.completeLocally(recordingID: recordingID, duration: duration)
-        let recovered = try await store.recording(id: recordingID)
-        if recovered.status == .completed { rememberLastFinished(recovered) }
+      let prepareAudio: @Sendable (String) async -> Void = { [weak self] recordingID in
+        _ = try? await self?.prepareM4A(recordingID: recordingID)
       }
-      try await completeRetiredUploads()
+      let interruptedOutcome = await recovery.finishInterrupted(
+        interrupted, store: store, prepareAudio: prepareAudio)
+      for recording in interruptedOutcome.finished where recording.status == .completed {
+        rememberLastFinished(recording)
+      }
+      let retiredOutcome = await recovery.finishRetiredUploads(
+        store: store, prepareAudio: prepareAudio)
+      if let failure = interruptedOutcome.firstError ?? retiredOutcome.firstError {
+        errorMessage = String(format: AppLanguage.localized("Recovery failed: %@"), failure)
+      }
       await importWatchRecordings()
       await refresh()
       await liveActivity.removeStaleActivities(activeRecordingID: currentRecording?.id)
@@ -398,6 +397,8 @@ final class AppModel {
     settingsStatusMessage = AppLanguage.localized("Testing configured services…")
     defer { isSavingSettings = false }
     do {
+      // Saves exactly what was checked, whatever happens to the form during the checks.
+      let draft = settings.aiProviderDraft
       let speechEndpoint = try settings.candidateSpeechEndpoint()
       let languageModelProvider = try settings.candidateLanguageModelProvider()
 
@@ -410,7 +411,7 @@ final class AppModel {
       }
 
       try settings.persistAIProviders(
-        speech: speechEndpoint, languageModel: languageModelProvider)
+        draft, speech: speechEndpoint, languageModel: languageModelProvider)
       await refresh()
       settingsStatusIsError = false
       settingsStatusMessage = AppLanguage.localized("Settings saved.")
@@ -432,6 +433,7 @@ final class AppModel {
   }
 
   func cancelSettings() {
+    guard !isSavingSettings else { return }
     settings.restorePersistedSettings()
     settingsPresented = false
   }
@@ -489,7 +491,7 @@ final class AppModel {
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
         for: recording,
         chunks: chunks,
-        s3Configuration: s3Configuration(for: recording)
+        s3Configuration: await s3Configuration(for: recording)
       )
       stopPlayback()
       let session = AVAudioSession.sharedInstance()
@@ -538,7 +540,7 @@ final class AppModel {
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
         for: recording,
         chunks: chunks,
-        s3Configuration: s3Configuration(for: recording)
+        s3Configuration: await s3Configuration(for: recording)
       )
       shareItem = RecordingShareItem(url: file)
     } catch {
@@ -554,7 +556,7 @@ final class AppModel {
     if !FileManager.default.fileExists(atPath: url.path) {
       let recording = try await store.recording(id: recordingID)
       guard recording.uploadStatus == .completed,
-        let configuration = s3Configuration(for: recording)
+        let configuration = await s3Configuration(for: recording)
       else { return [] }
       _ = try await S3StorageClient.downloadTranscript(
         recordingID: recordingID,
@@ -593,7 +595,7 @@ final class AppModel {
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
         for: recording,
         chunks: try await store.chunks(recordingID: recording.id),
-        s3Configuration: s3Configuration(for: recording)
+        s3Configuration: await s3Configuration(for: recording)
       )
       let segments = try await transcribe(audioURL: file, recordingID: recording.id)
       guard !segments.isEmpty else { return }
@@ -843,7 +845,7 @@ final class AppModel {
           file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
             for: recording,
             chunks: try await store.chunks(recordingID: recording.id),
-            s3Configuration: s3Configuration(for: recording)
+            s3Configuration: await s3Configuration(for: recording)
           )
         }
         segments = try await transcribe(audioURL: file, recordingID: recording.id)
@@ -944,24 +946,11 @@ final class AppModel {
     UserDefaults.standard.set(true, forKey: key)
   }
 
-  /// Recordings an older version left waiting on a backup are finished on this iPhone instead.
-  private func completeRetiredUploads() async throws {
-    var offset = 0
-    while true {
-      let page = try await store.recordings(limit: 100, offset: offset)
-      for recording in page where recording.status == .uploading {
-        _ = try? await prepareM4A(recordingID: recording.id)
-        try await store.completeLocally(recordingID: recording.id, duration: recording.duration)
-      }
-      if page.count < 100 { return }
-      offset += page.count
-    }
-  }
-
   /// Audio an older version already moved to S3 stays reachable; nothing new is uploaded.
-  private func s3Configuration(for recording: RecordingRecord) -> S3Configuration? {
+  private func s3Configuration(for recording: RecordingRecord) async -> S3Configuration? {
     guard let configuration = settings.legacyS3Configuration,
-      configuration.matchesRecordedLocation(recording.metadata)
+      configuration.matchesRecordedLocation(recording.metadata),
+      (try? await store.isBackedUpToS3(recordingID: recording.id)) == true
     else { return nil }
     return configuration
   }

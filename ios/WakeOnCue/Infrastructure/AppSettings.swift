@@ -138,25 +138,55 @@ final class AppSettings {
     defaults.set(true, forKey: retiredRealtimeServiceKey)
   }
 
+  /// A different service starts from its own default address and a fresh key.
+  func selectSpeechEngine(_ engine: SpeechEngine) {
+    guard engine != speechEngine else { return }
+    speechEngine = engine
+    speechBaseURL = ""
+    speechModel = ""
+    speechAPIKey = ""
+  }
+
+  func selectLanguageModelEngine(_ engine: LanguageModelEngine) {
+    guard engine != languageModelEngine else { return }
+    languageModelEngine = engine
+    languageModelBaseURL = ""
+    languageModelName = ""
+    languageModelAPIKey = ""
+  }
+
+  var aiProviderDraft: AIProviderDraft {
+    AIProviderDraft(
+      speechEngine: speechEngine,
+      speechBaseURL: speechBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+      speechModel: speechModel.trimmingCharacters(in: .whitespacesAndNewlines),
+      languageModelEngine: languageModelEngine,
+      languageModelBaseURL: languageModelBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+      languageModelName: languageModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+    )
+  }
+
   /// The endpoint being edited, or nil when Apple's on-device speech is selected. A blank key
   /// keeps the stored one only for the same URL, so it is never sent to a different service.
   func candidateSpeechEndpoint() throws -> ThirdPartyEndpoint? {
-    guard let defaultURL = speechEngine.defaultBaseURL else { return nil }
-    let baseURL = speechBaseURL.isEmpty ? defaultURL : speechBaseURL
+    let draft = aiProviderDraft
+    guard let defaultURL = draft.speechEngine.defaultBaseURL else { return nil }
+    let baseURL = draft.speechBaseURL.isEmpty ? defaultURL : draft.speechBaseURL
     let isUnchanged = activeSpeechEndpoint?.baseURL.absoluteString == baseURL
     return try ThirdPartyEndpoint.validated(
       baseURL: baseURL,
-      model: speechModel,
+      model: draft.speechModel,
       apiKey: speechAPIKey.isEmpty && isUnchanged
         ? (activeSpeechEndpoint?.apiKey ?? "") : speechAPIKey
     )
   }
 
   func candidateLanguageModelProvider() throws -> LanguageModelProvider? {
-    guard let defaultURL = languageModelEngine.defaultBaseURL else { return nil }
+    let draft = aiProviderDraft
+    guard let defaultURL = draft.languageModelEngine.defaultBaseURL else { return nil }
     let wireProtocol: LanguageModelProvider.WireProtocol =
-      languageModelEngine == .anthropic ? .anthropic : .openAI
-    let baseURL = languageModelBaseURL.isEmpty ? defaultURL : languageModelBaseURL
+      draft.languageModelEngine == .anthropic ? .anthropic : .openAI
+    let baseURL = draft.languageModelBaseURL.isEmpty ? defaultURL : draft.languageModelBaseURL
     let isUnchanged =
       activeLanguageModelProvider?.wireProtocol == wireProtocol
       && activeLanguageModelProvider?.endpoint.baseURL.absoluteString == baseURL
@@ -164,31 +194,42 @@ final class AppSettings {
       wireProtocol: wireProtocol,
       endpoint: try ThirdPartyEndpoint.validated(
         baseURL: baseURL,
-        model: languageModelName,
+        model: draft.languageModelName,
         apiKey: languageModelAPIKey.isEmpty && isUnchanged
           ? (activeLanguageModelProvider?.endpoint.apiKey ?? "") : languageModelAPIKey
       )
     )
   }
 
-  /// Keys are deleted as soon as a service is turned off.
+  /// Keys are deleted as soon as a service is turned off. Both keys change together, so a
+  /// failure cannot leave one service's key beside another service's address.
   func persistAIProviders(
-    speech: ThirdPartyEndpoint?, languageModel: LanguageModelProvider?
+    _ draft: AIProviderDraft,
+    speech: ThirdPartyEndpoint?,
+    languageModel: LanguageModelProvider?
   ) throws {
+    let previousSpeechKey = try KeychainStore.read(
+      service: Self.aiKeychainService, account: Self.speechKeyAccount)
     try KeychainStore.save(
       speech?.apiKey ?? "", service: Self.aiKeychainService, account: Self.speechKeyAccount)
-    try KeychainStore.save(
-      languageModel?.endpoint.apiKey ?? "",
-      service: Self.aiKeychainService,
-      account: Self.languageModelKeyAccount
-    )
+    do {
+      try KeychainStore.save(
+        languageModel?.endpoint.apiKey ?? "",
+        service: Self.aiKeychainService,
+        account: Self.languageModelKeyAccount
+      )
+    } catch {
+      try? KeychainStore.save(
+        previousSpeechKey ?? "", service: Self.aiKeychainService, account: Self.speechKeyAccount)
+      throw error
+    }
     let defaults = UserDefaults.standard
-    defaults.set(speechEngine.rawValue, forKey: Self.speechEngineKey)
-    defaults.set(speechBaseURL, forKey: Self.speechBaseURLKey)
-    defaults.set(speechModel, forKey: Self.speechModelKey)
-    defaults.set(languageModelEngine.rawValue, forKey: Self.languageModelEngineKey)
-    defaults.set(languageModelBaseURL, forKey: Self.languageModelBaseURLKey)
-    defaults.set(languageModelName, forKey: Self.languageModelNameKey)
+    defaults.set(draft.speechEngine.rawValue, forKey: Self.speechEngineKey)
+    defaults.set(draft.speechBaseURL, forKey: Self.speechBaseURLKey)
+    defaults.set(draft.speechModel, forKey: Self.speechModelKey)
+    defaults.set(draft.languageModelEngine.rawValue, forKey: Self.languageModelEngineKey)
+    defaults.set(draft.languageModelBaseURL, forKey: Self.languageModelBaseURLKey)
+    defaults.set(draft.languageModelName, forKey: Self.languageModelNameKey)
     restorePersistedAIProviders()
   }
 
@@ -275,6 +316,16 @@ final class AppSettings {
       service: Self.keychainService, account: Self.sessionTokenAccount)
     return (accessKey, secretKey, token?.isEmpty == false ? token : nil)
   }
+}
+
+/// The service choices being saved, apart from their keys.
+struct AIProviderDraft: Equatable, Sendable {
+  let speechEngine: SpeechEngine
+  let speechBaseURL: String
+  let speechModel: String
+  let languageModelEngine: LanguageModelEngine
+  let languageModelBaseURL: String
+  let languageModelName: String
 }
 
 enum KeychainStore {

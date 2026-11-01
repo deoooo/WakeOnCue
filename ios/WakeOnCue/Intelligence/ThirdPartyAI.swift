@@ -39,7 +39,7 @@ struct ThirdPartyEndpoint: Equatable, Sendable {
   static func validated(baseURL: String, model: String, apiKey: String) throws -> ThirdPartyEndpoint {
     let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
-      let host = url.host, url.user == nil, url.query == nil, url.fragment == nil,
+      let host = url.host(percentEncoded: true), url.user == nil, url.query == nil, url.fragment == nil,
       scheme == "https" || (scheme == "http" && isLocalHost(host))
     else { throw ThirdPartyAIError.invalidBaseURL }
     let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,6 +51,7 @@ struct ThirdPartyEndpoint: Equatable, Sendable {
 
   static func isLocalHost(_ host: String) -> Bool {
     let host = host.lowercased()
+    guard !host.contains("%") else { return false }
     if host == "localhost" || host.hasSuffix(".local") || host == "::1" { return true }
     let octets = host.split(separator: ".").compactMap { UInt8($0) }
     guard octets.count == 4, host.split(separator: ".").count == 4 else { return false }
@@ -90,6 +91,34 @@ enum ThirdPartyAIError: LocalizedError, Equatable {
     case .unreadableResponse:
       AppLanguage.localized("The service returned a response WakeOnCue could not read.")
     }
+  }
+}
+
+/// The session for calls that carry an API key. URLSession strips `Authorization` when a
+/// response redirects to another host but keeps `x-api-key`, so those redirects are refused.
+enum ThirdPartyHTTP {
+  private final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+      _ session: URLSession,
+      task: URLSessionTask,
+      willPerformHTTPRedirection response: HTTPURLResponse,
+      newRequest request: URLRequest,
+      completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+      completionHandler(
+        ThirdPartyHTTP.allowsRedirect(from: task.originalRequest?.url, to: request.url)
+          ? request : nil)
+    }
+  }
+
+  static let session = URLSession(
+    configuration: .ephemeral, delegate: RedirectGuard(), delegateQueue: nil)
+
+  static func allowsRedirect(from source: URL?, to destination: URL?) -> Bool {
+    guard let source, let destination else { return false }
+    return source.scheme?.lowercased() == destination.scheme?.lowercased()
+      && source.host()?.lowercased() == destination.host()?.lowercased()
+      && source.port == destination.port
   }
 }
 
@@ -155,7 +184,7 @@ enum ThirdPartyLanguageModel {
     system: String,
     user: String,
     provider: LanguageModelProvider,
-    session: URLSession = .shared
+    session: URLSession = ThirdPartyHTTP.session
   ) async throws -> String {
     let (data, response) = try await session.data(
       for: request(system: system, user: user, provider: provider))
@@ -185,7 +214,7 @@ enum ThirdPartyLanguageModel {
   }
 
   /// Sends the smallest useful request so Save can confirm the URL, key and model.
-  static func verify(provider: LanguageModelProvider, session: URLSession = .shared) async throws {
+  static func verify(provider: LanguageModelProvider, session: URLSession = ThirdPartyHTTP.session) async throws {
     _ = try await complete(
       system: "Reply with the single word OK.", user: "OK", provider: provider, session: session)
   }
@@ -200,10 +229,11 @@ enum ThirdPartyLanguageModel {
 }
 
 /// Summaries and answers written by the service the user configured. Speaker names stay on
-/// this iPhone; only transcript text, the recording title and the question are sent.
+/// this iPhone; only transcript text, recording titles and the question are sent.
 enum ThirdPartyIntelligence {
   static let summaryPartCharacters = 60_000
   static let answerExcerptCharacters = 16_000
+  static let answerCharactersPerExcerpt = 2_000
 
   private struct SummaryDraft: Decodable {
     let title: String
@@ -223,7 +253,7 @@ enum ThirdPartyIntelligence {
     title: String?,
     language: AppLanguage,
     provider: LanguageModelProvider,
-    session: URLSession = .shared
+    session: URLSession = ThirdPartyHTTP.session
   ) async throws -> RecordingSummary {
     let output = language == .simplifiedChinese ? "Simplified Chinese" : "English"
     let system = """
@@ -284,10 +314,14 @@ enum ThirdPartyIntelligence {
     citations: [RecordingCitation],
     language: AppLanguage,
     provider: LanguageModelProvider,
-    session: URLSession = .shared
+    session: URLSession = ThirdPartyHTTP.session
   ) async throws -> RecordingAnswer {
     let excerpts = RecordingQuestionAnswering.excerpts(
-      for: citations, maxCharacters: answerExcerptCharacters, includeSpeakerNames: false)
+      for: citations,
+      question: question,
+      maxCharacters: answerExcerptCharacters,
+      perExcerpt: answerCharactersPerExcerpt,
+      includeSpeakerNames: false)
     let output = language == .simplifiedChinese ? "Simplified Chinese" : "the language of the question"
     let reply = try await ThirdPartyLanguageModel.complete(
       system: """
@@ -318,6 +352,7 @@ enum ThirdPartyTranscriber {
   /// Services commonly reject uploads over 25 MB or about 23 minutes, so longer files are split.
   static let maxUploadBytes = 20 * 1_024 * 1_024
   static let maxPartDuration: TimeInterval = 20 * 60
+  private static let minimumPartDuration: TimeInterval = 1
   private static let uploadableExtensions: Set<String> = [
     "flac", "m4a", "mp3", "mp4", "mpeg", "mpga", "ogg", "wav", "webm",
   ]
@@ -359,7 +394,7 @@ enum ThirdPartyTranscriber {
     language: String?,
     partDuration: TimeInterval,
     endpoint: ThirdPartyEndpoint,
-    session: URLSession = .shared
+    session: URLSession = ThirdPartyHTTP.session
   ) async throws -> [Segment] {
     struct Transcription: Decodable {
       let text: String?
@@ -402,19 +437,22 @@ enum ThirdPartyTranscriber {
     recordingID: String,
     language: String?,
     endpoint: ThirdPartyEndpoint,
-    session: URLSession = .shared
+    byteLimit: Int = maxUploadBytes,
+    session: URLSession = ThirdPartyHTTP.session
   ) async throws -> [RealtimeTranscriptEvent] {
     let asset = AVURLAsset(url: audioURL)
     let duration = try await asset.load(.duration).seconds
+    guard duration.isFinite, duration > 0 else { throw CocoaError(.fileReadCorruptFile) }
     let size = try audioURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-    let ranges = partRanges(duration: duration)
+    var pending = partRanges(duration: duration)
     let uploadsDirectly =
-      ranges.count == 1 && size <= maxUploadBytes
+      pending.count == 1 && size <= byteLimit
       && uploadableExtensions.contains(audioURL.pathExtension.lowercased())
 
     var events: [RealtimeTranscriptEvent] = []
-    for range in ranges {
+    while !pending.isEmpty {
       try Task.checkCancellation()
+      let range = pending.removeFirst()
       let segments: [Segment]
       if uploadsDirectly {
         segments = try await transcribePart(
@@ -427,11 +465,19 @@ enum ThirdPartyTranscriber {
       } else {
         let part = try await exportPart(of: asset, range: range)
         defer { try? FileManager.default.removeItem(at: part) }
+        let partSize = try part.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        // Encoded size follows the source's quality, so a part can still be over the limit.
+        let span = range.upperBound - range.lowerBound
+        if partSize > byteLimit, span > minimumPartDuration {
+          let middle = range.lowerBound + span / 2
+          pending.insert(contentsOf: [range.lowerBound..<middle, middle..<range.upperBound], at: 0)
+          continue
+        }
         segments = try await transcribePart(
           audio: Data(contentsOf: part),
           filename: part.lastPathComponent,
           language: language,
-          partDuration: range.upperBound - range.lowerBound,
+          partDuration: span,
           endpoint: endpoint,
           session: session)
       }
@@ -457,7 +503,7 @@ enum ThirdPartyTranscriber {
   }
 
   /// Sends one second of silence so Save can confirm the URL, key and model.
-  static func verify(endpoint: ThirdPartyEndpoint, session: URLSession = .shared) async throws {
+  static func verify(endpoint: ThirdPartyEndpoint, session: URLSession = ThirdPartyHTTP.session) async throws {
     _ = try await transcribePart(
       audio: silentWAV(seconds: 1),
       filename: "wakeoncue-check.wav",
@@ -497,8 +543,13 @@ enum ThirdPartyTranscriber {
       end: CMTime(seconds: range.upperBound, preferredTimescale: 600))
     let url = FileManager.default.temporaryDirectory
       .appending(path: "transcription-\(UUID().uuidString).m4a")
-    try await export.export(to: url, as: .m4a)
-    try RecordingFileLayout.protect(url)
+    do {
+      try await export.export(to: url, as: .m4a)
+      try RecordingFileLayout.protect(url)
+    } catch {
+      try? FileManager.default.removeItem(at: url)
+      throw error
+    }
     return url
   }
 }

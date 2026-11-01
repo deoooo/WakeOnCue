@@ -34,10 +34,7 @@ WAKEONCUE_ASR_BACKEND=qwen WAKEONCUE_QWEN_MODEL=/absolute/path/to/Qwen3-ASR-1.7B
   server/scripts/run_local_mac_stack.sh
 ```
 
-`run_local_mac_stack.sh` 只启动局域网 Gateway，不需要 Cloudflare、固定公网域名或
-同一台机器上的额外服务。保持终端运行，iPhone 与 Mac 连接同一 Wi-Fi 后，App 会通过
-Bonjour 自动发现 Mac；若局域网不可用，才使用 App 设置中配置的公网 Gateway。第一次
-运行 macOS 防火墙或 iOS “本地网络”权限提示时请选择允许。
+`run_local_mac_stack.sh` 只在本机启动 Gateway 和 Processor，不需要 Cloudflare 或公网域名，供 Mac App 使用。保持终端运行即可。
 
 当前 Mac 的系统级 `xcode-select` 仍可能指向 Command Line Tools；上面的 `DEVELOPER_DIR` 可直接使用完整 Xcode，无需管理员权限。若要全局切换，可手动运行 `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`。
 

@@ -174,7 +174,7 @@ enum RecordingQuestionAnswering {
     citations: [RecordingCitation],
     language: AppLanguage,
     provider: LanguageModelProvider? = nil,
-    session: URLSession = .shared
+    session: URLSession = ThirdPartyHTTP.session
   ) async -> RecordingAnswer {
     guard !citations.isEmpty else {
       return RecordingAnswer(text: nil, notice: .nothingFound, sources: [])
@@ -230,9 +230,25 @@ enum RecordingQuestionAnswering {
       sources: unique.isEmpty ? Array(citations.prefix(excerptCount)) : unique)
   }
 
+  /// The part of a long segment around the question's first match, since an untimed transcript
+  /// can hold a whole recording in one segment.
+  static func window(of text: String, matching question: String?, limit: Int) -> String {
+    guard text.count > limit else { return text }
+    let match = question.flatMap { question in
+      RecordingQuestionRetriever.terms(question)
+        .compactMap { text.range(of: $0, options: .caseInsensitive) }
+        .min { $0.lowerBound < $1.lowerBound }
+    }
+    guard let match else { return String(text.prefix(limit)) }
+    let offset = text.distance(from: text.startIndex, to: match.lowerBound)
+    let start = text.index(text.startIndex, offsetBy: max(0, min(offset - limit / 2, text.count - limit)))
+    return String(text[start...].prefix(limit))
+  }
+
   /// Numbered excerpts trimmed to fit a model's context window.
   static func excerpts(
     for citations: [RecordingCitation],
+    question: String? = nil,
     maxCharacters: Int = 3_000,
     perExcerpt: Int = 360,
     includeSpeakerNames: Bool = true
@@ -240,7 +256,7 @@ enum RecordingQuestionAnswering {
     var result: [String] = []
     var used = 0
     for (index, citation) in citations.enumerated() {
-      let text = String(citation.segment.text.prefix(perExcerpt))
+      let text = window(of: citation.segment.text, matching: question, limit: perExcerpt)
       let speaker = includeSpeakerNames ? citation.speakerName.map { "\($0): " } ?? "" : ""
       let title = citation.recordingTitle.map { " \"\($0)\"" } ?? ""
       let line = "[\(index + 1)] Recording\(title) at \(citation.timestamp) — \(speaker)\(text)"
@@ -271,7 +287,8 @@ enum RecordingQuestionAnswering {
     func answer(question: String, citations: [RecordingCitation]) async throws -> RecordingAnswer {
       var budget = 3_000
       while true {
-        let excerpts = RecordingQuestionAnswering.excerpts(for: citations, maxCharacters: budget)
+        let excerpts = RecordingQuestionAnswering.excerpts(
+          for: citations, question: question, maxCharacters: budget)
         do {
           let session = LanguageModelSession(instructions: instructions)
           let draft = try await session.respond(

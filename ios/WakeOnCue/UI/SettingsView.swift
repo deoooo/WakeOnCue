@@ -58,7 +58,12 @@ struct SettingsView: View {
         }
 
         Section {
-          Picker("Service", selection: $settings.speechEngine) {
+          Picker(
+            "Service",
+            selection: Binding(
+              get: { settings.speechEngine },
+              set: { settings.selectSpeechEngine($0) })
+          ) {
             Text("Apple Speech").tag(SpeechEngine.apple)
             Text("OpenAI-compatible API").tag(SpeechEngine.openAICompatible)
           }
@@ -92,7 +97,12 @@ struct SettingsView: View {
         }
 
         Section {
-          Picker("Service", selection: $settings.languageModelEngine) {
+          Picker(
+            "Service",
+            selection: Binding(
+              get: { settings.languageModelEngine },
+              set: { settings.selectLanguageModelEngine($0) })
+          ) {
             Text("Apple Intelligence").tag(LanguageModelEngine.apple)
             Text("OpenAI-compatible API").tag(LanguageModelEngine.openAICompatible)
             Text("Claude API").tag(LanguageModelEngine.anthropic)
@@ -199,6 +209,8 @@ struct SettingsView: View {
           )
         }
       }
+      .disabled(model.isSavingSettings)
+      .interactiveDismissDisabled(model.isSavingSettings)
       .scrollContentBackground(.hidden)
       .background(Color(uiColor: .systemGroupedBackground))
       .navigationTitle("Settings")
@@ -209,6 +221,7 @@ struct SettingsView: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { model.cancelSettings() }
+            .disabled(model.isSavingSettings)
         }
         ToolbarItem(placement: .confirmationAction) {
           Button {

@@ -184,6 +184,21 @@ public actor RecordingStore {
     ).filter { $0.metadata[Self.cloudSyncAbandonedMetadataKey] != "true" }
   }
 
+  /// Whether S3 holds this recording: it was made for a bucket, or its final audio was
+  /// acknowledged before recordings noted their bucket. Abandoned backups do not count.
+  public func isBackedUpToS3(recordingID: String) throws -> Bool {
+    let recording = try recording(id: recordingID)
+    guard recording.metadata[Self.cloudSyncAbandonedMetadataKey] != "true" else { return false }
+    if recording.metadata[S3Configuration.metadataBucketKey] != nil { return true }
+    return try scalarInt(
+      """
+      SELECT COUNT(*) FROM upload_tasks
+      WHERE recording_id = ? AND kind = 'finish' AND state = 'uploaded'
+      """,
+      [.text(recordingID)]
+    ) > 0
+  }
+
   /// The recording that still owns the audio capture session.
   /// Finalized recordings continue syncing independently and must not block a new capture.
   public func activeRecording() throws -> RecordingRecord? {
