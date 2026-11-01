@@ -163,7 +163,6 @@
 "Could not load transcript: %@" = "Could not load transcript: %@";
 "Retranscribe and identify speakers" = "Retranscribe and identify speakers";
 "Preparing audio…" = "Preparing audio…";
-"Transcribing and identifying speakers…" = "Transcribing and identifying speakers…";
 "Finalizing speaker identification…" = "Finalizing speaker identification…";
 "Retranscription completed." = "Retranscription completed.";
 "Could not retranscribe this recording: %@" = "Could not retranscribe this recording: %@";
@@ -442,3 +441,4 @@
 "Replace this transcript?" = "Replace this transcript?";
 "Replace transcript" = "Replace transcript";
 "The speaker labels and names in this transcript will be removed and cannot be recovered." = "The speaker labels and names in this transcript will be removed and cannot be recovered.";
+"The existing transcript could not be read, so it may still hold content. Try again first if you can." = "The existing transcript could not be read, so it may still hold content. Try again first if you can.";

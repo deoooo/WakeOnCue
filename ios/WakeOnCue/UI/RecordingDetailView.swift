@@ -138,7 +138,7 @@ struct RecordingDetailView: View {
 
       Menu {
         Button {
-          if transcript.contains(where: { $0.speaker != nil }) {
+          if transcriptError != nil || transcript.contains(where: { $0.speaker != nil }) {
             isRetranscribeConfirmationPresented = true
           } else {
             Task { await model.retranscribe(recording: displayedRecording) }
@@ -149,7 +149,9 @@ struct RecordingDetailView: View {
             systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
           )
         }
-        .disabled(model.retranscribingRecordingID != nil || !model.canTranscribeRecordings)
+        .disabled(
+          !transcriptLoaded || model.retranscribingRecordingID != nil
+            || !model.canTranscribeRecordings)
         .accessibilityIdentifier("retranscribe-recording")
       } label: {
         Image(systemName: "ellipsis.circle")
@@ -163,8 +165,13 @@ struct RecordingDetailView: View {
         Button("Replace transcript", role: .destructive) {
           Task { await model.retranscribe(recording: displayedRecording) }
         }
+        Button("Cancel", role: .cancel) {}
       } message: {
-        Text("The speaker labels and names in this transcript will be removed and cannot be recovered.")
+        if transcriptError != nil {
+          Text("The existing transcript could not be read, so it may still hold content. Try again first if you can.")
+        } else {
+          Text("The speaker labels and names in this transcript will be removed and cannot be recovered.")
+        }
       }
       .accessibilityLabel("More recording actions")
       .accessibilityIdentifier("more-recording-actions")
@@ -290,20 +297,20 @@ struct RecordingDetailView: View {
 
   @ViewBuilder
   private var transcribeButton: some View {
-      if model.canTranscribeRecordings {
-        Button {
-          Task { await model.processOnDevice(recording: displayedRecording) }
-        } label: {
-          if model.settings.activeSpeechEndpoint == nil {
-            Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
-          } else {
-            Label("Transcribe with your service", systemImage: "cloud")
-          }
+    if model.canTranscribeRecordings {
+      Button {
+        Task { await model.processOnDevice(recording: displayedRecording) }
+      } label: {
+        if model.settings.activeSpeechEndpoint == nil {
+          Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
+        } else {
+          Label("Transcribe with your service", systemImage: "cloud")
         }
-        .buttonStyle(.bordered)
-        .disabled(isProcessingOnDevice)
-        .accessibilityIdentifier("transcribe-on-device")
       }
+      .buttonStyle(.bordered)
+      .disabled(isProcessingOnDevice)
+      .accessibilityIdentifier("transcribe-on-device")
+    }
   }
 
   private func transcriptSection(using proxy: ScrollViewProxy) -> some View {
@@ -320,7 +327,15 @@ struct RecordingDetailView: View {
         Text(transcriptError)
           .font(.subheadline)
           .foregroundStyle(.orange)
-        transcribeButton
+        Button {
+          Task {
+            transcriptLoaded = false
+            await loadTranscript()
+          }
+        } label: {
+          Label("Try again", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(.bordered)
       } else if transcript.isEmpty {
         Text("No transcript was produced for this recording.")
           .font(.subheadline)

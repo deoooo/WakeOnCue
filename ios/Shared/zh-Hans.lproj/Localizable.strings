@@ -173,7 +173,6 @@
 "Could not load transcript: %@" = "无法加载转写内容：%@";
 "Retranscribe and identify speakers" = "重新转写并区分说话人";
 "Preparing audio…" = "正在准备音频…";
-"Transcribing and identifying speakers…" = "正在转写并区分说话人…";
 "Finalizing speaker identification…" = "正在整理说话人信息…";
 "Retranscription completed." = "重新转写已完成。";
 "Could not retranscribe this recording: %@" = "无法重新转写这条录音：%@";
@@ -453,3 +452,4 @@
 "Replace this transcript?" = "替换这份转写？";
 "Replace transcript" = "替换转写";
 "The speaker labels and names in this transcript will be removed and cannot be recovered." = "这份转写里的说话人标签和名字会被移除，且无法恢复。";
+"The existing transcript could not be read, so it may still hold content. Try again first if you can." = "现有转写暂时无法读取，其中可能仍有内容。建议先重试。";

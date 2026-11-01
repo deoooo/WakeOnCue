@@ -840,7 +840,8 @@ final class AppModel {
     onDeviceProcessingRecordingIDs.insert(recording.id)
     defer { onDeviceProcessingRecordingIDs.remove(recording.id) }
     do {
-      var segments = (try? await transcript(for: recording.id)) ?? []
+      // A transcript that exists but cannot be read now must not be replaced.
+      var segments = try await transcript(for: recording.id)
       if segments.isEmpty, canTranscribeRecordings {
         let file: URL
         if let audioURL {

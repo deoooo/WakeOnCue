@@ -162,6 +162,39 @@ final class RecordingRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testUnreadableTranscriptIsNotReplacedByAutomaticTranscription() async throws {
+    let id = "recovery_unreadable_\(UUID().uuidString.prefix(8))"
+    createdIDs.append(id)
+    let unreadable = Data("not a transcript".utf8)
+    let transcriptURL = try layout.transcriptURL(recordingID: id)
+    try unreadable.write(to: transcriptURL)
+    let readError = try XCTUnwrap(
+      { () -> Error? in
+        do {
+          _ = try JSONDecoder().decode([RealtimeTranscriptEvent].self, from: unreadable)
+          return nil
+        } catch { return error }
+      }())
+    let model = try AppModel()
+
+    await model.processOnDevice(
+      recording: RecordingRecord(
+        id: id, createdAt: .now, startedAt: .now, status: .completed,
+        localAudioPath: directory.appending(path: "missing.caf").path,
+        deviceModel: "test", appVersion: "1"),
+      audioURL: directory.appending(path: "missing.m4a")
+    )
+
+    XCTAssertEqual(try Data(contentsOf: transcriptURL), unreadable)
+    XCTAssertEqual(
+      model.errorMessage,
+      String(
+        format: AppLanguage.localized("Could not process this recording: %@"),
+        readError.localizedDescription),
+      "Stops on the read failure instead of going on to transcribe")
+  }
+
+  @MainActor
   func testImportedFileBecomesACompletedRecording() async throws {
     let source = directory.appending(path: "Voice memo.m4a")
     try writeAudio(to: source, seconds: 2)
