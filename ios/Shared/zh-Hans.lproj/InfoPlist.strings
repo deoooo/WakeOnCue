@@ -1,3 +1,8 @@
 "NSMicrophoneUsageDescription" = "WakeOnCue 需要麦克风权限，以录制你明确开始的会议。";
 "NSLocalNetworkUsageDescription" = "WakeOnCue 会直接连接到用户配置的 S3 兼容存储端点。";
 "CFBundleDisplayName" = "WakeOnCue";
+
+"NSCameraUsageDescription" = "WakeOnCue 仅使用相机扫描自托管服务的配对二维码。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "WakeOnCue 只检查你是否到达或离开你设置的地点，以便在那里开始或结束录音。";
+"NSLocationWhenInUseUsageDescription" = "WakeOnCue 使用你的位置来设置自动开始或结束录音的地点。";
+"NSCalendarsFullAccessUsageDescription" = "WakeOnCue 读取你的日历，用会议名称命名录音，并在会议开始时提醒你。日历数据只保留在这台 iPhone 上。";

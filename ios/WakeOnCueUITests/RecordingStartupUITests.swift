@@ -80,6 +80,9 @@ final class RecordingStartupUITests: XCTestCase {
     XCTAssertTrue(detailLink.waitForExistence(timeout: 20), "No completed recording is visible")
     detailLink.tap()
 
+    let more = app.buttons["more-recording-actions"]
+    XCTAssertTrue(more.waitForExistence(timeout: 10))
+    more.tap()
     let retranscribe = app.buttons["retranscribe-recording"]
     for _ in 0..<6 where !retranscribe.isHittable {
       app.swipeUp()
@@ -114,7 +117,7 @@ final class RecordingStartupUITests: XCTestCase {
     let settings = app.buttons["Recording storage settings"]
     XCTAssertTrue(settings.waitForExistence(timeout: 20), "Settings control is missing")
     settings.tap()
-    let connected = app.staticTexts["Realtime Gateway connected"]
+    let connected = app.staticTexts["Gateway credentials saved"]
     for _ in 0..<4 where !connected.exists {
       app.swipeUp()
     }
@@ -146,7 +149,7 @@ final class RecordingStartupUITests: XCTestCase {
     XCTAssertTrue(settings.waitForExistence(timeout: 20), "Settings control is missing")
     settings.tap()
     XCTAssertTrue(
-      app.staticTexts["Realtime Gateway connected"].waitForExistence(timeout: 10),
+      app.staticTexts["Gateway credentials saved"].waitForExistence(timeout: 10),
       "Validated realtime configuration was not persisted"
     )
   }
@@ -268,7 +271,7 @@ final class RecordingStartupUITests: XCTestCase {
   }
 
   @MainActor
-  func testPhysicalRealtimeTranscriptAndSpeakerCorrection() throws {
+  func testPhysicalRealtimeTranscriptWithoutVoiceprint() throws {
     let environment = ProcessInfo.processInfo.environment
     let gatewayURL =
       environment["WAKEONCUE_TEST_REALTIME_GATEWAY_URL"] ?? "http://192.6.7.25:8090"
@@ -326,19 +329,17 @@ final class RecordingStartupUITests: XCTestCase {
       "The live transcript panel is missing"
     )
 
-    let correctedSpeaker = app.staticTexts.matching(
-      NSPredicate(format: "label BEGINSWITH %@", "Speaker ")
-    ).firstMatch
+    // Without an enrolled voiceprint the processor must not tell speakers apart.
+    let unknownSpeaker = app.staticTexts["Unknown speaker"].firstMatch
     XCTAssertTrue(
-      correctedSpeaker.waitForExistence(timeout: 70),
-      "No speaker-corrected transcript appeared from the silent test-audio injection"
+      unknownSpeaker.waitForExistence(timeout: 70),
+      "No transcript appeared from the silent test-audio injection"
     )
-    let fourthSpeaker = app.staticTexts.matching(
-      NSPredicate(format: "label CONTAINS %@", "Speaker 4")
-    ).firstMatch
-    XCTAssertTrue(
-      fourthSpeaker.waitForExistence(timeout: 45),
-      "The four-speaker fixture never produced a fourth stable speaker"
+    sleep(30)
+    XCTAssertFalse(
+      app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Speaker ")).firstMatch
+        .exists,
+      "Speakers were clustered without the user's own enrolled voice"
     )
 
     let finish = app.buttons["finish-recording"]

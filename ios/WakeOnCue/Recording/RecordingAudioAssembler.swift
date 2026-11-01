@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import UIKit
 import WakeOnCueCore
 
 struct RecordingAudioAssembler: Sendable {
@@ -7,8 +8,12 @@ struct RecordingAudioAssembler: Sendable {
 
   func assemble(recordingID: String, chunks: [ChunkRecord]) async throws -> URL {
     let outputURL = try fileLayout.downloadedAudioURL(recordingID: recordingID)
-    if FileManager.default.fileExists(atPath: outputURL.path) { return outputURL }
+    if await Self.isPlayable(outputURL) { return outputURL }
     guard !chunks.isEmpty else { throw RecordingAudioAssemblerError.noAudio }
+    // Exporting hours of audio can outlast a background wake (for example a Watch delivery),
+    // so ask for time to finish; an export cut short only ever leaves the partial file behind.
+    let backgroundTime = await BackgroundTime.begin(name: "Assemble \(recordingID)")
+    defer { Task { await backgroundTime.end() } }
 
     let composition = AVMutableComposition()
     guard
@@ -36,10 +41,44 @@ struct RecordingAudioAssembler: Sendable {
       asset: composition,
       presetName: AVAssetExportPresetAppleM4A
     ) else { throw RecordingAudioAssemblerError.exportUnavailable }
+    // Export next to the final file and move it into place only once complete, so an existing
+    // output always means a finished export.
+    let partialURL = outputURL.deletingPathExtension().appendingPathExtension("partial.m4a")
+    try? FileManager.default.removeItem(at: partialURL)
+    try await exporter.export(to: partialURL, as: .m4a)
     try? FileManager.default.removeItem(at: outputURL)
-    try await exporter.export(to: outputURL, as: .m4a)
+    try FileManager.default.moveItem(at: partialURL, to: outputURL)
     try RecordingFileLayout.protect(outputURL)
     return outputURL
+  }
+
+  /// Files written before exports were made atomic can be empty or truncated.
+  static func isPlayable(_ url: URL) async -> Bool {
+    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
+      let duration = try? await AVURLAsset(url: url).load(.duration)
+    else { return false }
+    return duration.seconds.isFinite && duration.seconds > 0
+  }
+}
+
+/// Extra execution time for work that must not stop halfway when the app leaves the foreground.
+/// The token ends itself if the system's allowance runs out, which UIKit requires.
+@MainActor
+private final class BackgroundTime {
+  private var identifier = UIBackgroundTaskIdentifier.invalid
+
+  static func begin(name: String) -> BackgroundTime {
+    let token = BackgroundTime()
+    token.identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak token] in
+      token?.end()
+    }
+    return token
+  }
+
+  func end() {
+    guard identifier != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(identifier)
+    identifier = .invalid
   }
 }
 

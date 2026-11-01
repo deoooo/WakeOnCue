@@ -17,6 +17,13 @@ final class RecordingFileLayoutTests: XCTestCase {
     XCTAssertEqual(localizedSpeakerName(speaker, language: .simplifiedChinese), "说话人 1")
     XCTAssertEqual(localizedSpeakerName(speaker, language: .english), "Speaker 1")
     XCTAssertEqual(localizedSpeakerName(nil, language: .simplifiedChinese), "说话人待确认")
+    let me = RealtimeSpeaker(
+      clusterID: "speaker_2", personID: RealtimeSpeaker.selfPersonID, displayName: "Speaker 2")
+    let avery = RealtimeSpeaker(clusterID: "speaker_3", personID: "p1", displayName: "Speaker 3")
+    XCTAssertEqual(localizedSpeakerName(me, language: .simplifiedChinese), "我")
+    XCTAssertEqual(
+      localizedSpeakerName(avery, language: .english, personNames: ["p1": "Avery"]), "Avery")
+    XCTAssertEqual(localizedSpeakerName(avery, language: .simplifiedChinese), "说话人 3")
     XCTAssertEqual(AppLanguage.simplifiedChinese.localized("Spoken language"), "讲话语言")
     XCTAssertEqual(AppLanguage.simplifiedChinese.localized("Automatic detection"), "自动识别")
   }

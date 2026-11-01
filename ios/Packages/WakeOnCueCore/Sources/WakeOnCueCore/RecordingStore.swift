@@ -15,6 +15,8 @@ public enum RecordingStoreError: Error, LocalizedError, Sendable {
 }
 
 public actor RecordingStore {
+  public static let cloudSyncAbandonedMetadataKey = "cloud_sync_abandoned"
+
   private let connection: SQLiteConnection
   private var database: OpaquePointer { connection.pointer }
 
@@ -101,11 +103,67 @@ public actor RecordingStore {
     return recording
   }
 
-  public func recordings(limit: Int = 100) throws -> [RecordingRecord] {
+  public func recordings(limit: Int = 100, offset: Int = 0) throws -> [RecordingRecord] {
     try queryRecordings(
-      "SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?",
-      [.int(Int64(max(1, limit)))]
+      "SELECT * FROM recordings ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+      [.int(Int64(max(1, limit))), .int(Int64(max(0, offset)))]
     )
+  }
+
+  public func recordingCount() throws -> Int {
+    Int(try scalarInt("SELECT COUNT(*) FROM recordings", []))
+  }
+
+  /// Persists a normalized user title inside the recording's durable metadata.
+  /// Passing nil or whitespace removes the custom title.
+  @discardableResult
+  public func updateRecordingTitle(
+    recordingID: String,
+    title: String?,
+    now: Date = Date()
+  ) throws -> RecordingRecord {
+    _ = try recording(id: recordingID)
+    let normalized = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let normalized, !normalized.isEmpty {
+      try run(
+        "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.title', ?), updated_at = ? WHERE id = ?",
+        [.text(normalized), .double(now.timeIntervalSince1970), .text(recordingID)]
+      )
+    } else {
+      try run(
+        "UPDATE recordings SET metadata_json = json_remove(metadata_json, '$.title'), updated_at = ? WHERE id = ?",
+        [.double(now.timeIntervalSince1970), .text(recordingID)]
+      )
+    }
+    return try recording(id: recordingID)
+  }
+
+  /// Merges values into the recording's durable metadata, replacing keys that already exist.
+  @discardableResult
+  public func updateRecordingMetadata(
+    recordingID: String,
+    values: [String: String],
+    now: Date = Date()
+  ) throws -> RecordingRecord {
+    var metadata = try recording(id: recordingID).metadata
+    metadata.merge(values) { _, new in new }
+    try run(
+      "UPDATE recordings SET metadata_json = ?, updated_at = ? WHERE id = ?",
+      [
+        .text(Self.encodeMetadata(metadata)), .double(now.timeIntervalSince1970),
+        .text(recordingID),
+      ]
+    )
+    return try recording(id: recordingID)
+  }
+
+  /// Searches custom titles across the complete local data set without an implicit result cap.
+  public func recordings(matchingTitle query: String) throws -> [RecordingRecord] {
+    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else { return try recordings(limit: max(1, recordingCount())) }
+    return try recordings(limit: max(1, recordingCount())).filter {
+      $0.title?.localizedCaseInsensitiveContains(normalized) == true
+    }
   }
 
   /// Recordings whose complete, shareable M4A has been acknowledged by S3.
@@ -123,14 +181,16 @@ public actor RecordingStore {
       ORDER BY created_at DESC
       """,
       []
-    )
+    ).filter { $0.metadata[Self.cloudSyncAbandonedMetadataKey] != "true" }
   }
 
+  /// The recording that still owns the audio capture session.
+  /// Finalized recordings continue syncing independently and must not block a new capture.
   public func activeRecording() throws -> RecordingRecord? {
     try queryRecordings(
       """
       SELECT * FROM recordings
-      WHERE status IN ('RECORDING', 'PAUSED', 'FINISHING', 'UPLOADING')
+      WHERE status IN ('RECORDING', 'PAUSED')
       ORDER BY created_at DESC LIMIT 1
       """,
       []
@@ -315,9 +375,12 @@ public actor RecordingStore {
 
   /// Makes the durable on-device copy terminal without waiting for a remote acknowledgement.
   /// Existing upload rows are retired so a recording can never remain locked in a sync state.
+  /// `endedAt` records when capture actually stopped, for recordings finished elsewhere (the Watch)
+  /// and completed here later; it defaults to `now`.
   public func completeLocally(
     recordingID: String,
     duration: TimeInterval,
+    endedAt: Date? = nil,
     now: Date = Date()
   ) throws {
     let current = try recording(id: recordingID)
@@ -327,18 +390,25 @@ public actor RecordingStore {
         "Recording cannot be completed locally from \(current.status.rawValue)"
       )
     }
+    let hasCloudQueue =
+      try scalarInt(
+        "SELECT COUNT(*) FROM upload_tasks WHERE recording_id = ?",
+        [.text(recordingID)]
+      ) > 0
     try transaction {
       try run(
         """
         UPDATE recordings
         SET status = 'COMPLETED', upload_status = 'COMPLETED',
             ended_at = COALESCE(ended_at, ?), duration = ?, pending_chunks = 0,
-            updated_at = ?
+            metadata_json = CASE WHEN ? = 1
+              THEN json_set(metadata_json, '$.cloud_sync_abandoned', 'true')
+              ELSE metadata_json END, updated_at = ?
         WHERE id = ?
         """,
         [
-          .double(now.timeIntervalSince1970), .double(max(0, duration)),
-          .double(now.timeIntervalSince1970), .text(recordingID),
+          .double((endedAt ?? now).timeIntervalSince1970), .double(max(0, duration)),
+          .int(hasCloudQueue ? 1 : 0), .double(now.timeIntervalSince1970), .text(recordingID),
         ]
       )
       try run(

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import copy
 import hmac
 import secrets
@@ -10,8 +12,26 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from .mcp_server import McpServer
+from .speaker_diarization import Voiceprint, known_voiceprints_from_payload
+
 
 PROTOCOL_VERSION = 1
+REALTIME_AUDIO_FORMAT = {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+MAX_ENROLLMENT_SECONDS = 25
+ENROLLMENT_TIMEOUT_SECONDS = 60
+SELF_PERSON_ID = "self"
+# Optional per-session audio source. A recording captured from several sources (the Mac
+# app sends the microphone and system audio) opens one session per channel with the same
+# recording_id; sessions without a channel behave exactly as before.
+MICROPHONE_CHANNEL = "microphone"
+SYSTEM_CHANNEL = "system"
+AUDIO_CHANNELS = {MICROPHONE_CHANNEL, SYSTEM_CHANNEL}
+MICROPHONE_SPEAKER = {
+    "cluster_id": "microphone",
+    "person_id": SELF_PERSON_ID,
+    "display_name": "Me",
+}
 
 
 @dataclass
@@ -22,6 +42,10 @@ class RealtimeSession:
     expires_at: datetime
     audio: dict[str, Any]
     language: str | None
+    channel: str | None = None
+    speaker_diarization: bool = False
+    # Saved voices, held in memory only until the processor completes the session.
+    known_voiceprints: list[dict[str, Any]] = field(default_factory=list)
     app_socket: web.WebSocketResponse | None = None
     processor_id: str | None = None
     revision: int = 0
@@ -39,11 +63,18 @@ class ProcessorConnection:
 class RealtimeGateway:
     """Versioned, processor-neutral realtime routing for WakeOnCue clients."""
 
-    def __init__(self, api_token: str, public_base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        api_token: str,
+        public_base_url: str | None = None,
+        mcp: McpServer | None = None,
+    ) -> None:
         self.api_token = api_token
         self.public_base_url = public_base_url
+        self.mcp = mcp
         self.sessions: dict[str, RealtimeSession] = {}
         self.processors: dict[str, ProcessorConnection] = {}
+        self.pending_enrollments: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
     def application(self) -> web.Application:
@@ -51,8 +82,11 @@ class RealtimeGateway:
         app.router.add_get("/health", self.health)
         app.router.add_post("/v1/realtime/validate", self.validate_configuration)
         app.router.add_post("/v1/realtime/sessions", self.create_session)
+        app.router.add_post("/v1/voiceprints/enroll", self.enroll_voiceprint)
         app.router.add_get("/v1/realtime/sessions/{session_id}/stream", self.app_stream)
         app.router.add_get("/v1/processors/connect", self.processor_stream)
+        if self.mcp is not None:
+            self.mcp.register(app)
         return app
 
     async def health(self, request: web.Request) -> web.Response:
@@ -85,8 +119,24 @@ class RealtimeGateway:
         audio = payload.get("audio")
         if not recording_id or not isinstance(audio, dict):
             raise web.HTTPBadRequest(text="recording_id and audio are required")
-        if audio != {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}:
+        if audio != REALTIME_AUDIO_FORMAT:
             raise web.HTTPUnprocessableEntity(text="unsupported audio format")
+        known_voiceprints = payload.get("known_voiceprints") or []
+        if known_voiceprints_from_payload(known_voiceprints) is None:
+            raise web.HTTPUnprocessableEntity(text="invalid known_voiceprints")
+        channel = payload.get("channel")
+        if channel is not None and channel not in AUDIO_CHANNELS:
+            raise web.HTTPUnprocessableEntity(text="unsupported channel")
+        speaker_diarization = payload.get("speaker_diarization") is True
+        if channel == MICROPHONE_CHANNEL:
+            # The microphone channel is the user by definition; no speaker analysis runs.
+            speaker_diarization = False
+            known_voiceprints = []
+        elif channel == SYSTEM_CHANNEL:
+            # System audio carries the other participants, never the user's own voice.
+            known_voiceprints = [
+                voice for voice in known_voiceprints if voice.get("person_id") != SELF_PERSON_ID
+            ]
 
         session_id = f"rts_{secrets.token_hex(12)}"
         token = secrets.token_urlsafe(32)
@@ -98,6 +148,9 @@ class RealtimeGateway:
             expires_at=expires_at,
             audio=audio,
             language=payload.get("language"),
+            channel=channel,
+            speaker_diarization=speaker_diarization,
+            known_voiceprints=known_voiceprints,
         )
         async with self._lock:
             self.sessions[session_id] = session
@@ -115,6 +168,79 @@ class RealtimeGateway:
                 "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
             },
             status=201,
+        )
+
+    async def enroll_voiceprint(self, request: web.Request) -> web.Response:
+        """Turns a short sample of the user's own voice into a voiceprint.
+
+        Neither the Gateway nor the processor keeps the audio or the result;
+        the caller is the only place the voiceprint is stored.
+        """
+        self._authorize(request)
+        payload = await request.json()
+        if payload.get("protocol_version") != PROTOCOL_VERSION:
+            raise web.HTTPUnprocessableEntity(text="unsupported protocol_version")
+        if payload.get("audio") != REALTIME_AUDIO_FORMAT:
+            raise web.HTTPUnprocessableEntity(text="unsupported audio format")
+        try:
+            pcm = base64.b64decode(str(payload.get("audio_base64", "")), validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise web.HTTPBadRequest(text="invalid audio_base64") from error
+        max_bytes = REALTIME_AUDIO_FORMAT["sample_rate"] * 2 * MAX_ENROLLMENT_SECONDS
+        if not pcm:
+            raise web.HTTPBadRequest(text="enrollment audio is empty")
+        if len(pcm) > max_bytes:
+            raise web.HTTPRequestEntityTooLarge(
+                max_size=max_bytes, actual_size=len(pcm), text="enrollment audio too long"
+            )
+
+        processor = next(
+            (
+                candidate
+                for candidate in self.processors.values()
+                if candidate.capabilities.get("voiceprint_model")
+            ),
+            None,
+        )
+        if processor is None:
+            raise web.HTTPServiceUnavailable(text="no processor supports voiceprints")
+
+        request_id = f"vpe_{secrets.token_hex(12)}"
+        result: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self.pending_enrollments[request_id] = result
+        try:
+            await processor.socket.send_json(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "type": "voiceprint.enroll",
+                    "request_id": request_id,
+                    "audio": REALTIME_AUDIO_FORMAT,
+                    "audio_base64": base64.b64encode(pcm).decode("ascii"),
+                }
+            )
+            response = await asyncio.wait_for(result, ENROLLMENT_TIMEOUT_SECONDS)
+        except TimeoutError as error:
+            raise web.HTTPGatewayTimeout(text="voiceprint enrollment timed out") from error
+        finally:
+            self.pending_enrollments.pop(request_id, None)
+
+        if response.get("type") != "voiceprint.enrolled":
+            return web.json_response(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "error": str(response.get("reason") or "enrollment_failed"),
+                },
+                status=422,
+            )
+        voiceprint = Voiceprint.from_payload(response.get("voiceprint"))
+        if voiceprint is None:
+            raise web.HTTPBadGateway(text="processor returned an invalid voiceprint")
+        return web.json_response(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "voiceprint": voiceprint.payload(),
+                "speech_ms": int(response.get("speech_ms", 0)),
+            }
         )
 
     async def app_stream(self, request: web.Request) -> web.WebSocketResponse:
@@ -203,6 +329,11 @@ class RealtimeGateway:
                 if message.type != WSMsgType.TEXT:
                     continue
                 payload = message.json()
+                if payload.get("type") in {"voiceprint.enrolled", "voiceprint.failed"}:
+                    pending = self.pending_enrollments.get(str(payload.get("request_id", "")))
+                    if pending is not None and not pending.done():
+                        pending.set_result(payload)
+                    continue
                 session = self.sessions.get(str(payload.get("session_id", "")))
                 if session is None:
                     continue
@@ -226,16 +357,20 @@ class RealtimeGateway:
             session.processor_id = None
             return
         session.processor_id = processor.processor_id
-        await processor.socket.send_json(
-            {
-                "protocol_version": PROTOCOL_VERSION,
-                "type": "session.started",
-                "session_id": session.session_id,
-                "recording_id": session.recording_id,
-                "language": session.language,
-                "audio": session.audio,
-            }
-        )
+        started: dict[str, Any] = {
+            "protocol_version": PROTOCOL_VERSION,
+            "type": "session.started",
+            "session_id": session.session_id,
+            "recording_id": session.recording_id,
+            "language": session.language,
+            "audio": session.audio,
+        }
+        if session.channel is not None:
+            started["channel"] = session.channel
+        if session.speaker_diarization:
+            started["speaker_diarization"] = True
+            started["known_voiceprints"] = session.known_voiceprints
+        await processor.socket.send_json(started)
         if session.finished:
             await processor.socket.send_json(
                 {
@@ -251,10 +386,16 @@ class RealtimeGateway:
         self, session: RealtimeSession, payload: dict[str, Any]
     ) -> None:
         event_type = payload.get("type")
+        if event_type == "session.completed":
+            session.known_voiceprints = []
         outgoing = copy.deepcopy(payload)
         outgoing.pop("session_id", None)
         outgoing["protocol_version"] = PROTOCOL_VERSION
         outgoing["recording_id"] = session.recording_id
+        if session.channel is not None:
+            outgoing["channel"] = session.channel
+            if event_type in {"transcript.upsert", "speaker.corrected"}:
+                outgoing["speaker"] = self._channel_speaker(session.channel, outgoing.get("speaker"))
         if event_type in {"transcript.upsert", "speaker.corrected"}:
             session.revision += 1
             outgoing["revision"] = session.revision
@@ -262,6 +403,16 @@ class RealtimeGateway:
             session.events = session.events[-500:]
         if session.app_socket is not None and not session.app_socket.closed:
             await session.app_socket.send_json(outgoing)
+
+    @staticmethod
+    def _channel_speaker(channel: str, speaker: Any) -> dict[str, Any] | None:
+        if channel == MICROPHONE_CHANNEL:
+            return dict(MICROPHONE_SPEAKER)
+        if not isinstance(speaker, dict):
+            return None
+        if speaker.get("person_id") == SELF_PERSON_ID:
+            speaker = {**speaker, "person_id": None}
+        return speaker
 
     async def _replay(
         self, session: RealtimeSession, socket: web.WebSocketResponse, after_revision: int
@@ -286,5 +437,9 @@ class RealtimeGateway:
             raise web.HTTPUnauthorized(text="valid Bearer token required")
 
 
-def create_realtime_application(api_token: str, public_base_url: str | None = None) -> web.Application:
-    return RealtimeGateway(api_token, public_base_url).application()
+def create_realtime_application(
+    api_token: str,
+    public_base_url: str | None = None,
+    mcp: McpServer | None = None,
+) -> web.Application:
+    return RealtimeGateway(api_token, public_base_url, mcp).application()

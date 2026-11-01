@@ -9,7 +9,12 @@ struct WakeOnCueApp: App {
     WindowGroup {
       ContentView()
         .environment(model)
+        .preferredColorScheme(model.settings.appearance.colorScheme)
         .task {
+          #if DEBUG && targetEnvironment(simulator)
+            do { try await ExperienceFixtures.prepareIfRequested() }
+            catch { model.errorMessage = "Experience fixture setup failed: \(error.localizedDescription)" }
+          #endif
           model.bind(appDelegate: appDelegate)
           await model.start()
         }

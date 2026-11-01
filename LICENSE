@@ -1,21 +1,31 @@
-MIT License
+WakeOnCue licensing
+===================
 
 Copyright (c) 2026 Deo
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+WakeOnCue is licensed per component. The license file in each directory
+applies to everything inside it:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  ios/      iOS, watchOS and widget clients, including the WakeOnCueCore
+            Swift package:
+            GNU Affero General Public License v3.0 only (AGPL-3.0-only)
+            See ios/LICENSE.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  server/   Realtime Gateway, Mac Processor, Recording API and scripts:
+            Apache License 2.0 (Apache-2.0)
+            See server/LICENSE and server/NOTICE.
+
+  Everything else in this repository (documentation and top-level files):
+            Apache License 2.0 (Apache-2.0)
+
+Full license texts are in the LICENSES/ directory.
+
+The WakeOnCue name, logo and app icon are not licensed under either
+license. See TRADEMARKS.md.
+
+Earlier releases
+----------------
+
+Revisions up to and including commit ffaf4b3 were published under the MIT
+License. Copies obtained from those revisions remain available under the
+MIT License. Changes after that commit are licensed only as described above.

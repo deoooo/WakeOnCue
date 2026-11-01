@@ -82,47 +82,80 @@ struct RecordingLiveActivityWidget: Widget {
 
   @ViewBuilder
   private func storageStatus(_ state: RecordingActivityAttributes.ContentState) -> some View {
-    if state.usesS3 {
-      HStack {
-        Label(duration(state.uploadedDurationSeconds), systemImage: "icloud.and.arrow.up")
-        Spacer()
-        Label(duration(state.pendingDurationSeconds), systemImage: "clock.arrow.circlepath")
+    let presentation = presentation(state)
+    VStack(alignment: .leading, spacing: 4) {
+      Label(localFileTitle(presentation.localFile), systemImage: localFileIcon(presentation.localFile))
+      if state.usesS3 {
+        HStack {
+          Label(cloudBackupTitle(presentation.cloudBackup), systemImage: "icloud.and.arrow.up")
+          Spacer()
+          if presentation.cloudBackup == .pending {
+            Text(duration(state.pendingDurationSeconds))
+              .monospacedDigit()
+          }
+        }
       }
-      .font(.caption)
-      .foregroundStyle(.secondary)
-    } else {
-      Label(AppLanguage.localized("Saved on this iPhone"), systemImage: "iphone")
-        .font(.caption)
-        .foregroundStyle(.secondary)
     }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .accessibilityElement(children: .combine)
   }
 
   private func statusTitle(_ state: RecordingActivityAttributes.ContentState) -> String {
-    switch state.phase {
-    case "PAUSED": AppLanguage.localized("Recording paused")
-    case "FINISHING", "UPLOADING":
-      state.usesS3
-        ? AppLanguage.localized("Syncing recording")
-        : AppLanguage.localized("Saving recording")
-    case "COMPLETED":
-      state.usesS3
-        ? AppLanguage.localized("Recording synced")
-        : AppLanguage.localized("Recording saved")
-    case "FAILED":
-      state.usesS3
-        ? AppLanguage.localized("Sync needs attention")
-        : AppLanguage.localized("Recording needs attention")
-    default: AppLanguage.localized("Recording")
+    switch presentation(state).capture {
+    case .ready: AppLanguage.localized("Ready")
+    case .recording: AppLanguage.localized("Recording")
+    case .paused: AppLanguage.localized("Recording paused")
+    case .finishing: AppLanguage.localized("Finishing recording")
+    case .finalized: AppLanguage.localized("Recording finished")
+    case .failed: AppLanguage.localized("Recording needs attention")
     }
   }
 
   private func statusIcon(_ state: RecordingActivityAttributes.ContentState) -> String {
-    switch state.phase {
-    case "PAUSED": "pause.circle.fill"
-    case "FINISHING", "UPLOADING": state.usesS3 ? "icloud.and.arrow.up.fill" : "externaldrive.fill"
-    case "COMPLETED": state.usesS3 ? "checkmark.icloud.fill" : "checkmark.circle.fill"
-    case "FAILED": state.usesS3 ? "exclamationmark.icloud.fill" : "exclamationmark.circle.fill"
-    default: "record.circle"
+    switch presentation(state).capture {
+    case .ready, .recording: "record.circle"
+    case .paused: "pause.circle.fill"
+    case .finishing: "externaldrive.fill"
+    case .finalized: "checkmark.circle.fill"
+    case .failed: "exclamationmark.circle.fill"
+    }
+  }
+
+  private func presentation(_ state: RecordingActivityAttributes.ContentState)
+    -> RecordingStatusPresentation
+  {
+    RecordingStatusPresentation.classifyActivity(
+      phase: state.phase,
+      cloudWasConfigured: state.usesS3
+    )
+  }
+
+  private func localFileTitle(_ state: RecordingStatusPresentation.LocalFileState) -> String {
+    switch state {
+    case .notStarted: AppLanguage.localized("Recordings save on this iPhone")
+    case .saving: AppLanguage.localized("Saving on this iPhone")
+    case .saved: AppLanguage.localized("Saved on this iPhone")
+    case .unavailable: AppLanguage.localized("Not available on this iPhone")
+    case .unknown: AppLanguage.localized("Local file status unknown")
+    }
+  }
+
+  private func localFileIcon(_ state: RecordingStatusPresentation.LocalFileState) -> String {
+    switch state {
+    case .notStarted, .saving, .saved: "iphone"
+    case .unavailable: "iphone.slash"
+    case .unknown: "questionmark.circle"
+    }
+  }
+
+  private func cloudBackupTitle(_ state: RecordingStatusPresentation.CloudBackupState) -> String {
+    switch state {
+    case .notRequested: AppLanguage.localized("Cloud backup off")
+    case .pending: AppLanguage.localized("Backup pending")
+    case .synced: AppLanguage.localized("Backup complete")
+    case .failed: AppLanguage.localized("Backup needs attention")
+    case .abandoned: AppLanguage.localized("Cloud backup skipped")
     }
   }
 

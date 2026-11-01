@@ -3,11 +3,18 @@ name = "wakeoncue-recording-service"
 version = "0.1.0"
 requires-python = ">=3.11"
 description = "Minimal idempotent Recording API for the WakeOnCue iOS client"
-dependencies = ["aiohttp>=3.10,<4", "boto3>=1.35,<2", "websockets>=15,<17"]
+license = { text = "Apache-2.0" }
+dependencies = [
+  "aiohttp>=3.10,<4",
+  "boto3>=1.35,<2",
+  "qrcode[pil]>=8,<9",
+  "websockets>=15,<17",
+]
 
 [project.scripts]
 wakeoncue-recording-service = "recording_service.__main__:main"
 wakeoncue-realtime-gateway = "recording_service.realtime_main:main"
+wakeoncue-mcp-server = "recording_service.mcp_server:main"
 wakeoncue-mac-processor = "recording_service.mac_processor:main"
 
 [project.optional-dependencies]

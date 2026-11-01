@@ -53,7 +53,7 @@ enum AudioCaptureError: Error, LocalizedError {
   }
 }
 
-private final class OneShotConverterInput: @unchecked Sendable {
+final class OneShotConverterInput: @unchecked Sendable {
   private let buffer: AVAudioPCMBuffer
   private var supplied = false
 
@@ -74,6 +74,13 @@ private final class OneShotConverterInput: @unchecked Sendable {
 
 final class AudioCaptureService: @unchecked Sendable {
   static let sampleRate = 24_000.0
+
+  /// Supported AirPods record in high quality on iOS 26; others fall back to Bluetooth HFP.
+  static var recordingCategoryOptions: AVAudioSession.CategoryOptions {
+    var options: AVAudioSession.CategoryOptions = [.mixWithOthers, .allowBluetoothHFP]
+    if #available(iOS 26.0, *) { options.insert(.bluetoothHighQualityRecording) }
+    return options
+  }
   static let chunkDuration: TimeInterval = 10
 
   let chunks: AsyncStream<CapturedAudioChunk>
@@ -102,10 +109,14 @@ final class AudioCaptureService: @unchecked Sendable {
   private var routeObserver: NSObjectProtocol?
   private var testFixtureTask: Task<Void, Never>?
   private var isUsingTestFixture = false
+  private var captureMeter = RecordingCaptureMeter()
+  private var captureFeedback = RecordingCaptureFeedback.idle
 
   var onInterruptionChanged: (@Sendable (_ isInterrupted: Bool, _ resumed: Bool) -> Void)?
   var onCaptureError: (@Sendable (Error) -> Void)?
   var onRealtimeAudioFrame: (@Sendable (RealtimeAudioFrame) -> Void)?
+  /// Called on the main actor at a throttled rate with meter, route, silence, and pause updates.
+  var onCaptureFeedback: (@MainActor @Sendable (RecordingCaptureFeedback) -> Void)?
 
   init(
     recordingID: String,
@@ -136,7 +147,7 @@ final class AudioCaptureService: @unchecked Sendable {
       try session.setCategory(
         .playAndRecord,
         mode: .default,
-        options: [.mixWithOthers, .allowBluetoothHFP]
+        options: Self.recordingCategoryOptions
       )
     }
     try setup("setPreferredSampleRate") {
@@ -177,6 +188,14 @@ final class AudioCaptureService: @unchecked Sendable {
     lock.withLock {
       running = true
       paused = false
+      captureMeter.reset()
+      captureFeedback = RecordingCaptureFeedback(
+        normalizedInputLevel: 0,
+        inputSourceName: Self.currentInputSourceName(),
+        sustainedSilenceDuration: nil,
+        pauseReason: nil
+      )
+      publishCaptureFeedbackLocked()
     }
     do {
       try setup("engineStart") { try engine.start() }
@@ -196,12 +215,24 @@ final class AudioCaptureService: @unchecked Sendable {
   }
 
   func pause() throws {
+    try pause(reason: .userPaused)
+  }
+
+  private func pause(reason: RecordingCapturePauseReason) throws {
     guard lock.withLock({ running && !paused }) else { throw AudioCaptureError.notRunning }
     if !isUsingTestFixture { engine.pause() }
     lock.withLock {
       paused = true
       finishCurrentChunkLocked()
       finishRealtimeFrameLocked()
+      captureMeter.reset()
+      captureFeedback = RecordingCaptureFeedback(
+        normalizedInputLevel: 0,
+        inputSourceName: captureFeedback.inputSourceName,
+        sustainedSilenceDuration: nil,
+        pauseReason: reason
+      )
+      publishCaptureFeedbackLocked()
     }
   }
 
@@ -215,7 +246,18 @@ final class AudioCaptureService: @unchecked Sendable {
       try AVAudioSession.sharedInstance().setActive(true)
       try engine.start()
     }
-    lock.withLock { paused = false }
+    lock.withLock {
+      paused = false
+      captureMeter.reset()
+      captureFeedback = RecordingCaptureFeedback(
+        normalizedInputLevel: 0,
+        inputSourceName: isUsingTestFixture
+          ? AppLanguage.localized("Test audio") : Self.currentInputSourceName(),
+        sustainedSilenceDuration: nil,
+        pauseReason: nil
+      )
+      publishCaptureFeedbackLocked()
+    }
   }
 
   func stop() throws {
@@ -236,6 +278,9 @@ final class AudioCaptureService: @unchecked Sendable {
       converter = nil
       outputFormat = nil
       isUsingTestFixture = false
+      captureMeter.reset()
+      captureFeedback = .idle
+      publishCaptureFeedbackLocked()
     }
     chunkContinuation.finish()
     if let interruptionObserver {
@@ -281,6 +326,14 @@ final class AudioCaptureService: @unchecked Sendable {
       running = true
       paused = false
       isUsingTestFixture = true
+      captureMeter.reset()
+      captureFeedback = RecordingCaptureFeedback(
+        normalizedInputLevel: 0,
+        inputSourceName: AppLanguage.localized("Test audio"),
+        sustainedSilenceDuration: nil,
+        pauseReason: nil
+      )
+      publishCaptureFeedbackLocked()
     }
     testFixtureTask = Task { [weak self] in
       await self?.streamTestFixture(fixture)
@@ -340,6 +393,7 @@ final class AudioCaptureService: @unchecked Sendable {
         return
       }
       guard outputBuffer.frameLength > 0 else { return }
+      updateCaptureFeedbackLocked(from: outputBuffer)
       do {
         try sourceFile?.write(from: outputBuffer)
         try chunkFile?.write(from: outputBuffer)
@@ -394,7 +448,7 @@ final class AudioCaptureService: @unchecked Sendable {
     nextRealtimeSequence += 1
   }
 
-  private static func pcm16LittleEndianData(from buffer: AVAudioPCMBuffer) -> Data? {
+  static func pcm16LittleEndianData(from buffer: AVAudioPCMBuffer) -> Data? {
     guard let source = buffer.floatChannelData?[0] else { return nil }
     let count = Int(buffer.frameLength)
     var data = Data(count: count * MemoryLayout<Int16>.size)
@@ -406,6 +460,35 @@ final class AudioCaptureService: @unchecked Sendable {
       }
     }
     return data
+  }
+
+  private func updateCaptureFeedbackLocked(from buffer: AVAudioPCMBuffer) {
+    guard let samples = buffer.floatChannelData?[0],
+      let meterUpdate = captureMeter.consume(
+        samples: samples,
+        frameCount: Int(buffer.frameLength),
+        sampleRate: buffer.format.sampleRate
+      )
+    else { return }
+
+    captureFeedback = RecordingCaptureFeedback(
+      normalizedInputLevel: meterUpdate.level,
+      inputSourceName: captureFeedback.inputSourceName,
+      sustainedSilenceDuration: meterUpdate.sustainedSilenceDuration,
+      pauseReason: captureFeedback.pauseReason
+    )
+    publishCaptureFeedbackLocked()
+  }
+
+  private func publishCaptureFeedbackLocked() {
+    guard let onCaptureFeedback else { return }
+    let feedback = captureFeedback
+    Task { @MainActor in onCaptureFeedback(feedback) }
+  }
+
+  private static func currentInputSourceName() -> String? {
+    let session = AVAudioSession.sharedInstance()
+    return session.currentRoute.inputs.first?.portName ?? session.preferredInput?.portName
   }
 
   private func makeSourceFile(format: AVAudioFormat) throws -> AVAudioFile {
@@ -499,7 +582,19 @@ final class AudioCaptureService: @unchecked Sendable {
       object: AVAudioSession.sharedInstance(),
       queue: nil
     ) { [weak self] _ in
-      guard let self, self.lock.withLock({ self.running && !self.paused }) else { return }
+      guard let self else { return }
+      let shouldRestart = self.lock.withLock {
+        guard self.running else { return false }
+        self.captureFeedback = RecordingCaptureFeedback(
+          normalizedInputLevel: self.captureFeedback.normalizedInputLevel,
+          inputSourceName: Self.currentInputSourceName(),
+          sustainedSilenceDuration: self.captureFeedback.sustainedSilenceDuration,
+          pauseReason: self.captureFeedback.pauseReason
+        )
+        self.publishCaptureFeedbackLocked()
+        return !self.paused
+      }
+      guard shouldRestart else { return }
       if !self.engine.isRunning {
         do { try self.engine.start() } catch { self.onCaptureError?(error) }
       }
@@ -512,13 +607,15 @@ final class AudioCaptureService: @unchecked Sendable {
     else { return }
     switch type {
     case .began:
+      guard lock.withLock({ running && !paused }) else { return }
       do {
-        try pause()
+        try pause(reason: .systemInterruption)
         onInterruptionChanged?(true, false)
       } catch {
         onCaptureError?(error)
       }
     case .ended:
+      guard lock.withLock({ captureFeedback.pauseReason == .systemInterruption }) else { return }
       let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
       let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(
         .shouldResume)

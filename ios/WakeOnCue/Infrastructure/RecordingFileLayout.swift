@@ -4,6 +4,11 @@ import WakeOnCueCore
 struct RecordingFileLayout: Sendable {
   let root: URL
 
+  init(root: URL) throws {
+    self.root = root
+    try Self.prepareDirectory(root, fileManager: .default)
+  }
+
   init(fileManager: FileManager = .default) throws {
     let applicationSupport = try fileManager.url(
       for: .applicationSupportDirectory,
@@ -11,7 +16,15 @@ struct RecordingFileLayout: Sendable {
       appropriateFor: nil,
       create: true
     )
-    root = applicationSupport.appending(path: "RecordingData", directoryHint: .isDirectory)
+    #if DEBUG && targetEnvironment(simulator)
+      let environment = ProcessInfo.processInfo.environment
+      let directoryName = environment["WAKEONCUE_EXPERIENCE_FIXTURES"] == "1"
+        ? (environment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] == "1"
+          ? "ExperienceOfflineTestData" : "ExperienceTestData") : "RecordingData"
+    #else
+      let directoryName = "RecordingData"
+    #endif
+    root = applicationSupport.appending(path: directoryName, directoryHint: .isDirectory)
     try Self.prepareDirectory(root, fileManager: fileManager)
   }
 
@@ -48,6 +61,10 @@ struct RecordingFileLayout: Sendable {
 
   func transcriptURL(recordingID: String) throws -> URL {
     try directory(for: recordingID).appending(path: "transcript.json")
+  }
+
+  func summaryURL(recordingID: String) throws -> URL {
+    try directory(for: recordingID).appending(path: "summary.json")
   }
 
   func createPayload(recording: RecordingRecord) throws -> URL {

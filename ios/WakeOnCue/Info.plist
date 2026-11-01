@@ -36,12 +36,16 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>WakeOnCue connects to user-configured storage and realtime processing services.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_wakeoncue._tcp</string>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>WakeOnCue uses the camera only to scan a self-hosted service pairing QR code.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>WakeOnCue connects to user-configured storage and realtime processing services.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WakeOnCue needs microphone access to record meetings you explicitly start.</string>
 	<key>NSSupportsLiveActivities</key>

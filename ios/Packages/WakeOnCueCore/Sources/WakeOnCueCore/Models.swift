@@ -59,6 +59,8 @@ public struct RecordingSyncProgress: Equatable, Sendable {
 }
 
 public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
+  public static let titleMetadataKey = "title"
+
   public let id: String
   public let createdAt: Date
   public let startedAt: Date
@@ -101,6 +103,14 @@ public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
     self.deviceModel = deviceModel
     self.appVersion = appVersion
     self.metadata = metadata
+  }
+
+  /// A user-authored title stored durably with the recording metadata.
+  public var title: String? {
+    guard let value = metadata[Self.titleMetadataKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !value.isEmpty
+    else { return nil }
+    return value
   }
 }
 

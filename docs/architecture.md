@@ -137,7 +137,7 @@ App 只依赖版本化 Gateway。Gateway 负责短期会话、Processor 路由�
 
 实时链路断开时最多缓存约 60 秒待发送 PCM；超过上限只丢弃最旧的实时帧，不删除本地 CAF/M4A。Processor 不可用时 Gateway 不持久化音频，最终可通过 S3 `source.m4a` 做补处理，避免为实时功能引入另一套录音事实来源。
 
-Mac Processor 的 ASR 使用约 4 秒窗口。说话人分析默认使用约 30 秒的有限滚动窗口（20 秒推进、10 秒重叠），不随整场会议时长重复计算所有历史音频；每个模型临时 speaker label 会计算 embedding，并与会话内稳定 cluster centroid 匹配。因此后续窗口即使交换模型标签，App 中的 Speaker 1/2 仍可保持一致。字幕先以 Unknown speaker 出现，再用同一 segment ID 的 `speaker.corrected` 事件修订。
+Mac Processor 的 ASR 使用约 4 秒窗口。说话人分析只在用户开启「区分说话人」时运行，默认使用约 30 秒的有限滚动窗口（20 秒推进、10 秒重叠），不随整场会议时长重复计算所有历史音频；每个模型临时 speaker label 会计算 embedding，并与会话内稳定 cluster centroid 匹配，再与 iPhone 下发的已保存声音比对，回传匿名的 `person_id`。字幕先以 Unknown speaker 出现，再用同一 segment ID 的 `speaker.corrected` 事件修订。详见 [区分说话人与记住声音](realtime-processing.md#区分说话人与记住声音)。
 
 ## 9. 已知边界
 
@@ -147,4 +147,4 @@ Mac Processor 的 ASR 使用约 4 秒窗口。说话人分析默认使用约 30 
 - 本机 M4A 合并依赖 AVFoundation；
 - 录音中的 Force Quit 会停止麦克风，这是 iOS 进程语义；已完成 Chunk 与系统后台上传任务会在重开后恢复；
 - 完整 Xcode build、锁屏 30 分钟、断网 10 分钟和 60 分钟录音只能由真机验收。
-- Speaker 1/2 是会话内声纹聚类，不是人员真实姓名；姓名需要后续 enrollment 或用户确认。
+- Speaker 1/2 是会话内聚类；跨录音认人只在用户开启「记住声音」并为某人命名后进行，声纹只存在 iPhone。

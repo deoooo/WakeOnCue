@@ -19,6 +19,7 @@ from .speaker_diarization import (
     SherpaOnnxSpeakerDiarizer,
     SpeakerDiarizer,
     StableSpeakerTracker,
+    known_voiceprints_from_payload,
 )
 
 
@@ -317,7 +318,8 @@ class SessionBuffer:
     detected_language: str | None = None
     recent_transcript: list[str] = field(default_factory=list)
     transcript_segments: dict[str, dict[str, Any]] = field(default_factory=dict)
-    speaker_tracker: StableSpeakerTracker = field(default_factory=StableSpeakerTracker)
+    # None unless the session asked to tell speakers apart.
+    speaker_tracker: StableSpeakerTracker | None = None
     diarization_task: asyncio.Task[None] | None = None
     live_segment_id: str | None = None
     last_live_analysis_ms: int = 0
@@ -339,6 +341,8 @@ class MacRealtimeProcessor:
         live_update_seconds: float = 4.0,
         utterance_silence_seconds: float = 0.7,
         max_utterance_seconds: float = 16.0,
+        voice_match_threshold: float = 0.5,
+        min_enrollment_speech_seconds: float = 8.0,
     ) -> None:
         self.gateway_url = gateway_url.rstrip("/")
         self.token = token
@@ -352,6 +356,8 @@ class MacRealtimeProcessor:
         self.live_update_seconds = live_update_seconds
         self.utterance_silence_seconds = utterance_silence_seconds
         self.max_utterance_seconds = max_utterance_seconds
+        self.voice_match_threshold = voice_match_threshold
+        self.min_enrollment_speech_seconds = min_enrollment_speech_seconds
         self.sessions: dict[str, SessionBuffer] = {}
 
     async def run_forever(self) -> None:
@@ -385,6 +391,11 @@ class MacRealtimeProcessor:
                         "capabilities": {
                             "asr": True,
                             "speaker_diarization": self.speaker_diarizer is not None,
+                            "voiceprint_model": (
+                                self.speaker_diarizer.model_id
+                                if self.speaker_diarizer is not None
+                                else None
+                            ),
                             "backend": type(self.backend).__name__,
                         },
                     }
@@ -398,11 +409,15 @@ class MacRealtimeProcessor:
     async def _handle(self, socket: ClientConnection, event: dict[str, Any]) -> None:
         event_type = event.get("type")
         session_id = str(event.get("session_id", ""))
+        if event_type == "voiceprint.enroll":
+            await self._enroll_voiceprint(socket, event)
+            return
         if event_type == "session.started":
             audio = event.get("audio") or {}
             self.sessions[session_id] = SessionBuffer(
                 sample_rate=int(audio.get("sample_rate", 24000)),
                 language=event.get("language"),
+                speaker_tracker=self._speaker_tracker(event),
             )
             return
         session = self.sessions.get(session_id)
@@ -410,7 +425,8 @@ class MacRealtimeProcessor:
             return
         if event_type == "audio.append":
             audio = base64.b64decode(event.get("audio_base64", ""))
-            session.diarization_pcm.extend(audio)
+            if session.speaker_tracker is not None:
+                session.diarization_pcm.extend(audio)
             session.asr_pcm.extend(audio)
             if getattr(self.backend, "supports_live_revisions", False):
                 await self._process_revisable_audio(socket, session_id, session)
@@ -633,6 +649,52 @@ class MacRealtimeProcessor:
                 context.append(text)
             await socket.send(json.dumps(event, ensure_ascii=False))
 
+    def _speaker_tracker(self, event: dict[str, Any]) -> StableSpeakerTracker | None:
+        """Speakers are told apart only when the user turned it on for this session."""
+        if self.speaker_diarizer is None or event.get("speaker_diarization") is not True:
+            return None
+        known = known_voiceprints_from_payload(event.get("known_voiceprints") or []) or {}
+        model_id = self.speaker_diarizer.model_id
+        return StableSpeakerTracker(
+            known_voices={
+                person_id: voice for person_id, voice in known.items() if voice.model == model_id
+            },
+            identity_threshold=self.voice_match_threshold,
+        )
+
+    async def _enroll_voiceprint(
+        self, socket: ClientConnection, event: dict[str, Any]
+    ) -> None:
+        request_id = str(event.get("request_id", ""))
+        audio = event.get("audio") or {}
+        reason = "voiceprint_unavailable"
+        enrollment = None
+        if self.speaker_diarizer is not None:
+            pcm = base64.b64decode(event.get("audio_base64", ""))
+            enrollment = await self.speaker_diarizer.extract_voiceprint(
+                pcm,
+                int(audio.get("sample_rate", 24000)),
+                int(self.min_enrollment_speech_seconds * 1000),
+            )
+            reason = "insufficient_speech"
+        # The enrollment audio is dropped here; only the user's iPhone keeps the result.
+        if enrollment is None:
+            response: dict[str, Any] = {
+                "protocol_version": 1,
+                "type": "voiceprint.failed",
+                "request_id": request_id,
+                "reason": reason,
+            }
+        else:
+            response = {
+                "protocol_version": 1,
+                "type": "voiceprint.enrolled",
+                "request_id": request_id,
+                "voiceprint": enrollment.voiceprint.payload(),
+                "speech_ms": enrollment.speech_ms,
+            }
+        await socket.send(json.dumps(response))
+
     @staticmethod
     def _pcm_duration_ms(pcm: bytes | bytearray, sample_rate: int) -> int:
         return int(len(pcm) / 2 / sample_rate * 1000)
@@ -640,7 +702,7 @@ class MacRealtimeProcessor:
     def _schedule_diarization(
         self, socket: ClientConnection, session_id: str, session: SessionBuffer
     ) -> None:
-        if self.speaker_diarizer is None:
+        if self.speaker_diarizer is None or session.speaker_tracker is None:
             return
         interval_bytes = int(
             session.sample_rate
@@ -662,7 +724,7 @@ class MacRealtimeProcessor:
         session: SessionBuffer,
         force: bool = False,
     ) -> None:
-        if self.speaker_diarizer is None:
+        if self.speaker_diarizer is None or session.speaker_tracker is None:
             return
         snapshot = bytes(session.diarization_pcm)
         if not snapshot:
@@ -690,14 +752,17 @@ class MacRealtimeProcessor:
             if assignment is None:
                 continue
             previous = segment.get("speaker") or {}
-            if previous.get("cluster_id") == assignment.cluster_id:
+            if (
+                previous.get("cluster_id") == assignment.cluster_id
+                and previous.get("person_id") == assignment.person_id
+            ):
                 continue
             corrected = dict(segment)
             corrected["type"] = "speaker.corrected"
             corrected["session_id"] = session_id
             corrected["speaker"] = {
                 "cluster_id": assignment.cluster_id,
-                "person_id": None,
+                "person_id": assignment.person_id,
                 "display_name": assignment.display_name,
                 "confidence": round(assignment.confidence, 3),
             }
@@ -720,6 +785,12 @@ def main() -> None:
     parser.add_argument("--speaker-clustering-threshold", type=float, default=0.95)
     parser.add_argument("--diarization-interval", type=float, default=20.0)
     parser.add_argument("--diarization-overlap", type=float, default=10.0)
+    parser.add_argument(
+        "--voice-match-threshold",
+        type=float,
+        default=0.5,
+        help="Cosine similarity at which a speaker is matched to a saved voice.",
+    )
     parser.add_argument(
         "--token",
         default=os.environ.get("WAKEONCUE_REALTIME_API_TOKEN", "local-realtime-token"),
@@ -786,6 +857,7 @@ def main() -> None:
         speaker_diarizer=speaker_diarizer,
         diarization_interval_seconds=args.diarization_interval,
         diarization_overlap_seconds=args.diarization_overlap,
+        voice_match_threshold=args.voice_match_threshold,
     )
     asyncio.run(processor.run_forever())
 

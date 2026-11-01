@@ -269,10 +269,46 @@ import Testing
   #expect(summary.recording.status == .completed)
   #expect(summary.recording.uploadStatus == .completed)
   #expect(summary.recording.pendingChunks == 0)
+  #expect(
+    summary.recording.metadata[RecordingStore.cloudSyncAbandonedMetadataKey] == "true"
+  )
   #expect(summary.chunks.allSatisfy { $0.status == .uploaded })
   #expect(summary.uploadTasks.allSatisfy { $0.state == .uploaded })
   #expect(try await store.eligibleUploadTasks().isEmpty)
   #expect(try await store.activeRecording() == nil)
+}
+
+@Test func abandonedCloudQueueIsNotReportedAsUploadedFinalAudio() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let recording = RecordingRecord(
+    id: "rec_abandoned_sync",
+    createdAt: .now,
+    startedAt: .now,
+    status: .recording,
+    localAudioPath: root.appending(path: "source.caf").path,
+    deviceModel: "test",
+    appVersion: "1",
+    metadata: [S3Configuration.metadataBucketKey: "configured-bucket"]
+  )
+  try await store.createRecording(
+    recording,
+    createPayloadPath: root.appending(path: "create.json").path
+  )
+  try await store.transition(recordingID: recording.id, to: .finishing, duration: 4)
+  try await store.enqueueControlTask(
+    recordingID: recording.id,
+    kind: .finish,
+    payloadPath: root.appending(path: "source.m4a").path
+  )
+
+  try await store.completeLocally(recordingID: recording.id, duration: 4)
+
+  let completed = try await store.recording(id: recording.id)
+  #expect(completed.metadata[S3Configuration.metadataBucketKey] == "configured-bucket")
+  #expect(completed.metadata[RecordingStore.cloudSyncAbandonedMetadataKey] == "true")
+  #expect(try await store.recordingsWithUploadedFinalAudio().isEmpty)
 }
 
 @Test func persistsDependencyOrderedUploadQueueAndRecovery() async throws {
@@ -459,6 +495,133 @@ import Testing
   #expect(try await store.chunk(id: "chunk_active").status == .uploading)
 }
 
+@Test func finalizedUploadDoesNotOccupyActiveRecordingOrLoseItsQueue() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let now = Date(timeIntervalSince1970: 1_700_125_000)
+  let uploading = RecordingRecord(
+    id: "rec_background_upload",
+    createdAt: now,
+    startedAt: now,
+    status: .recording,
+    localAudioPath: root.appending(path: "background.caf").path,
+    deviceModel: "test",
+    appVersion: "1"
+  )
+  try await store.createRecording(
+    uploading,
+    createPayloadPath: root.appending(path: "background-create.json").path,
+    now: now
+  )
+  try await store.insertChunk(
+    ChunkRecord(
+      id: "background_chunk",
+      recordingID: uploading.id,
+      index: 1,
+      localPath: root.appending(path: "background-1.m4a").path,
+      checksum: String(repeating: "a", count: 64),
+      size: 200,
+      startedAt: now,
+      duration: 12
+    ),
+    now: now
+  )
+  try await store.transition(recordingID: uploading.id, to: .finishing, duration: 12)
+  try await store.enqueueControlTask(
+    recordingID: uploading.id,
+    kind: .finish,
+    payloadPath: root.appending(path: "background-source.m4a").path,
+    now: now.addingTimeInterval(12)
+  )
+  try await store.transition(recordingID: uploading.id, to: .uploading, duration: 12)
+
+  #expect(try await store.activeRecording() == nil)
+  let queueBeforeNewRecording = try await store.summary(recordingID: uploading.id).uploadTasks
+
+  let newRecording = RecordingRecord(
+    id: "rec_new_capture",
+    createdAt: now.addingTimeInterval(13),
+    startedAt: now.addingTimeInterval(13),
+    status: .recording,
+    localAudioPath: root.appending(path: "new.caf").path,
+    deviceModel: "test",
+    appVersion: "1"
+  )
+  try await store.createRecording(
+    newRecording,
+    createPayloadPath: root.appending(path: "new-create.json").path,
+    now: now.addingTimeInterval(13)
+  )
+
+  #expect(try await store.activeRecording()?.id == newRecording.id)
+  let queueAfterNewRecording = try await store.summary(recordingID: uploading.id).uploadTasks
+  #expect(queueAfterNewRecording == queueBeforeNewRecording)
+  #expect(
+    queueAfterNewRecording.map(\.kind.rawValue).sorted()
+      == [
+        UploadTaskKind.createRecording.rawValue,
+        UploadTaskKind.uploadChunk.rawValue,
+        UploadTaskKind.finish.rawValue,
+      ].sorted()
+  )
+  #expect(queueAfterNewRecording.allSatisfy { $0.state == .pending })
+}
+
+@Test func recoveryLeavesOlderBackgroundUploadIndependentFromInterruptedCapture() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let now = Date(timeIntervalSince1970: 1_700_140_000)
+
+  let background = RecordingRecord(
+    id: "rec_recovery_background",
+    createdAt: now,
+    startedAt: now,
+    status: .recording,
+    localAudioPath: root.appending(path: "background.caf").path,
+    deviceModel: "test",
+    appVersion: "1"
+  )
+  try await store.createRecording(
+    background,
+    createPayloadPath: root.appending(path: "background-create.json").path,
+    now: now
+  )
+  try await store.transition(recordingID: background.id, to: .finishing, duration: 8)
+  try await store.enqueueControlTask(
+    recordingID: background.id,
+    kind: .finish,
+    payloadPath: root.appending(path: "background-source.m4a").path,
+    now: now.addingTimeInterval(8)
+  )
+  try await store.transition(recordingID: background.id, to: .uploading, duration: 8)
+  let backgroundQueue = try await store.summary(recordingID: background.id).uploadTasks
+
+  let interrupted = RecordingRecord(
+    id: "rec_interrupted_capture",
+    createdAt: now.addingTimeInterval(9),
+    startedAt: now.addingTimeInterval(9),
+    status: .recording,
+    localAudioPath: root.appending(path: "interrupted.caf").path,
+    deviceModel: "test",
+    appVersion: "1"
+  )
+  try await store.createRecording(
+    interrupted,
+    createPayloadPath: root.appending(path: "interrupted-create.json").path,
+    now: now.addingTimeInterval(9)
+  )
+
+  let recovered = try await store.recoverAfterProcessTermination(
+    now: now.addingTimeInterval(10)
+  )
+  #expect(recovered == [interrupted.id])
+  #expect(try await store.recording(id: background.id).status == .uploading)
+  #expect(try await store.summary(recordingID: background.id).uploadTasks == backgroundQueue)
+  #expect(try await store.activeRecording() == nil)
+}
+
 @Test func recoversCrashInsideFinishingTransitionWindow() async throws {
   let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
   defer { try? FileManager.default.removeItem(at: root) }
@@ -488,6 +651,7 @@ import Testing
   let final = try await store.recording(id: recording.id)
   #expect(final.status == .finishing)
   #expect(final.endedAt == now.addingTimeInterval(12))
+  #expect(try await store.activeRecording() == nil)
 }
 
 @Test func serializesPauseAndResumeControlTasks() async throws {
@@ -743,4 +907,37 @@ import Testing
       chunk: nil
     )
   }
+}
+
+@Test func completingLocallyKeepsTheRealCaptureEndTime() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let startedAt = Date(timeIntervalSince1970: 1_000)
+  let capturedUntil = Date(timeIntervalSince1970: 4_600)
+  try await store.createRecording(
+    RecordingRecord(
+      id: "rec_watchrec_end",
+      createdAt: startedAt,
+      startedAt: startedAt,
+      status: .finishing,
+      localAudioPath: root.appending(path: "1.m4a").path,
+      deviceModel: "AppleWatch",
+      appVersion: "1"
+    ),
+    createPayloadPath: "",
+    enqueueUpload: false
+  )
+  // Assembled much later than the Watch stopped recording.
+  try await store.completeLocally(
+    recordingID: "rec_watchrec_end",
+    duration: 3_600,
+    endedAt: capturedUntil,
+    now: Date(timeIntervalSince1970: 90_000)
+  )
+
+  let recording = try await store.recording(id: "rec_watchrec_end")
+  #expect(recording.status == .completed)
+  #expect(recording.endedAt == capturedUntil)
 }

@@ -71,6 +71,45 @@ actor RealtimeProcessingClient {
     }
   }
 
+  /// Sends a short sample of the user's own voice and returns the resulting voiceprint.
+  /// The Gateway and processor keep neither the audio nor the voiceprint.
+  static func enrollVoiceprint(
+    configuration: RealtimeProcessingConfiguration,
+    pcm16LittleEndian: Data,
+    urlSession: URLSession = .shared
+  ) async throws -> RealtimeVoiceprintEnrollmentResponse {
+    var request = URLRequest(url: configuration.gatewayURL.appending(path: "v1/voiceprints/enroll"))
+    request.httpMethod = "POST"
+    request.timeoutInterval = 75
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(
+      "Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+    request.httpBody = try JSONEncoder().encode(
+      RealtimeVoiceprintEnrollmentRequest(pcm16LittleEndian: pcm16LittleEndian)
+    )
+    let (data, response) = try await urlSession.data(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw RealtimeClientError.voiceprintEnrollmentFailed
+    }
+    switch http.statusCode {
+    case 200:
+      let enrolled = try JSONDecoder().decode(
+        RealtimeVoiceprintEnrollmentResponse.self, from: data)
+      guard enrolled.protocolVersion == RealtimeProtocol.version else {
+        throw RealtimeClientError.unsupportedProtocol
+      }
+      return enrolled
+    case 422
+    where (try? JSONDecoder().decode(RealtimeVoiceprintEnrollmentFailure.self, from: data))?
+      .error == "insufficient_speech":
+      throw RealtimeClientError.voiceprintNeedsMoreSpeech
+    case 404, 503:
+      throw RealtimeClientError.voiceprintUnsupported
+    default:
+      throw RealtimeClientError.voiceprintEnrollmentFailed
+    }
+  }
+
   func start(recordingID: String, language: String?) async {
     shouldStayConnected = true
     eventHandler(.state(.connecting))
@@ -186,7 +225,12 @@ actor RealtimeProcessingClient {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
     request.httpBody = try JSONEncoder().encode(
-      RealtimeSessionRequest(recordingID: recordingID, language: language)
+      RealtimeSessionRequest(
+        recordingID: recordingID,
+        language: language,
+        speakerDiarization: configuration.speakerDiarization,
+        knownVoiceprints: configuration.knownVoiceprints
+      )
     )
     let (data, response) = try await urlSession.data(for: request)
     guard let http = response as? HTTPURLResponse, http.statusCode == 201 else {
@@ -340,6 +384,9 @@ enum RealtimeClientError: Error, LocalizedError {
   case invalidWebSocketURL
   case disconnected
   case invalidMessage
+  case voiceprintNeedsMoreSpeech
+  case voiceprintUnsupported
+  case voiceprintEnrollmentFailed
 
   var errorDescription: String? {
     switch self {
@@ -355,6 +402,12 @@ enum RealtimeClientError: Error, LocalizedError {
       AppLanguage.localized("Realtime processing is disconnected.")
     case .invalidMessage:
       AppLanguage.localized("Could not encode a realtime processing message.")
+    case .voiceprintNeedsMoreSpeech:
+      AppLanguage.localized("Not enough clear speech from one voice was heard. Try a longer sample in a quieter place.")
+    case .voiceprintUnsupported:
+      AppLanguage.localized("The connected processor cannot recognize your voice. Update and restart it, then try again.")
+    case .voiceprintEnrollmentFailed:
+      AppLanguage.localized("Could not enroll your voice. Check the realtime service and try again.")
     }
   }
 }
