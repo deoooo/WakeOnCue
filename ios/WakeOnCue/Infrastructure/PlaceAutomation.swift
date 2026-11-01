@@ -44,19 +44,21 @@ final class PlaceAutomation: NSObject {
   private static let monitorName = "WakeOnCuePlaces"
 
   private(set) var places: [RecordingPlace] = []
-  private(set) var authorization: CLAuthorizationStatus
+  /// Unknown until `refreshAuthorization()` has asked the system.
+  private(set) var authorization: CLAuthorizationStatus?
   /// Called with the configured action, the place, and whether the user arrived.
   @ObservationIgnored var onTrigger: ((PlaceTriggerAction, RecordingPlace, Bool) async -> Void)?
   @ObservationIgnored var onStartRequested: (() async -> Void)?
 
-  @ObservationIgnored private let manager = CLLocationManager()
+  /// Created only when the user asks for location access: creating one and reading its
+  /// status wait synchronously on locationd, which must never block app launch. CLMonitor,
+  /// which delivers place events after a background launch, does not need it.
+  @ObservationIgnored private var manager: CLLocationManager?
   @ObservationIgnored private var monitor: CLMonitor?
   @ObservationIgnored private var eventsTask: Task<Void, Never>?
 
   override init() {
-    authorization = manager.authorizationStatus
     super.init()
-    manager.delegate = self
     if let data = UserDefaults.standard.data(forKey: Self.placesKey),
       let stored = try? JSONDecoder().decode([RecordingPlace].self, from: data)
     {
@@ -112,7 +114,7 @@ final class PlaceAutomation: NSObject {
         .alert, .sound,
       ])
     }
-    if place.isActive { requestAuthorization() }
+    if place.isActive { await requestAuthorization() }
     start()
     await syncConditions()
   }
@@ -124,16 +126,32 @@ final class PlaceAutomation: NSObject {
     await syncConditions()
   }
 
-  func requestAuthorization() {
-    switch manager.authorizationStatus {
+  var hasLocationManager: Bool { manager != nil }
+
+  func refreshAuthorization() async {
+    authorization = await Task.detached { CLLocationManager().authorizationStatus }.value
+  }
+
+  func requestAuthorization() async {
+    await refreshAuthorization()
+    let manager = locationManager()
+    switch authorization {
     case .notDetermined: manager.requestWhenInUseAuthorization()
     case .authorizedWhenInUse: manager.requestAlwaysAuthorization()
     default: break
     }
   }
 
+  private func locationManager() -> CLLocationManager {
+    if let manager { return manager }
+    let created = CLLocationManager()
+    created.delegate = self
+    manager = created
+    return created
+  }
+
   func currentLocation() async throws -> CLLocation {
-    requestAuthorization()
+    await requestAuthorization()
     for try await update in CLLocationUpdate.liveUpdates() {
       if let location = update.location, location.horizontalAccuracy <= 200 { return location }
       if update.authorizationDenied || update.authorizationRestricted {
@@ -213,7 +231,7 @@ extension PlaceAutomation: CLLocationManagerDelegate {
     Task { @MainActor in
       self.authorization = status
       if status == .authorizedWhenInUse, self.places.contains(where: \.isActive) {
-        self.manager.requestAlwaysAuthorization()
+        self.manager?.requestAlwaysAuthorization()
       }
     }
   }

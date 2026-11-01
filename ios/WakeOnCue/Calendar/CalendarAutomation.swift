@@ -23,7 +23,9 @@ final class CalendarAutomation {
   /// A reminder tapped this long ago no longer decides which meeting the next recording is.
   private static let requestedMeetingExpiry: TimeInterval = 60 * 60
 
-  private(set) var authorization = EKEventStore.authorizationStatus(for: .event)
+  /// Stays `.notDetermined` until `refresh()` has asked the system, which only happens
+  /// while the feature is on.
+  private(set) var authorization = EKAuthorizationStatus.notDetermined
   private(set) var calendars: [EKCalendar] = []
 
   var linkEnabled: Bool {
@@ -49,11 +51,13 @@ final class CalendarAutomation {
   }
 
   @ObservationIgnored var onStartRequested: (() async -> Void)?
-  @ObservationIgnored private var store = EKEventStore()
+  /// Created off the main thread on first use; EventKit must never block app launch.
+  @ObservationIgnored private var store: EKEventStore?
   @ObservationIgnored private var observers: [NSObjectProtocol] = []
   @ObservationIgnored private var requestedMeeting: (eventID: String, start: Date, at: Date)?
 
   var hasAccess: Bool { authorization == .fullAccess }
+  var hasEventStore: Bool { store != nil }
 
   init() {
     let defaults = UserDefaults.standard
@@ -97,10 +101,9 @@ final class CalendarAutomation {
   /// Asks for full calendar access, then for notification permission when reminders are on.
   func requestAccess() async {
     if !hasAccess {
-      _ = try? await store.requestFullAccessToEvents()
-      authorization = EKEventStore.authorizationStatus(for: .event)
+      _ = try? await EKEventStore().requestFullAccessToEvents()
       // A store created before access was granted does not see events.
-      store = EKEventStore()
+      store = nil
     }
     if remindersEnabled {
       _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [
@@ -111,9 +114,29 @@ final class CalendarAutomation {
   }
 
   func refresh() async {
-    authorization = EKEventStore.authorizationStatus(for: .event)
-    calendars = hasAccess ? store.calendars(for: .event).sorted { $0.title < $1.title } : []
+    guard linkEnabled else {
+      calendars = []
+      await scheduleReminders()
+      return
+    }
+    authorization = await Task.detached { EKEventStore.authorizationStatus(for: .event) }.value
+    if hasAccess {
+      let store = await loadedStore()
+      calendars = await Task.detached {
+        store.calendars(for: .event).sorted { $0.title < $1.title }
+      }.value
+    } else {
+      calendars = []
+    }
     await scheduleReminders()
+  }
+
+  private func loadedStore() async -> EKEventStore {
+    if let store { return store }
+    let created = await Task.detached { EKEventStore() }.value
+    if let store { return store }
+    store = created
+    return created
   }
 
   /// Metadata linking a recording that starts now to its meeting, or nothing.
@@ -161,8 +184,11 @@ final class CalendarAutomation {
       })
     guard linkEnabled, remindersEnabled, hasAccess else { return }
     let now = Date()
-    let events = meetingEvents(
-      from: now, to: now.addingTimeInterval(MeetingReminderPlanner.lookahead + 60 * 60))
+    let store = await loadedStore()
+    let events = await Task.detached {
+      Self.meetingEvents(
+        in: store, from: now, to: now.addingTimeInterval(MeetingReminderPlanner.lookahead + 60 * 60))
+    }.value
     let reminders = MeetingReminderPlanner.reminders(
       for: events, preferences: preferences, now: now)
     for reminder in reminders {
@@ -198,11 +224,19 @@ final class CalendarAutomation {
 
   private func meetingEvents(from start: Date, to end: Date) -> [MeetingEvent] {
     guard hasAccess else { return [] }
-    let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-    return store.events(matching: predicate).map(Self.meetingEvent)
+    let store = store ?? EKEventStore()
+    self.store = store
+    return Self.meetingEvents(in: store, from: start, to: end)
   }
 
-  private static func meetingEvent(_ event: EKEvent) -> MeetingEvent {
+  private nonisolated static func meetingEvents(
+    in store: EKEventStore, from start: Date, to end: Date
+  ) -> [MeetingEvent] {
+    let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+    return store.events(matching: predicate).map(meetingEvent)
+  }
+
+  private nonisolated static func meetingEvent(_ event: EKEvent) -> MeetingEvent {
     var participants = event.attendees ?? []
     if let organizer = event.organizer { participants.append(organizer) }
     var attendees: [MeetingAttendee] = []

@@ -42,7 +42,7 @@ struct PlacesView: View {
         )
       }
       if automation.places.contains(where: \.isActive),
-        automation.authorization != .authorizedAlways
+        let authorization = automation.authorization, authorization != .authorizedAlways
       {
         Section {
           Label(
@@ -55,6 +55,10 @@ struct PlacesView: View {
       }
     }
     .navigationTitle("Places")
+    .task { await automation.refreshAuthorization() }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+      Task { await automation.refreshAuthorization() }
+    }
     .sheet(item: $editing) { place in
       NavigationStack {
         PlaceEditorView(place: place)

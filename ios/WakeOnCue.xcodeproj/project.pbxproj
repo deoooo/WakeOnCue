@@ -18,6 +18,7 @@
 		140283C37E9E0E404CB1239D /* BackgroundUploadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AC5ED25FC04F1093E8FB6D3 /* BackgroundUploadCoordinator.swift */; };
 		18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */; };
 		1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */; };
+		1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */; };
 		1F95FD0B7CEA6494AA98C2D2 /* TranscriptFollowPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */; };
 		1FE7723F996EA94497E68A81 /* RecordingStatusPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A758DD8574838E707D55EB7 /* RecordingStatusPresentationTests.swift */; };
 		1FF63B926E0930F806E1ED7E /* WatchRecordingImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43164E008733A4AB386A4FC9 /* WatchRecordingImporter.swift */; };
@@ -314,6 +315,7 @@
 		B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayoutTests.swift; sourceTree = "<group>"; };
 		B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBridgeTests.swift; sourceTree = "<group>"; };
 		B487556E3A1F8594032A540B /* AskRecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskRecordingsView.swift; sourceTree = "<group>"; };
+		B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLaunchPathTests.swift; sourceTree = "<group>"; };
 		B81F7307DD7F72D8760C28A1 /* RecordingLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLibraryView.swift; sourceTree = "<group>"; };
 		BB407423BF9CF164929EA20F /* WakeOnCueWatchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WakeOnCueWatchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB40A4A34EDA59047776592D /* WatchCompanionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCompanionUITests.swift; sourceTree = "<group>"; };
@@ -713,6 +715,7 @@
 		EDB8145834B4A82A2DB4E95C /* WakeOnCueTests */ = {
 			isa = PBXGroup;
 			children = (
+				B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */,
 				716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */,
 				9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */,
 				FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */,
@@ -1109,6 +1112,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */,
 				1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */,
 				49AD10C178774912B9BBF042 /* RealtimeServicePairingTests.swift in Sources */,
 				8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */,
