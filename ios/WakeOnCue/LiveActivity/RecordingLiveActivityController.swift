@@ -6,8 +6,7 @@ import WakeOnCueCore
 final class RecordingLiveActivityController {
   func start(
     recording: RecordingRecord,
-    progress: RecordingSyncProgress = .init(),
-    usesS3: Bool = false
+    progress: RecordingSyncProgress = .init()
   ) async {
     guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
     let existing = Activity<RecordingActivityAttributes>.activities
@@ -19,7 +18,7 @@ final class RecordingLiveActivityController {
         $0.attributes.recordingID == recording.id
       })
     else { return }
-    let state = contentState(recording: recording, progress: progress, usesS3: usesS3)
+    let state = contentState(recording: recording, progress: progress)
     _ = try? Activity.request(
       attributes: RecordingActivityAttributes(recordingID: recording.id),
       content: ActivityContent(
@@ -32,10 +31,9 @@ final class RecordingLiveActivityController {
 
   func update(
     recording: RecordingRecord,
-    progress: RecordingSyncProgress,
-    usesS3: Bool
+    progress: RecordingSyncProgress
   ) async {
-    let state = contentState(recording: recording, progress: progress, usesS3: usesS3)
+    let state = contentState(recording: recording, progress: progress)
     let content = ActivityContent(
       state: state,
       staleDate: Date().addingTimeInterval(12 * 60 * 60)
@@ -46,9 +44,9 @@ final class RecordingLiveActivityController {
     }
   }
 
-  func end(recording: RecordingRecord, progress: RecordingSyncProgress, usesS3: Bool) async {
+  func end(recording: RecordingRecord, progress: RecordingSyncProgress) async {
     let content = ActivityContent(
-      state: contentState(recording: recording, progress: progress, usesS3: usesS3),
+      state: contentState(recording: recording, progress: progress),
       staleDate: nil
     )
     for activity in Activity<RecordingActivityAttributes>.activities
@@ -66,13 +64,11 @@ final class RecordingLiveActivityController {
 
   private func contentState(
     recording: RecordingRecord,
-    progress: RecordingSyncProgress,
-    usesS3: Bool
+    progress: RecordingSyncProgress
   ) -> RecordingActivityAttributes.ContentState {
     let elapsed = max(0, Int(recording.duration.rounded(.down)))
     return RecordingActivityAttributes.ContentState(
       phase: recording.status.rawValue,
-      usesS3: usesS3,
       timerStart: Date().addingTimeInterval(-recording.duration),
       pausedElapsedSeconds: elapsed,
       uploadedDurationSeconds: Int(progress.uploadedDuration.rounded()),

@@ -100,9 +100,6 @@ final class AudioCaptureService: @unchecked Sendable {
   private var currentChunkFrames: AVAudioFramePosition = 0
   private var totalFrames: AVAudioFramePosition = 0
   private var nextChunkIndex = 1
-  private var nextRealtimeSequence = 1
-  private var realtimePCMBuffer = Data()
-  private var realtimeSentFrames: AVAudioFramePosition = 0
   private var running = false
   private var paused = false
   private var interruptionObserver: NSObjectProtocol?
@@ -114,7 +111,6 @@ final class AudioCaptureService: @unchecked Sendable {
 
   var onInterruptionChanged: (@Sendable (_ isInterrupted: Bool, _ resumed: Bool) -> Void)?
   var onCaptureError: (@Sendable (Error) -> Void)?
-  var onRealtimeAudioFrame: (@Sendable (RealtimeAudioFrame) -> Void)?
   /// Called on the main actor at a throttled rate with meter, route, silence, and pause updates.
   var onCaptureFeedback: (@MainActor @Sendable (RecordingCaptureFeedback) -> Void)?
 
@@ -224,7 +220,6 @@ final class AudioCaptureService: @unchecked Sendable {
     lock.withLock {
       paused = true
       finishCurrentChunkLocked()
-      finishRealtimeFrameLocked()
       captureMeter.reset()
       captureFeedback = RecordingCaptureFeedback(
         normalizedInputLevel: 0,
@@ -273,7 +268,6 @@ final class AudioCaptureService: @unchecked Sendable {
       running = false
       paused = false
       finishCurrentChunkLocked()
-      finishRealtimeFrameLocked()
       sourceFile = nil
       converter = nil
       outputFormat = nil
@@ -400,12 +394,6 @@ final class AudioCaptureService: @unchecked Sendable {
         let frames = AVAudioFramePosition(outputBuffer.frameLength)
         currentChunkFrames += frames
         totalFrames += frames
-        if onRealtimeAudioFrame != nil,
-          let pcm = Self.pcm16LittleEndianData(from: outputBuffer)
-        {
-          realtimePCMBuffer.append(pcm)
-          emitFullRealtimeFramesLocked()
-        }
         if Double(currentChunkFrames) / Self.sampleRate >= Self.chunkDuration {
           finishCurrentChunkLocked()
           try openNextChunkLocked(format: outputFormat)
@@ -414,52 +402,6 @@ final class AudioCaptureService: @unchecked Sendable {
         onCaptureError?(error)
       }
     }
-  }
-
-  private func emitFullRealtimeFramesLocked() {
-    let framesPerMessage = Int(Self.sampleRate / 2)
-    let bytesPerMessage = framesPerMessage * MemoryLayout<Int16>.size
-    while realtimePCMBuffer.count >= bytesPerMessage {
-      let data = Data(realtimePCMBuffer.prefix(bytesPerMessage))
-      realtimePCMBuffer.removeFirst(bytesPerMessage)
-      emitRealtimeFrameLocked(data, frameCount: framesPerMessage)
-    }
-  }
-
-  private func finishRealtimeFrameLocked() {
-    guard !realtimePCMBuffer.isEmpty else { return }
-    let frameCount = realtimePCMBuffer.count / MemoryLayout<Int16>.size
-    let data = realtimePCMBuffer
-    realtimePCMBuffer.removeAll(keepingCapacity: true)
-    emitRealtimeFrameLocked(data, frameCount: frameCount)
-  }
-
-  private func emitRealtimeFrameLocked(_ data: Data, frameCount: Int) {
-    guard let onRealtimeAudioFrame else { return }
-    let startMilliseconds = Int(Double(realtimeSentFrames) / Self.sampleRate * 1_000)
-    onRealtimeAudioFrame(
-      RealtimeAudioFrame(
-        sequence: nextRealtimeSequence,
-        startMilliseconds: startMilliseconds,
-        pcm16LittleEndian: data
-      )
-    )
-    realtimeSentFrames += AVAudioFramePosition(frameCount)
-    nextRealtimeSequence += 1
-  }
-
-  static func pcm16LittleEndianData(from buffer: AVAudioPCMBuffer) -> Data? {
-    guard let source = buffer.floatChannelData?[0] else { return nil }
-    let count = Int(buffer.frameLength)
-    var data = Data(count: count * MemoryLayout<Int16>.size)
-    data.withUnsafeMutableBytes { rawBuffer in
-      let destination = rawBuffer.bindMemory(to: Int16.self)
-      for index in 0..<count {
-        let sample = max(-1, min(1, source[index]))
-        destination[index] = Int16(sample * Float(Int16.max)).littleEndian
-      }
-    }
-    return data
   }
 
   private func updateCaptureFeedbackLocked(from buffer: AVAudioPCMBuffer) {

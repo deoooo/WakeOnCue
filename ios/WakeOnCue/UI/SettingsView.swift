@@ -4,11 +4,7 @@ import SwiftUI
 struct SettingsView: View {
   @Environment(AppModel.self) private var model
   @State private var isActionButtonSetupPresented = false
-  @State private var isEditingS3Configuration = false
-  @State private var isS3AdvancedPresented = false
-  @State private var isRealtimeAdvancedPresented = false
-  @State private var isRealtimePairingPresented = false
-  @State private var realtimeConnectionCheck = RealtimeConnectionCheck.idle
+  @State private var isForgetS3Presented = false
 
   var body: some View {
     @Bindable var settings = model.settings
@@ -39,189 +35,101 @@ struct SettingsView: View {
           Text("Follow System updates automatically when your iPhone changes between Light and Dark Mode.")
         }
 
-        Section {
-          Toggle(isOn: $settings.useS3) {
-            Label("Sync to S3", systemImage: "externaldrive.connected.to.line.below")
-          }
-          .accessibilityIdentifier("settings.storage.s3.toggle")
-
-          if settings.useS3 {
-            if settings.s3HasStoredCredentials, !isEditingS3Configuration {
-              Label("S3 configuration saved", systemImage: "key.fill")
-                .foregroundStyle(.secondary)
-              LabeledContent("Bucket", value: settings.s3Bucket)
-              LabeledContent("Region", value: settings.s3Region)
-
-              Button {
-                isEditingS3Configuration = true
-              } label: {
-                Label("Modify S3 configuration", systemImage: "pencil")
-              }
-            } else {
-              TextField("Bucket", text: $settings.s3Bucket)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.storage.s3.bucket")
-              TextField("Region, e.g. us-east-1", text: $settings.s3Region)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.storage.s3.region")
-              TextField(
-                settings.s3HasStoredCredentials
-                  ? settings.language.localized("Access key (leave blank to keep)")
-                  : settings.language.localized("Access key"),
-                text: $settings.s3AccessKeyID
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.storage.s3.access-key")
-              SecureField(
-                settings.s3HasStoredCredentials
-                  ? settings.language.localized("Secret key (leave blank to keep)")
-                  : settings.language.localized("Secret key"),
-                text: $settings.s3SecretAccessKey
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.storage.s3.secret-key")
-
-              DisclosureGroup("Advanced", isExpanded: $isS3AdvancedPresented) {
-                TextField("Custom endpoint (optional)", text: $settings.s3EndpointURL)
-                  .textInputAutocapitalization(.never)
-                  .keyboardType(.URL)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.endpoint")
-                TextField("Object prefix", text: $settings.s3Prefix)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.prefix")
-                SecureField("Session token (optional)", text: $settings.s3SessionToken)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.session-token")
-                Toggle("Force path-style URLs", isOn: $settings.s3ForcePathStyle)
-                  .accessibilityIdentifier("settings.storage.s3.path-style")
-              }
+        if settings.hasLegacyS3Credentials {
+          Section {
+            Button("Forget S3 credentials", role: .destructive) {
+              isForgetS3Presented = true
             }
+            .accessibilityIdentifier("settings.storage.forget-s3")
+          } header: {
+            Text("Earlier S3 backups")
+          } footer: {
+            Text(
+              "New recordings stay on this iPhone. Recordings backed up earlier still download from S3 when you open them, using the credentials saved on this iPhone."
+            )
           }
-        } header: {
-          Text("Storage")
-        } footer: {
-          if settings.useS3 {
-            if settings.s3HasStoredCredentials, !isEditingS3Configuration {
-              Text("Credentials are securely stored in this iPhone's Keychain.")
-            } else {
-              Text(
-                "Save verifies S3 with a tiny temporary object. Raw audio is removed only after the complete M4A reaches S3. Credentials stay in this iPhone's Keychain."
-              )
-            }
-          } else {
-            Text("Local is the default. Recordings stay on this iPhone without a cloud account.")
+          .confirmationDialog(
+            "Forget S3 credentials?", isPresented: $isForgetS3Presented, titleVisibility: .visible
+          ) {
+            Button("Forget S3 credentials", role: .destructive) { model.forgetLegacyS3Storage() }
+          } message: {
+            Text("Recordings whose audio is only in S3 will no longer open on this iPhone.")
           }
         }
 
-        if settings.useS3 {
-          Section {
-            Stepper(
-              value: $settings.localAudioRetentionDays,
-              in: AppSettings.localAudioRetentionDaysRange
-            ) {
-              LabeledContent("Keep complete M4A") {
-                Text(retentionLabel(days: settings.localAudioRetentionDays))
-                  .foregroundStyle(.secondary)
-              }
+        Section {
+          Picker(
+            "Service",
+            selection: Binding(
+              get: { settings.speechEngine },
+              set: { settings.selectSpeechEngine($0) })
+          ) {
+            Text("Apple Speech").tag(SpeechEngine.apple)
+            Text("OpenAI-compatible API").tag(SpeechEngine.openAICompatible)
+          }
+          .accessibilityIdentifier("settings.ai.speech.engine")
+          Picker("Spoken language", selection: $settings.spokenLanguage) {
+            ForEach(SpokenLanguage.allCases) { language in
+              Text(language.title).tag(language)
             }
-          } header: {
-            Text("Local cache")
-          } footer: {
+          }
+          if let defaultURL = settings.speechEngine.defaultBaseURL {
+            ThirdPartyEndpointFields(
+              identifier: "speech",
+              defaultURL: defaultURL,
+              modelPrompt: "Model, e.g. whisper-1",
+              hasStoredKey: settings.activeSpeechEndpoint?.apiKey.isEmpty == false,
+              baseURL: $settings.speechBaseURL,
+              model: $settings.speechModel,
+              apiKey: $settings.speechAPIKey
+            )
+          }
+        } header: {
+          Text("Transcription after recording")
+        } footer: {
+          if settings.speechEngine == .apple {
+            Text("Runs on this iPhone with iOS 26 or later. Audio does not leave the device.")
+          } else {
             Text(
-              "After this period, the local M4A is removed. Playing or sharing downloads the real file from S3 and caches it again."
+              "Finished recordings are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions."
             )
           }
         }
 
         Section {
-          Toggle(isOn: $settings.useRealtimeProcessing) {
-            Label("Live transcription", systemImage: "captions.bubble.fill")
+          Picker(
+            "Service",
+            selection: Binding(
+              get: { settings.languageModelEngine },
+              set: { settings.selectLanguageModelEngine($0) })
+          ) {
+            Text("Apple Intelligence").tag(LanguageModelEngine.apple)
+            Text("OpenAI-compatible API").tag(LanguageModelEngine.openAICompatible)
+            Text("Claude API").tag(LanguageModelEngine.anthropic)
           }
-          .accessibilityIdentifier("settings.transcription.toggle")
-
-          if settings.useRealtimeProcessing {
-            Picker("Spoken language", selection: $settings.spokenLanguage) {
-              ForEach(SpokenLanguage.allCases) { language in
-                Text(language.title).tag(language)
-              }
-            }
-            if settings.realtimeHasStoredToken {
-              Label("Gateway credentials saved", systemImage: "key.fill")
-                .foregroundStyle(.secondary)
-            }
-
-            Button {
-              isRealtimePairingPresented = true
-            } label: {
-              Label("Pair self-hosted service", systemImage: "qrcode.viewfinder")
-            }
-            .accessibilityIdentifier("settings.transcription.pair")
-
-            Button {
-              Task { await testRealtimeConnection(settings: settings) }
-            } label: {
-              if realtimeConnectionCheck.isTesting {
-                HStack {
-                  ProgressView().controlSize(.small)
-                  Text("Testing connection…")
-                }
-              } else {
-                Label("Test connection", systemImage: "network")
-              }
-            }
-            .disabled(realtimeConnectionCheck.isTesting)
-            .accessibilityIdentifier("settings.transcription.test-connection")
-
-            if let result = realtimeConnectionCheck.result {
-              Label(
-                result.message,
-                systemImage: result.isError ? "xmark.circle.fill" : "checkmark.circle.fill"
-              )
-                .font(.footnote)
-                .foregroundStyle(result.isError ? .orange : .green)
-                .accessibilityIdentifier("settings.transcription.connection-result")
-            }
-
-            DisclosureGroup("Manual setup", isExpanded: $isRealtimeAdvancedPresented) {
-              TextField("Gateway URL", text: $settings.realtimeGatewayURL)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.transcription.gateway-url")
-                .onChange(of: settings.realtimeGatewayURL) { _, _ in
-                  realtimeConnectionCheck = .idle
-                }
-              SecureField(
-                settings.realtimeHasStoredToken
-                  ? settings.language.localized("Gateway token (leave blank to keep)")
-                  : settings.language.localized("Gateway token"),
-                text: $settings.realtimeGatewayToken
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.transcription.gateway-token")
-              .onChange(of: settings.realtimeGatewayToken) { _, _ in
-                realtimeConnectionCheck = .idle
-              }
-            }
+          .accessibilityIdentifier("settings.ai.language-model.engine")
+          if let defaultURL = settings.languageModelEngine.defaultBaseURL {
+            ThirdPartyEndpointFields(
+              identifier: "language-model",
+              defaultURL: defaultURL,
+              modelPrompt: settings.languageModelEngine == .anthropic
+                ? "Model, e.g. claude-sonnet-5-5" : "Model name",
+              hasStoredKey: settings.activeLanguageModelProvider?.endpoint.apiKey.isEmpty == false,
+              baseURL: $settings.languageModelBaseURL,
+              model: $settings.languageModelName,
+              apiKey: $settings.languageModelAPIKey
+            )
           }
         } header: {
-          Text("Live transcription")
+          Text("Summaries and questions")
         } footer: {
-          Text(
-            "Optional. Pair your own Gateway by QR code or paste its pairing JSON. Save checks the service and token before storing them. Audio always saves locally first."
-          )
-        }
-
-        if settings.useRealtimeProcessing {
-          SpeakerSettingsSection()
+          if settings.languageModelEngine == .apple {
+            Text("Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device.")
+          } else {
+            Text(
+              "Transcripts are sent to this service for summaries, and matching passages for questions, with recording titles. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain."
+            )
+          }
         }
 
         Section {
@@ -301,6 +209,8 @@ struct SettingsView: View {
           )
         }
       }
+      .disabled(model.isSavingSettings)
+      .interactiveDismissDisabled(model.isSavingSettings)
       .scrollContentBackground(.hidden)
       .background(Color(uiColor: .systemGroupedBackground))
       .navigationTitle("Settings")
@@ -308,16 +218,10 @@ struct SettingsView: View {
       .sheet(isPresented: $isActionButtonSetupPresented) {
         ActionButtonSetupView()
       }
-      .sheet(isPresented: $isRealtimePairingPresented) {
-        RealtimePairingView { pairing in
-          settings.applyRealtimePairing(pairing)
-          isRealtimePairingPresented = false
-          Task { await model.saveSettings() }
-        }
-      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { model.cancelSettings() }
+            .disabled(model.isSavingSettings)
         }
         ToolbarItem(placement: .confirmationAction) {
           Button {
@@ -337,191 +241,57 @@ struct SettingsView: View {
     }
   }
 
-  private func retentionLabel(days: Int) -> String {
-    days == 1
-      ? model.settings.language.localized("1 day")
-      : String(
-        format: model.settings.language.localized("%d days"),
-        locale: model.settings.language.locale,
-        days
-      )
-  }
-
-  @MainActor
-  private func testRealtimeConnection(settings: AppSettings) async {
-    realtimeConnectionCheck = .testing
-    do {
-      let configuration = try settings.candidateRealtimeConfiguration()
-      try await RealtimeProcessingClient.validate(configuration: configuration)
-      realtimeConnectionCheck = .success(
-        AppLanguage.localized("Connection verified just now. Save to keep this configuration."))
-    } catch let error as RealtimeClientError {
-      switch error {
-      case .validationFailed:
-        realtimeConnectionCheck = .failure(
-          AppLanguage.localized(
-            "The Gateway rejected the token or does not support WakeOnCue protocol v1. Check the token and service version."
-          ))
-      default:
-        realtimeConnectionCheck = .failure(error.localizedDescription)
-      }
-    } catch let error as URLError {
-      realtimeConnectionCheck = .failure(
-        String(
-          format: AppLanguage.localized(
-            "Could not reach the Gateway: %@ Check the URL, network, and Gateway process."
-          ),
-          error.localizedDescription
-        ))
-    } catch {
-      realtimeConnectionCheck = .failure(error.localizedDescription)
-    }
-  }
-
 }
 
-private enum RealtimeConnectionCheck: Equatable {
-  case idle
-  case testing
-  case success(String)
-  case failure(String)
+private struct ThirdPartyEndpointFields: View {
+  @Environment(AppModel.self) private var model
 
-  var isTesting: Bool { self == .testing }
+  let identifier: String
+  let defaultURL: String
+  let modelPrompt: LocalizedStringKey
+  let hasStoredKey: Bool
+  @Binding var baseURL: String
+  @Binding var modelName: String
+  @Binding var apiKey: String
 
-  var result: (message: String, isError: Bool)? {
-    switch self {
-    case .success(let message): (message, false)
-    case .failure(let message): (message, true)
-    case .idle, .testing: nil
-    }
+  init(
+    identifier: String,
+    defaultURL: String,
+    modelPrompt: LocalizedStringKey,
+    hasStoredKey: Bool,
+    baseURL: Binding<String>,
+    model: Binding<String>,
+    apiKey: Binding<String>
+  ) {
+    self.identifier = identifier
+    self.defaultURL = defaultURL
+    self.modelPrompt = modelPrompt
+    self.hasStoredKey = hasStoredKey
+    _baseURL = baseURL
+    _modelName = model
+    _apiKey = apiKey
   }
-}
-
-private struct RealtimePairingView: View {
-  @Environment(\.dismiss) private var dismiss
-  @State private var mode = PairingInputMode.camera
-  @State private var pastedPayload = ""
-  @State private var candidate: RealtimeServicePairing?
-  @State private var errorMessage: String?
-
-  let onConfirm: (RealtimeServicePairing) -> Void
 
   var body: some View {
-    NavigationStack {
-      Form {
-        if let candidate {
-          Section("Review service") {
-            LabeledContent("Gateway", value: candidate.gatewayURL.absoluteString)
-            LabeledContent("Transport", value: transportLabel(candidate.gatewayURL))
-            LabeledContent("Token", value: maskedToken(candidate.gatewayToken))
-          }
-
-          Section {
-            Button {
-              onConfirm(candidate)
-            } label: {
-              Label("Verify and save", systemImage: "checkmark.shield")
-            }
-            Button("Scan or paste a different code") {
-              self.candidate = nil
-              errorMessage = nil
-            }
-          } footer: {
-            Text("WakeOnCue will contact this Gateway and validate the token before saving it.")
-          }
-        } else {
-          Section {
-            Picker("Pair using", selection: $mode) {
-              ForEach(PairingInputMode.allCases) { inputMode in
-                Text(inputMode.title).tag(inputMode)
-              }
-            }
-            .pickerStyle(.segmented)
-
-            if mode == .camera {
-              RealtimePairingScanner(
-                onPayload: decode,
-                onError: { errorMessage = $0 }
-              )
-              .frame(height: 300)
-              .clipShape(RoundedRectangle(cornerRadius: 12))
-              .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                  .stroke(.white.opacity(0.7), lineWidth: 2)
-                  .frame(width: 210, height: 210)
-              }
-              .accessibilityLabel("QR code scanner")
-            } else {
-              TextEditor(text: $pastedPayload)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .frame(minHeight: 150)
-                .font(.system(.footnote, design: .monospaced))
-              Button("Review pairing") { decode(pastedPayload) }
-                .disabled(pastedPayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-          } header: {
-            Text("Self-hosted Gateway")
-          } footer: {
-            Text("Pairing data contains a service URL and secret token. Review both before saving.")
-          }
-        }
-
-        if let errorMessage {
-          Section {
-            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-              .foregroundStyle(.orange)
-          } footer: {
-            if mode == .camera {
-              Text("Try again, or choose Paste and enter the complete pairing JSON.")
-            } else {
-              Text("Copy the complete JSON generated by the WakeOnCue pairing command.")
-            }
-          }
-        }
-      }
-      .navigationTitle("Pair service")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
-        }
-      }
-    }
-  }
-
-  private func decode(_ payload: String) {
-    do {
-      candidate = try RealtimeServicePairing(payload: payload)
-      errorMessage = nil
-    } catch {
-      candidate = nil
-      errorMessage = error.localizedDescription
-    }
-  }
-
-  private func maskedToken(_ token: String) -> String {
-    guard token.count > 8 else { return String(repeating: "•", count: token.count) }
-    return "\(token.prefix(4))••••\(token.suffix(4))"
-  }
-
-  private func transportLabel(_ url: URL) -> String {
-    url.scheme?.lowercased() == "https"
-      ? AppLanguage.localized("Encrypted HTTPS")
-      : AppLanguage.localized("HTTP (use only on a trusted private network)")
-  }
-}
-
-private enum PairingInputMode: String, CaseIterable, Identifiable {
-  case camera
-  case paste
-
-  var id: Self { self }
-  var title: LocalizedStringKey {
-    switch self {
-    case .camera: "Scan QR"
-    case .paste: "Paste"
-    }
+    TextField(defaultURL, text: $baseURL)
+      .textInputAutocapitalization(.never)
+      .keyboardType(.URL)
+      .autocorrectionDisabled()
+      .accessibilityLabel("Service URL")
+      .accessibilityIdentifier("settings.ai.\(identifier).url")
+    TextField(modelPrompt, text: $modelName)
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
+      .accessibilityIdentifier("settings.ai.\(identifier).model")
+    SecureField(
+      hasStoredKey
+        ? model.settings.language.localized("API key (leave blank to keep)")
+        : model.settings.language.localized("API key"),
+      text: $apiKey
+    )
+    .textInputAutocapitalization(.never)
+    .autocorrectionDisabled()
+    .accessibilityIdentifier("settings.ai.\(identifier).key")
   }
 }
 

@@ -63,11 +63,6 @@ final class MacAppModel {
     await recorder.start(realtime: realtime, tellSpeakersApart: tellSpeakersApart)
   }
 
-  func pairingPayload() -> String? {
-    guard let token = GatewayToken.load() else { return nil }
-    return try? PairingCode.payload(gatewayURL: host.lanGatewayURL, token: token)
-  }
-
   func chooseCheckout() {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true

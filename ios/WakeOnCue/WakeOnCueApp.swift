@@ -2,7 +2,6 @@ import SwiftUI
 
 @main
 struct WakeOnCueApp: App {
-  @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @State private var model = AppModel.bootstrap()
 
   var body: some Scene {
@@ -15,7 +14,6 @@ struct WakeOnCueApp: App {
             do { try await ExperienceFixtures.prepareIfRequested() }
             catch { model.errorMessage = "Experience fixture setup failed: \(error.localizedDescription)" }
           #endif
-          model.bind(appDelegate: appDelegate)
           await model.start()
         }
         .onOpenURL { url in

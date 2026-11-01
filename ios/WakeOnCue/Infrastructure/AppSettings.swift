@@ -33,45 +33,29 @@ enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 @Observable
 final class AppSettings {
-  static let defaultLocalAudioRetentionDays = 7
-  static let localAudioRetentionDaysRange = 1...365
-
-  private static let s3EnabledKey = "recording-storage.s3-enabled"
   private static let endpointKey = "recording-storage.s3.endpoint"
   private static let regionKey = "recording-storage.s3.region"
   private static let bucketKey = "recording-storage.s3.bucket"
   private static let prefixKey = "recording-storage.s3.prefix"
   private static let forcePathStyleKey = "recording-storage.s3.force-path-style"
-  private static let localAudioRetentionDaysKey = "recording-storage.local-audio-retention-days"
   private static let keychainService = "com.deoooo.WakeOnCue.s3"
   private static let accessKeyAccount = "access-key-id"
   private static let secretKeyAccount = "secret-access-key"
   private static let sessionTokenAccount = "session-token"
-  private static let realtimeEnabledKey = "realtime-processing.enabled"
-  private static let realtimeGatewayURLKey = "realtime-processing.gateway-url"
   static let spokenLanguageKey = "realtime-processing.spoken-language"
+  private static let retiredRealtimeServiceKey = "realtime-processing.retired"
   private static let realtimeKeychainService = "com.deoooo.WakeOnCue.realtime"
-  private static let realtimeTokenAccount = "gateway-token"
-  private static let selfVoiceprintAccount = "self-voiceprint"
-  private static let savedVoicesAccount = "saved-voices"
-  private static let speakerDiarizationKey = "speakers.diarization-enabled"
-  private static let rememberVoicesKey = "speakers.remember-voices"
-  /// Saved voices not heard in a recording for this long are deleted.
-  static let savedVoiceExpiry: TimeInterval = 365 * 24 * 60 * 60
+  private static let voiceNamesAccount = "remembered-voice-names"
+  private static let aiKeychainService = "com.deoooo.WakeOnCue.ai"
+  private static let speechKeyAccount = "speech-api-key"
+  private static let languageModelKeyAccount = "language-model-api-key"
+  private static let speechEngineKey = "ai.speech.engine"
+  private static let speechBaseURLKey = "ai.speech.base-url"
+  private static let speechModelKey = "ai.speech.model"
+  private static let languageModelEngineKey = "ai.language-model.engine"
+  private static let languageModelBaseURLKey = "ai.language-model.base-url"
+  private static let languageModelNameKey = "ai.language-model.model"
 
-  var useS3 = false
-  var s3EndpointURL = ""
-  var s3Region = "us-east-1"
-  var s3Bucket = ""
-  var s3Prefix = "wakeoncue"
-  var s3AccessKeyID = ""
-  var s3SecretAccessKey = ""
-  var s3SessionToken = ""
-  var s3ForcePathStyle = false
-  var localAudioRetentionDays = defaultLocalAudioRetentionDays
-  var useRealtimeProcessing = false
-  var realtimeGatewayURL = ""
-  var realtimeGatewayToken = ""
   var spokenLanguage = SpokenLanguage.automatic {
     didSet {
       UserDefaults.standard.set(spokenLanguage.rawValue, forKey: Self.spokenLanguageKey)
@@ -85,17 +69,21 @@ final class AppSettings {
       UserDefaults.standard.set(appearance.rawValue, forKey: AppAppearance.preferenceKey)
     }
   }
-  private(set) var s3HasStoredCredentials = false
-  private(set) var realtimeHasStoredToken = false
-  /// When the device owner enrolled their voice; nil when no voiceprint is stored.
-  private(set) var selfVoiceprintEnrolledAt: Date?
-  /// Voices of people the user named, kept only while "Remember voices" is on.
-  private(set) var savedVoices: [SavedVoice] = []
-  /// Off by default; recordings are only split by speaker after the user turns it on.
-  var speakerDiarizationEnabled = false {
-    didSet { UserDefaults.standard.set(speakerDiarizationEnabled, forKey: Self.speakerDiarizationKey) }
-  }
-  private(set) var rememberVoicesEnabled = false
+  var speechEngine = SpeechEngine.apple
+  var speechBaseURL = ""
+  var speechModel = ""
+  var speechAPIKey = ""
+  var languageModelEngine = LanguageModelEngine.apple
+  var languageModelBaseURL = ""
+  var languageModelName = ""
+  var languageModelAPIKey = ""
+  /// The saved services in use; nil means Apple's on-device frameworks.
+  private(set) var activeSpeechEndpoint: ThirdPartyEndpoint?
+  private(set) var activeLanguageModelProvider: LanguageModelProvider?
+  /// S3 credentials saved by an older version, kept to reach recordings already backed up.
+  private(set) var hasLegacyS3Credentials = false
+  /// Names of people an older version recognized, so old transcripts keep showing them.
+  private var rememberedVoiceNames: [String: String] = [:]
 
   init() {
     language = AppLanguage.current
@@ -104,379 +92,199 @@ final class AppSettings {
     {
       appearance = storedAppearance
     }
+    Self.retireRealtimeService()
     restorePersistedSettings()
-    #if DEBUG
-      if let configuration = Self.debugRealtimeConfiguration {
-        useRealtimeProcessing = true
-        realtimeGatewayURL = configuration.gatewayURL.absoluteString
-        realtimeHasStoredToken = true
-      }
-    #endif
-  }
-
-  var activeS3Configuration: S3Configuration? {
-    #if DEBUG && targetEnvironment(simulator)
-      let environment = ProcessInfo.processInfo.environment
-      if environment["WAKEONCUE_EXPERIENCE_FIXTURES"] == "1",
-        environment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] == "1"
-      {
-        return S3Configuration(
-          endpointURL: URL(string: "http://127.0.0.1:1"), region: "test",
-          bucket: "offline-fixture", accessKeyID: "fixture", secretAccessKey: "fixture",
-          forcePathStyle: true
-        )
-      }
-    #endif
-    guard UserDefaults.standard.bool(forKey: Self.s3EnabledKey) else { return nil }
-    return persistedS3Configuration()
-  }
-
-  var activeRealtimeConfiguration: RealtimeProcessingConfiguration? {
-    #if DEBUG
-      if var configuration = Self.debugRealtimeConfiguration {
-        applySpeakerOptions(to: &configuration)
-        return configuration
-      }
-    #endif
-    guard UserDefaults.standard.bool(forKey: Self.realtimeEnabledKey) else { return nil }
-    return persistedRealtimeConfiguration()
-  }
-
-  /// The Gateway to send a voice enrollment sample to: the saved one, or the one being edited.
-  func voiceEnrollmentConfiguration() throws -> RealtimeProcessingConfiguration {
-    if let configuration = activeRealtimeConfiguration { return configuration }
-    return try candidateRealtimeConfiguration()
-  }
-
-  /// Stored only in this device's Keychain: excluded from backups, iCloud and S3.
-  func persistSelfVoiceprint(_ voiceprint: RealtimeVoiceprint, enrolledAt: Date = .now) throws {
-    let record = SelfVoiceprintRecord(voiceprint: voiceprint, enrolledAt: enrolledAt)
-    let data = try JSONEncoder().encode(record)
-    try KeychainStore.save(
-      String(decoding: data, as: UTF8.self),
-      service: Self.realtimeKeychainService,
-      account: Self.selfVoiceprintAccount
-    )
-    selfVoiceprintEnrolledAt = enrolledAt
-  }
-
-  func deleteSelfVoiceprint() throws {
-    try KeychainStore.delete(
-      service: Self.realtimeKeychainService, account: Self.selfVoiceprintAccount)
-    selfVoiceprintEnrolledAt = nil
   }
 
   /// Names shown for person IDs the processor recognized, including the user.
   var personNames: [String: String] {
-    var names = Dictionary(uniqueKeysWithValues: savedVoices.map { ($0.id, $0.name) })
+    var names = rememberedVoiceNames
     names[RealtimeSpeaker.selfPersonID] = AppLanguage.localized("Me")
     return names
   }
 
-  func setRememberVoices(_ enabled: Bool) throws {
-    if !enabled { try deleteAllSavedVoices() }
-    rememberVoicesEnabled = enabled
-    UserDefaults.standard.set(enabled, forKey: Self.rememberVoicesKey)
-  }
-
-  func saveVoice(name: String, voiceprint: RealtimeVoiceprint, replacing id: String? = nil) throws {
-    let now = Date.now
-    var voices = savedVoices.filter { $0.id != id }
-    voices.append(
-      SavedVoice(
-        id: id ?? UUID().uuidString, name: name, voiceprint: voiceprint,
-        createdAt: now, lastHeardAt: now))
-    try persistSavedVoices(voices)
-  }
-
-  func renameSavedVoice(id: String, to name: String) throws {
-    try persistSavedVoices(savedVoices.map { $0.id == id ? $0.renamed(name) : $0 })
-  }
-
-  func deleteSavedVoice(id: String) throws {
-    try persistSavedVoices(savedVoices.filter { $0.id != id })
-  }
-
-  func deleteAllSavedVoices() throws {
-    try KeychainStore.delete(service: Self.realtimeKeychainService, account: Self.savedVoicesAccount)
-    savedVoices = []
-  }
-
-  /// Records that saved voices were recognized, so they do not expire.
-  func markVoicesHeard(_ ids: Set<String>, at date: Date = .now) {
-    guard
-      savedVoices.contains(where: {
-        ids.contains($0.id) && date.timeIntervalSince($0.lastHeardAt) > 86_400
-      })
-    else { return }
-    try? persistSavedVoices(savedVoices.map { ids.contains($0.id) ? $0.heard(at: date) : $0 })
-  }
-
-  private func persistSavedVoices(_ voices: [SavedVoice]) throws {
-    if voices.isEmpty {
-      try deleteAllSavedVoices()
+  /// Older versions saved a Gateway token and voiceprints, which have no use without the
+  /// Gateway. They are deleted once, keeping only the names old transcripts refer to. A locked
+  /// Keychain throws, so this runs again on the next launch.
+  static func retireRealtimeService(defaults: UserDefaults = .standard) {
+    guard !defaults.bool(forKey: retiredRealtimeServiceKey) else { return }
+    struct RetiredVoice: Decodable {
+      let id: String
+      let name: String
+    }
+    do {
+      let stored = try KeychainStore.read(service: realtimeKeychainService, account: "saved-voices")
+      let voices = stored.flatMap { try? JSONDecoder().decode([RetiredVoice].self, from: Data($0.utf8)) } ?? []
+      if !voices.isEmpty {
+        let names = Dictionary(voices.map { ($0.id, $0.name) }, uniquingKeysWith: { _, last in last })
+        try KeychainStore.save(
+          String(decoding: try JSONEncoder().encode(names), as: UTF8.self),
+          service: realtimeKeychainService,
+          account: voiceNamesAccount
+        )
+      }
+      for account in ["gateway-token", "self-voiceprint", "saved-voices"] {
+        try KeychainStore.delete(service: realtimeKeychainService, account: account)
+      }
+    } catch {
       return
     }
-    let data = try JSONEncoder().encode(voices)
-    try KeychainStore.save(
-      String(decoding: data, as: UTF8.self),
-      service: Self.realtimeKeychainService,
-      account: Self.savedVoicesAccount
+    for key in [
+      "realtime-processing.enabled", "realtime-processing.gateway-url",
+      "speakers.diarization-enabled", "speakers.remember-voices",
+    ] {
+      defaults.removeObject(forKey: key)
+    }
+    defaults.set(true, forKey: retiredRealtimeServiceKey)
+  }
+
+  /// A different service starts from its own default address and a fresh key.
+  func selectSpeechEngine(_ engine: SpeechEngine) {
+    guard engine != speechEngine else { return }
+    speechEngine = engine
+    speechBaseURL = ""
+    speechModel = ""
+    speechAPIKey = ""
+  }
+
+  func selectLanguageModelEngine(_ engine: LanguageModelEngine) {
+    guard engine != languageModelEngine else { return }
+    languageModelEngine = engine
+    languageModelBaseURL = ""
+    languageModelName = ""
+    languageModelAPIKey = ""
+  }
+
+  var aiProviderDraft: AIProviderDraft {
+    AIProviderDraft(
+      speechEngine: speechEngine,
+      speechBaseURL: speechBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+      speechModel: speechModel.trimmingCharacters(in: .whitespacesAndNewlines),
+      languageModelEngine: languageModelEngine,
+      languageModelBaseURL: languageModelBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+      languageModelName: languageModelName.trimmingCharacters(in: .whitespacesAndNewlines)
     )
-    savedVoices = voices
   }
 
-  private func restoreSpeakerSettings() {
+  /// The endpoint being edited, or nil when Apple's on-device speech is selected. A blank key
+  /// keeps the stored one only for the same URL, so it is never sent to a different service.
+  func candidateSpeechEndpoint() throws -> ThirdPartyEndpoint? {
+    let draft = aiProviderDraft
+    guard let defaultURL = draft.speechEngine.defaultBaseURL else { return nil }
+    let baseURL = draft.speechBaseURL.isEmpty ? defaultURL : draft.speechBaseURL
+    let isUnchanged = activeSpeechEndpoint?.baseURL.absoluteString == baseURL
+    return try ThirdPartyEndpoint.validated(
+      baseURL: baseURL,
+      model: draft.speechModel,
+      apiKey: speechAPIKey.isEmpty && isUnchanged
+        ? (activeSpeechEndpoint?.apiKey ?? "") : speechAPIKey
+    )
+  }
+
+  func candidateLanguageModelProvider() throws -> LanguageModelProvider? {
+    let draft = aiProviderDraft
+    guard let defaultURL = draft.languageModelEngine.defaultBaseURL else { return nil }
+    let wireProtocol: LanguageModelProvider.WireProtocol =
+      draft.languageModelEngine == .anthropic ? .anthropic : .openAI
+    let baseURL = draft.languageModelBaseURL.isEmpty ? defaultURL : draft.languageModelBaseURL
+    let isUnchanged =
+      activeLanguageModelProvider?.wireProtocol == wireProtocol
+      && activeLanguageModelProvider?.endpoint.baseURL.absoluteString == baseURL
+    return LanguageModelProvider(
+      wireProtocol: wireProtocol,
+      endpoint: try ThirdPartyEndpoint.validated(
+        baseURL: baseURL,
+        model: draft.languageModelName,
+        apiKey: languageModelAPIKey.isEmpty && isUnchanged
+          ? (activeLanguageModelProvider?.endpoint.apiKey ?? "") : languageModelAPIKey
+      )
+    )
+  }
+
+  /// Keys are deleted as soon as a service is turned off. Both keys change together, so a
+  /// failure cannot leave one service's key beside another service's address.
+  func persistAIProviders(
+    _ draft: AIProviderDraft,
+    speech: ThirdPartyEndpoint?,
+    languageModel: LanguageModelProvider?
+  ) throws {
+    let previousSpeechKey = try KeychainStore.read(
+      service: Self.aiKeychainService, account: Self.speechKeyAccount)
+    try KeychainStore.save(
+      speech?.apiKey ?? "", service: Self.aiKeychainService, account: Self.speechKeyAccount)
+    do {
+      try KeychainStore.save(
+        languageModel?.endpoint.apiKey ?? "",
+        service: Self.aiKeychainService,
+        account: Self.languageModelKeyAccount
+      )
+    } catch {
+      try? KeychainStore.save(
+        previousSpeechKey ?? "", service: Self.aiKeychainService, account: Self.speechKeyAccount)
+      throw error
+    }
     let defaults = UserDefaults.standard
-    speakerDiarizationEnabled = defaults.bool(forKey: Self.speakerDiarizationKey)
-    rememberVoicesEnabled = defaults.bool(forKey: Self.rememberVoicesKey)
-    selfVoiceprintEnrolledAt = storedSelfVoiceprint()?.enrolledAt
-    let stored =
-      (try? KeychainStore.read(
-        service: Self.realtimeKeychainService, account: Self.savedVoicesAccount))
-      .flatMap { try? JSONDecoder().decode([SavedVoice].self, from: Data($0.utf8)) } ?? []
-    let cutoff = Date.now.addingTimeInterval(-Self.savedVoiceExpiry)
-    let current = stored.filter { $0.lastHeardAt >= cutoff }
-    savedVoices = current
-    if current.count != stored.count { try? persistSavedVoices(current) }
+    defaults.set(draft.speechEngine.rawValue, forKey: Self.speechEngineKey)
+    defaults.set(draft.speechBaseURL, forKey: Self.speechBaseURLKey)
+    defaults.set(draft.speechModel, forKey: Self.speechModelKey)
+    defaults.set(draft.languageModelEngine.rawValue, forKey: Self.languageModelEngineKey)
+    defaults.set(draft.languageModelBaseURL, forKey: Self.languageModelBaseURLKey)
+    defaults.set(draft.languageModelName, forKey: Self.languageModelNameKey)
+    restorePersistedAIProviders()
   }
 
-  private func applySpeakerOptions(to configuration: inout RealtimeProcessingConfiguration) {
-    guard speakerDiarizationEnabled else { return }
-    configuration.speakerDiarization = true
-    var voices: [RealtimeKnownVoiceprint] = []
-    if let own = storedSelfVoiceprint()?.voiceprint {
-      voices.append(
-        RealtimeKnownVoiceprint(personID: RealtimeSpeaker.selfPersonID, voiceprint: own))
-    }
-    if rememberVoicesEnabled {
-      voices += savedVoices.map {
-        RealtimeKnownVoiceprint(personID: $0.id, voiceprint: $0.voiceprint)
-      }
-    }
-    configuration.knownVoiceprints = voices
-  }
+  private func restorePersistedAIProviders() {
+    let defaults = UserDefaults.standard
+    speechEngine =
+      SpeechEngine(rawValue: defaults.string(forKey: Self.speechEngineKey) ?? "") ?? .apple
+    speechBaseURL = defaults.string(forKey: Self.speechBaseURLKey) ?? ""
+    speechModel = defaults.string(forKey: Self.speechModelKey) ?? ""
+    speechAPIKey = ""
+    languageModelEngine =
+      LanguageModelEngine(rawValue: defaults.string(forKey: Self.languageModelEngineKey) ?? "")
+      ?? .apple
+    languageModelBaseURL = defaults.string(forKey: Self.languageModelBaseURLKey) ?? ""
+    languageModelName = defaults.string(forKey: Self.languageModelNameKey) ?? ""
+    languageModelAPIKey = ""
 
-  private func storedSelfVoiceprint() -> SelfVoiceprintRecord? {
-    guard
-      let stored = try? KeychainStore.read(
-        service: Self.realtimeKeychainService, account: Self.selfVoiceprintAccount)
-    else { return nil }
-    return try? JSONDecoder().decode(SelfVoiceprintRecord.self, from: Data(stored.utf8))
-  }
-
-  #if DEBUG
-    private static var debugRealtimeConfiguration: RealtimeProcessingConfiguration? {
-      let environment = ProcessInfo.processInfo.environment
-      guard
-        let rawURL = environment["WAKEONCUE_TEST_REALTIME_GATEWAY_URL"],
-        let gatewayURL = URL(string: rawURL),
-        let bearerToken = environment["WAKEONCUE_TEST_REALTIME_GATEWAY_TOKEN"],
-        !bearerToken.isEmpty
-      else { return nil }
-      return RealtimeProcessingConfiguration(
-        gatewayURL: gatewayURL,
-        bearerToken: bearerToken
+    activeSpeechEndpoint = speechEngine.defaultBaseURL.flatMap { defaultURL in
+      try? ThirdPartyEndpoint.validated(
+        baseURL: speechBaseURL.isEmpty ? defaultURL : speechBaseURL,
+        model: speechModel,
+        apiKey: (try? KeychainStore.read(
+          service: Self.aiKeychainService, account: Self.speechKeyAccount)) ?? ""
       )
     }
-  #endif
-
-  var activeLocalAudioRetention: TimeInterval {
-    let stored = UserDefaults.standard.integer(forKey: Self.localAudioRetentionDaysKey)
-    let days = stored == 0 ? Self.defaultLocalAudioRetentionDays : stored
-    return Self.localAudioRetentionInterval(days: days)
-  }
-
-  static func normalizedLocalAudioRetentionDays(_ days: Int) -> Int {
-    min(
-      max(days, localAudioRetentionDaysRange.lowerBound),
-      localAudioRetentionDaysRange.upperBound
-    )
-  }
-
-  static func localAudioRetentionInterval(days: Int) -> TimeInterval {
-    TimeInterval(normalizedLocalAudioRetentionDays(days) * 24 * 60 * 60)
-  }
-
-  func candidateS3Configuration() throws -> S3Configuration {
-    let endpoint = try endpointURL(from: s3EndpointURL)
-    let accessKey =
-      s3AccessKeyID.isEmpty
-      ? (try KeychainStore.read(service: Self.keychainService, account: Self.accessKeyAccount) ?? "")
-      : s3AccessKeyID
-    let secretKey =
-      s3SecretAccessKey.isEmpty
-      ? (try KeychainStore.read(service: Self.keychainService, account: Self.secretKeyAccount) ?? "")
-      : s3SecretAccessKey
-    let sessionToken =
-      s3SessionToken.isEmpty
-      ? try KeychainStore.read(service: Self.keychainService, account: Self.sessionTokenAccount)
-      : s3SessionToken
-    let bucket = s3Bucket.trimmingCharacters(in: .whitespacesAndNewlines)
-    let region = s3Region.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !bucket.isEmpty, !region.isEmpty else {
-      throw S3SettingsError.invalid(language.localized("S3 bucket and region are required."))
+    activeLanguageModelProvider = languageModelEngine.defaultBaseURL.flatMap { defaultURL in
+      (try? ThirdPartyEndpoint.validated(
+        baseURL: languageModelBaseURL.isEmpty ? defaultURL : languageModelBaseURL,
+        model: languageModelName,
+        apiKey: (try? KeychainStore.read(
+          service: Self.aiKeychainService, account: Self.languageModelKeyAccount)) ?? ""
+      )).map {
+        LanguageModelProvider(
+          wireProtocol: languageModelEngine == .anthropic ? .anthropic : .openAI, endpoint: $0)
+      }
     }
-    guard !accessKey.isEmpty, !secretKey.isEmpty else {
-      throw S3SettingsError.invalid(
-        language.localized("S3 access key and secret key are required."))
-    }
-    return S3Configuration(
-      endpointURL: endpoint,
-      region: region,
-      bucket: bucket,
-      prefix: s3Prefix.trimmingCharacters(in: CharacterSet(charactersIn: " /")),
-      accessKeyID: accessKey,
-      secretAccessKey: secretKey,
-      sessionToken: sessionToken,
-      forcePathStyle: s3ForcePathStyle
-    )
-  }
-
-  func persistS3Configuration(
-    _ configuration: S3Configuration,
-    localAudioRetentionDays: Int
-  ) throws {
-    try KeychainStore.save(
-      configuration.accessKeyID,
-      service: Self.keychainService,
-      account: Self.accessKeyAccount
-    )
-    try KeychainStore.save(
-      configuration.secretAccessKey,
-      service: Self.keychainService,
-      account: Self.secretKeyAccount
-    )
-    try KeychainStore.save(
-      configuration.sessionToken ?? "",
-      service: Self.keychainService,
-      account: Self.sessionTokenAccount
-    )
-
-    let defaults = UserDefaults.standard
-    defaults.set(configuration.endpointURL?.absoluteString ?? "", forKey: Self.endpointKey)
-    defaults.set(configuration.region, forKey: Self.regionKey)
-    defaults.set(configuration.bucket, forKey: Self.bucketKey)
-    defaults.set(configuration.prefix, forKey: Self.prefixKey)
-    defaults.set(configuration.forcePathStyle, forKey: Self.forcePathStyleKey)
-    defaults.set(
-      Self.normalizedLocalAudioRetentionDays(localAudioRetentionDays),
-      forKey: Self.localAudioRetentionDaysKey
-    )
-    defaults.set(true, forKey: Self.s3EnabledKey)
-    restorePersistedStorageMode()
-  }
-
-  func persistLocalMode() {
-    UserDefaults.standard.set(false, forKey: Self.s3EnabledKey)
-    restorePersistedStorageMode()
-  }
-
-  func candidateRealtimeConfiguration() throws -> RealtimeProcessingConfiguration {
-    let trimmedURL = realtimeGatewayURL.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let url = URL(string: trimmedURL), let scheme = url.scheme,
-      ["http", "https"].contains(scheme), url.host != nil
-    else {
-      throw RealtimeSettingsError.invalid(
-        language.localized("Enter a valid HTTP(S) realtime Gateway URL."))
-    }
-    let token =
-      realtimeGatewayToken.isEmpty
-      ? (try KeychainStore.read(
-        service: Self.realtimeKeychainService, account: Self.realtimeTokenAccount) ?? "")
-      : realtimeGatewayToken
-    guard !token.isEmpty else {
-      throw RealtimeSettingsError.invalid(language.localized("Gateway token is required."))
-    }
-    return RealtimeProcessingConfiguration(gatewayURL: url, bearerToken: token)
-  }
-
-  func applyRealtimePairing(_ pairing: RealtimeServicePairing) {
-    useRealtimeProcessing = true
-    realtimeGatewayURL = pairing.gatewayURL.absoluteString
-    realtimeGatewayToken = pairing.gatewayToken
-  }
-
-  func persistRealtimeConfiguration(_ configuration: RealtimeProcessingConfiguration) throws {
-    try KeychainStore.save(
-      configuration.bearerToken,
-      service: Self.realtimeKeychainService,
-      account: Self.realtimeTokenAccount
-    )
-    let defaults = UserDefaults.standard
-    defaults.set(configuration.gatewayURL.absoluteString, forKey: Self.realtimeGatewayURLKey)
-    defaults.set(true, forKey: Self.realtimeEnabledKey)
   }
 
   func restorePersistedSettings() {
-    restorePersistedStorageMode()
-    restorePersistedRealtimeConfiguration()
-  }
-
-  func persistRealtimeDisabled() {
-    UserDefaults.standard.set(false, forKey: Self.realtimeEnabledKey)
-    restorePersistedRealtimeConfiguration()
-  }
-
-  func restorePersistedStorageMode() {
-    let defaults = UserDefaults.standard
-    let credentials = storedCredentials()
-    s3HasStoredCredentials = credentials != nil
-    useS3 = defaults.bool(forKey: Self.s3EnabledKey) && credentials != nil
-    if defaults.bool(forKey: Self.s3EnabledKey), credentials == nil {
-      defaults.set(false, forKey: Self.s3EnabledKey)
-    }
-    s3EndpointURL = defaults.string(forKey: Self.endpointKey) ?? ""
-    s3Region = defaults.string(forKey: Self.regionKey) ?? "us-east-1"
-    s3Bucket = defaults.string(forKey: Self.bucketKey) ?? ""
-    s3Prefix = defaults.string(forKey: Self.prefixKey) ?? "wakeoncue"
-    s3ForcePathStyle = defaults.bool(forKey: Self.forcePathStyleKey)
-    let storedRetentionDays = defaults.integer(forKey: Self.localAudioRetentionDaysKey)
-    localAudioRetentionDays =
-      storedRetentionDays == 0
-      ? Self.defaultLocalAudioRetentionDays
-      : Self.normalizedLocalAudioRetentionDays(storedRetentionDays)
-    s3AccessKeyID = ""
-    s3SecretAccessKey = ""
-    s3SessionToken = ""
-    restorePersistedRealtimeConfiguration()
-  }
-
-  private func restorePersistedRealtimeConfiguration() {
-    let defaults = UserDefaults.standard
-    let token = try? KeychainStore.read(
-      service: Self.realtimeKeychainService, account: Self.realtimeTokenAccount)
-    realtimeHasStoredToken = token?.isEmpty == false
-    useRealtimeProcessing = defaults.bool(forKey: Self.realtimeEnabledKey) && realtimeHasStoredToken
-    if defaults.bool(forKey: Self.realtimeEnabledKey), !realtimeHasStoredToken {
-      defaults.set(false, forKey: Self.realtimeEnabledKey)
-    }
-    realtimeGatewayURL = defaults.string(forKey: Self.realtimeGatewayURLKey) ?? ""
-    realtimeGatewayToken = ""
-    restoreSpeakerSettings()
+    hasLegacyS3Credentials = storedCredentials() != nil
     spokenLanguage = SpokenLanguage(
-      rawValue: defaults.string(forKey: Self.spokenLanguageKey) ?? ""
+      rawValue: UserDefaults.standard.string(forKey: Self.spokenLanguageKey) ?? ""
     ) ?? .automatic
+    rememberedVoiceNames =
+      (try? KeychainStore.read(service: Self.realtimeKeychainService, account: Self.voiceNamesAccount))
+      .flatMap { try? JSONDecoder().decode([String: String].self, from: Data($0.utf8)) } ?? [:]
+    restorePersistedAIProviders()
   }
 
-  private func persistedRealtimeConfiguration() -> RealtimeProcessingConfiguration? {
-    let defaults = UserDefaults.standard
-    guard let url = URL(string: defaults.string(forKey: Self.realtimeGatewayURLKey) ?? ""),
-      let token = try? KeychainStore.read(
-        service: Self.realtimeKeychainService, account: Self.realtimeTokenAccount),
-      !token.isEmpty
-    else { return nil }
-    var configuration = RealtimeProcessingConfiguration(gatewayURL: url, bearerToken: token)
-    applySpeakerOptions(to: &configuration)
-    return configuration
-  }
-
-  private func persistedS3Configuration() -> S3Configuration? {
+  var legacyS3Configuration: S3Configuration? {
     let defaults = UserDefaults.standard
     guard let credentials = storedCredentials() else { return nil }
-    let endpointString = defaults.string(forKey: Self.endpointKey) ?? ""
+    let endpoint = (defaults.string(forKey: Self.endpointKey)).flatMap { URL(string: $0) }
     return S3Configuration(
-      endpointURL: try? endpointURL(from: endpointString),
+      endpointURL: endpoint?.host == nil ? nil : endpoint,
       region: defaults.string(forKey: Self.regionKey) ?? "us-east-1",
       bucket: defaults.string(forKey: Self.bucketKey) ?? "",
       prefix: defaults.string(forKey: Self.prefixKey) ?? "wakeoncue",
@@ -485,6 +293,13 @@ final class AppSettings {
       sessionToken: credentials.sessionToken,
       forcePathStyle: defaults.bool(forKey: Self.forcePathStyleKey)
     )
+  }
+
+  func forgetLegacyS3Storage() throws {
+    for account in [Self.accessKeyAccount, Self.secretKeyAccount, Self.sessionTokenAccount] {
+      try KeychainStore.delete(service: Self.keychainService, account: account)
+    }
+    hasLegacyS3Credentials = false
   }
 
   private func storedCredentials() -> (accessKey: String, secretKey: String, sessionToken: String?)?
@@ -501,68 +316,16 @@ final class AppSettings {
       service: Self.keychainService, account: Self.sessionTokenAccount)
     return (accessKey, secretKey, token?.isEmpty == false ? token : nil)
   }
-
-  private func endpointURL(from value: String) throws -> URL? {
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-    guard let url = URL(string: trimmed), let scheme = url.scheme,
-      ["http", "https"].contains(scheme), url.host != nil
-    else {
-      throw S3SettingsError.invalid(language.localized("Enter a valid HTTP(S) S3 endpoint."))
-    }
-    return url
-  }
 }
 
-struct RealtimeProcessingConfiguration: Equatable, Sendable {
-  let gatewayURL: URL
-  let bearerToken: String
-  var speakerDiarization = false
-  var knownVoiceprints: [RealtimeKnownVoiceprint] = []
-}
-
-/// A named person's voiceprint. It never leaves this device except to the user's own
-/// realtime service for the length of a session.
-struct SavedVoice: Codable, Equatable, Identifiable, Sendable {
-  let id: String
-  let name: String
-  let voiceprint: RealtimeVoiceprint
-  let createdAt: Date
-  let lastHeardAt: Date
-
-  func renamed(_ name: String) -> SavedVoice {
-    SavedVoice(
-      id: id, name: name, voiceprint: voiceprint, createdAt: createdAt, lastHeardAt: lastHeardAt)
-  }
-
-  func heard(at date: Date) -> SavedVoice {
-    SavedVoice(id: id, name: name, voiceprint: voiceprint, createdAt: createdAt, lastHeardAt: date)
-  }
-}
-
-private struct SelfVoiceprintRecord: Codable {
-  let voiceprint: RealtimeVoiceprint
-  let enrolledAt: Date
-}
-
-enum RealtimeSettingsError: LocalizedError {
-  case invalid(String)
-
-  var errorDescription: String? {
-    switch self {
-    case .invalid(let message): message
-    }
-  }
-}
-
-enum S3SettingsError: LocalizedError {
-  case invalid(String)
-
-  var errorDescription: String? {
-    switch self {
-    case .invalid(let message): message
-    }
-  }
+/// The service choices being saved, apart from their keys.
+struct AIProviderDraft: Equatable, Sendable {
+  let speechEngine: SpeechEngine
+  let speechBaseURL: String
+  let speechModel: String
+  let languageModelEngine: LanguageModelEngine
+  let languageModelBaseURL: String
+  let languageModelName: String
 }
 
 enum KeychainStore {

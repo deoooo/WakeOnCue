@@ -29,9 +29,11 @@ struct AskRecordingsView: View {
         .accessibilityIdentifier("ask-submit")
       } footer: {
         Text(
-          OnDeviceIntelligence.canSummarize
-            ? "Answers are written on this iPhone from your local transcripts only."
-            : "Apple Intelligence is not available, so matching passages are shown without a written answer."
+          model.settings.activeLanguageModelProvider != nil
+            ? "Matching passages are sent to the service you configured to write the answer. Speaker names stay on this iPhone."
+            : OnDeviceIntelligence.canSummarize
+              ? "Answers are written on this iPhone from your local transcripts only."
+              : "Apple Intelligence is not available, so matching passages are shown without a written answer."
         )
       }
 
@@ -137,7 +139,8 @@ struct AskRecordingsView: View {
           citations[index].speakerName = speakerName(for: citations[index])
         }
         let result = await RecordingQuestionAnswering.answer(
-          question: asked, citations: citations, language: language)
+          question: asked, citations: citations, language: language,
+          provider: model.settings.activeLanguageModelProvider)
         guard askedQuestion == asked else { return }
         answer = result
       } catch {

@@ -21,10 +21,6 @@ if [[ "$backend" == "qwen" ]]; then
   echo "Qwen runtime is ready. Set WAKEONCUE_QWEN_MODEL to a local Qwen3-ASR-1.7B checkout."
 fi
 
-if ! command -v dns-sd >/dev/null; then
-  echo "Warning: dns-sd is missing; Bonjour LAN discovery will be unavailable." >&2
-fi
-
 keychain_service="com.deoooo.WakeOnCue.realtime.mac"
 keychain_account="gateway-token"
 if ! /usr/bin/security find-generic-password -s "$keychain_service" -a "$keychain_account" -w >/dev/null 2>&1; then
@@ -35,5 +31,5 @@ else
   echo "Reusing the existing realtime Gateway token in the macOS Keychain."
 fi
 
-echo "Mac dependencies are ready. Start the LAN stack with:"
+echo "Mac dependencies are ready. Start the local stack with:"
 echo "  server/scripts/run_local_mac_stack.sh"

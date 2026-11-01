@@ -941,3 +941,55 @@ import Testing
   #expect(recording.status == .completed)
   #expect(recording.endedAt == capturedUntil)
 }
+
+@Test func onlyRecordingsActuallyInS3CountAsBackedUp() async throws {
+  let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let store = try RecordingStore(databaseURL: directory.appending(path: "store.sqlite"))
+  func make(_ id: String, metadata: [String: String] = [:], queue: Bool = false) async throws {
+    try await store.createRecording(
+      RecordingRecord(
+        id: id, createdAt: .now, startedAt: .now, status: .recording,
+        localAudioPath: directory.appending(path: "\(id).caf").path,
+        deviceModel: "test", appVersion: "1", metadata: metadata),
+      createPayloadPath: directory.appending(path: "\(id).json").path,
+      enqueueUpload: queue
+    )
+  }
+
+  try await make("local")
+  try await store.completeLocally(recordingID: "local", duration: 1)
+  #expect(try await store.isBackedUpToS3(recordingID: "local") == false)
+
+  try await make("located", metadata: [S3Configuration.metadataBucketKey: "bucket"])
+  #expect(try await store.isBackedUpToS3(recordingID: "located") == true)
+
+  try await make("abandoned", metadata: [S3Configuration.metadataBucketKey: "bucket"], queue: true)
+  try await store.completeLocally(recordingID: "abandoned", duration: 1)
+  #expect(try await store.isBackedUpToS3(recordingID: "abandoned") == false)
+
+  try await make("legacy", queue: true)
+  #expect(try await store.isBackedUpToS3(recordingID: "legacy") == false)
+  var eligible = try await store.eligibleUploadTasks()
+  try await store.claimUploadTask(id: eligible[0].id, backgroundTaskIdentifier: 1)
+  try await store.markUploadTaskUploaded(id: eligible[0].id)
+  try await store.transition(recordingID: "legacy", to: .finishing, duration: 1)
+  try await store.enqueueControlTask(
+    recordingID: "legacy", kind: .finish, payloadPath: directory.appending(path: "legacy.m4a").path)
+  #expect(try await store.isBackedUpToS3(recordingID: "legacy") == false)
+  eligible = try await store.eligibleUploadTasks()
+  try await store.claimUploadTask(id: eligible[0].id, backgroundTaskIdentifier: 2)
+  try await store.markUploadTaskUploaded(id: eligible[0].id)
+  #expect(try await store.isBackedUpToS3(recordingID: "legacy") == true)
+
+  // A later transcript upload left finished recordings marked as uploading.
+  try await store.enqueueTranscriptTask(
+    recordingID: "legacy", transcriptPath: directory.appending(path: "legacy.json").path)
+  eligible = try await store.eligibleUploadTasks()
+  try await store.claimUploadTask(id: eligible[0].id, backgroundTaskIdentifier: 3)
+  #expect(try await store.recording(id: "legacy").uploadStatus == .uploading)
+  try await store.settleFinishedUploadStatuses()
+  #expect(try await store.recording(id: "legacy").uploadStatus == .completed)
+  #expect(try await store.recording(id: "legacy").status == .completed)
+}

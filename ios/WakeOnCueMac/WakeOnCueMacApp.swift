@@ -20,17 +20,11 @@ struct WakeOnCueMacApp: App {
     }
     .defaultSize(width: 420, height: 520)
     .windowResizability(.contentMinSize)
-
-    Window(Text("Pair iPhone"), id: WindowID.pairing) {
-      PairingView(model: model)
-    }
-    .windowResizability(.contentSize)
   }
 }
 
 enum WindowID {
   static let transcript = "transcript"
-  static let pairing = "pairing"
 }
 
 @MainActor

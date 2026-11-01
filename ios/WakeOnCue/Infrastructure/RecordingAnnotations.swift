@@ -285,14 +285,10 @@ enum RecordingTranscriptExporter {
     unknownSpeakerName: String = "Unknown speaker"
   ) -> String {
     sorted(transcript).map { segment in
-      let speaker = effectiveSpeakerName(
-        segment.speaker,
-        aliases: speakerAliases,
-        personNames: personNames,
-        unknownSpeakerName: unknownSpeakerName
-      )
+      let speaker = speakerPrefix(
+        segment.speaker, speakerAliases, personNames, unknownSpeakerName)
       return
-        "[\(playbackTimestamp(TimeInterval(segment.startMilliseconds) / 1_000))] \(speaker): \(segment.text)"
+        "[\(playbackTimestamp(TimeInterval(segment.startMilliseconds) / 1_000))] \(speaker)\(segment.text)"
     }.joined(separator: "\n")
   }
 
@@ -303,17 +299,30 @@ enum RecordingTranscriptExporter {
     unknownSpeakerName: String = "Unknown speaker"
   ) -> String {
     sorted(transcript).enumerated().map { index, segment in
-      let speaker = effectiveSpeakerName(
-        segment.speaker,
-        aliases: speakerAliases,
-        personNames: personNames,
-        unknownSpeakerName: unknownSpeakerName
-      )
+      let speaker = speakerPrefix(
+        segment.speaker, speakerAliases, personNames, unknownSpeakerName)
       let start = max(0, segment.startMilliseconds)
       let end = max(start, segment.endMilliseconds)
       return
-        "\(index + 1)\n\(srtTimestamp(start)) --> \(srtTimestamp(end))\n\(speaker): \(segment.text)"
+        "\(index + 1)\n\(srtTimestamp(start)) --> \(srtTimestamp(end))\n\(speaker)\(segment.text)"
     }.joined(separator: "\n\n")
+  }
+
+  /// Transcripts without speaker labels are exported as plain text.
+  private static func speakerPrefix(
+    _ speaker: RealtimeSpeaker?,
+    _ speakerAliases: [String: String],
+    _ personNames: [String: String],
+    _ unknownSpeakerName: String
+  ) -> String {
+    guard speaker != nil else { return "" }
+    let name = effectiveSpeakerName(
+      speaker,
+      aliases: speakerAliases,
+      personNames: personNames,
+      unknownSpeakerName: unknownSpeakerName
+    )
+    return "\(name): "
   }
 
   static func write(

@@ -3,12 +3,11 @@ import XCTest
 /// Uses isolated generated audio/text. Does not validate microphone, camera, ASR or S3.
 final class ProductExperienceUITests: XCTestCase {
   @MainActor
-  private func launch(language: String = "en", largeText: Bool = false, offlineBackup: Bool = false) -> XCUIApplication {
+  private func launch(language: String = "en", largeText: Bool = false) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchEnvironment["WAKEONCUE_EXPERIENCE_FIXTURES"] = "1"
     app.launchEnvironment["WAKEONCUE_UI_TEST_LANGUAGE"] = language
     app.launchEnvironment["WAKEONCUE_TEST_AUDIO_FIXTURE_FILENAME"] = "experience-input.m4a"
-    if offlineBackup { app.launchEnvironment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] = "1" }
     if largeText {
       app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
     }
@@ -144,28 +143,4 @@ final class ProductExperienceUITests: XCTestCase {
     add(screenshot)
   }
 
-  @MainActor
-  func testUnavailableCloudDoesNotBlockNextRecordingOrRelaunch() throws {
-    let app = launch(offlineBackup: true)
-    addUIInterruptionMonitor(withDescription: "Microphone permission") { alert in
-      if alert.buttons["Allow"].exists { alert.buttons["Allow"].tap(); return true }
-      if alert.buttons["OK"].exists { alert.buttons["OK"].tap(); return true }
-      return false
-    }
-    let start = app.buttons["start-recording"]
-    XCTAssertTrue(start.waitForExistence(timeout: 25))
-    start.tap()
-    app.tap()
-    let finish = app.buttons["finish-recording"]
-    XCTAssertTrue(finish.waitForExistence(timeout: 15))
-    finish.tap()
-    XCTAssertTrue(start.waitForExistence(timeout: 20), "Unavailable cloud must not hold the recording control")
-    start.tap()
-    XCTAssertTrue(finish.waitForExistence(timeout: 15))
-    finish.tap()
-    XCTAssertTrue(start.waitForExistence(timeout: 20))
-    app.terminate()
-    app.launch()
-    XCTAssertTrue(start.waitForExistence(timeout: 25), "Relaunch must not promote background backups to active capture")
-  }
 }

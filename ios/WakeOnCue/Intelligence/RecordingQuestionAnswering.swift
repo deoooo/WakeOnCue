@@ -167,15 +167,27 @@ enum RecordingQuestionRetriever {
 }
 
 enum RecordingQuestionAnswering {
-  /// Generated-answer pass, used only once retrieval found passages. Without Apple
-  /// Intelligence the matching passages are returned with no generated text.
+  /// Generated-answer pass, used only once retrieval found passages. Without a configured
+  /// service or Apple Intelligence the matching passages are returned with no generated text.
   static func answer(
     question: String,
     citations: [RecordingCitation],
-    language: AppLanguage
+    language: AppLanguage,
+    provider: LanguageModelProvider? = nil,
+    session: URLSession = ThirdPartyHTTP.session
   ) async -> RecordingAnswer {
     guard !citations.isEmpty else {
       return RecordingAnswer(text: nil, notice: .nothingFound, sources: [])
+    }
+    if let provider {
+      do {
+        return try await ThirdPartyIntelligence.answer(
+          question: question, citations: citations, language: language,
+          provider: provider, session: session)
+      } catch {
+        return RecordingAnswer(
+          text: nil, notice: .failed(error.localizedDescription), sources: citations)
+      }
     }
     guard OnDeviceIntelligence.canSummarize else {
       return RecordingAnswer(text: nil, notice: .intelligenceUnavailable, sources: citations)
@@ -194,17 +206,58 @@ enum RecordingQuestionAnswering {
     return RecordingAnswer(text: nil, notice: .intelligenceUnavailable, sources: citations)
   }
 
-  /// Numbered excerpts trimmed to fit the small on-device context window.
+  /// Turns a model's reply into an answer, ignoring source numbers it invented.
+  static func resolvedAnswer(
+    answerable: Bool,
+    text: String,
+    sources: [Int],
+    citations: [RecordingCitation],
+    excerptCount: Int
+  ) -> RecordingAnswer {
+    let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard answerable, !answer.isEmpty else {
+      return RecordingAnswer(text: nil, notice: .notInRecordings, sources: citations)
+    }
+    let cited = sources.compactMap { number in
+      (1...max(excerptCount, 1)).contains(number) && number <= citations.count
+        ? citations[number - 1] : nil
+    }
+    let unique = cited.reduce(into: [RecordingCitation]()) { result, citation in
+      if !result.contains(where: { $0.id == citation.id }) { result.append(citation) }
+    }
+    return RecordingAnswer(
+      text: answer, notice: nil,
+      sources: unique.isEmpty ? Array(citations.prefix(excerptCount)) : unique)
+  }
+
+  /// The part of a long segment around the question's first match, since an untimed transcript
+  /// can hold a whole recording in one segment.
+  static func window(of text: String, matching question: String?, limit: Int) -> String {
+    guard text.count > limit else { return text }
+    let match = question.flatMap { question in
+      RecordingQuestionRetriever.terms(question)
+        .compactMap { text.range(of: $0, options: .caseInsensitive) }
+        .min { $0.lowerBound < $1.lowerBound }
+    }
+    guard let match else { return String(text.prefix(limit)) }
+    let offset = text.distance(from: text.startIndex, to: match.lowerBound)
+    let start = text.index(text.startIndex, offsetBy: max(0, min(offset - limit / 2, text.count - limit)))
+    return String(text[start...].prefix(limit))
+  }
+
+  /// Numbered excerpts trimmed to fit a model's context window.
   static func excerpts(
     for citations: [RecordingCitation],
+    question: String? = nil,
     maxCharacters: Int = 3_000,
-    perExcerpt: Int = 360
+    perExcerpt: Int = 360,
+    includeSpeakerNames: Bool = true
   ) -> [String] {
     var result: [String] = []
     var used = 0
     for (index, citation) in citations.enumerated() {
-      let text = String(citation.segment.text.prefix(perExcerpt))
-      let speaker = citation.speakerName.map { "\($0): " } ?? ""
+      let text = window(of: citation.segment.text, matching: question, limit: perExcerpt)
+      let speaker = includeSpeakerNames ? citation.speakerName.map { "\($0): " } ?? "" : ""
       let title = citation.recordingTitle.map { " \"\($0)\"" } ?? ""
       let line = "[\(index + 1)] Recording\(title) at \(citation.timestamp) — \(speaker)\(text)"
       if used + line.count > maxCharacters, !result.isEmpty { break }
@@ -234,26 +287,21 @@ enum RecordingQuestionAnswering {
     func answer(question: String, citations: [RecordingCitation]) async throws -> RecordingAnswer {
       var budget = 3_000
       while true {
-        let excerpts = RecordingQuestionAnswering.excerpts(for: citations, maxCharacters: budget)
+        let excerpts = RecordingQuestionAnswering.excerpts(
+          for: citations, question: question, maxCharacters: budget)
         do {
           let session = LanguageModelSession(instructions: instructions)
           let draft = try await session.respond(
             to: "Excerpts:\n\(excerpts.joined(separator: "\n"))\n\nQuestion: \(question)",
             generating: RecordingAnswerDraft.self
           ).content
-          let answer = draft.answer.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard draft.answerable, !answer.isEmpty else {
-            return RecordingAnswer(text: nil, notice: .notInRecordings, sources: citations)
-          }
-          let cited = draft.sources.compactMap { number in
-            (1...excerpts.count).contains(number) ? citations[number - 1] : nil
-          }
-          let unique = cited.reduce(into: [RecordingCitation]()) { result, citation in
-            if !result.contains(where: { $0.id == citation.id }) { result.append(citation) }
-          }
-          return RecordingAnswer(
-            text: answer, notice: nil,
-            sources: unique.isEmpty ? Array(citations.prefix(excerpts.count)) : unique)
+          return RecordingQuestionAnswering.resolvedAnswer(
+            answerable: draft.answerable,
+            text: draft.answer,
+            sources: draft.sources,
+            citations: citations,
+            excerptCount: excerpts.count
+          )
         } catch LanguageModelSession.GenerationError.exceededContextWindowSize where budget > 600 {
           budget /= 2
         }

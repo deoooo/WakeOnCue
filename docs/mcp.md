@@ -2,8 +2,8 @@
 
 WakeOnCue 有两种方式就录音内容提问，二者都要求「回答必须附带来源」：
 
-1. **iPhone 上的「向录音提问」**：完全在本机完成，不联网。
-2. **自托管 MCP 服务**：让 Claude Desktop、Claude Code 等 MCP 客户端只读访问你 S3 里的转写文字。
+1. **iPhone 上的「向录音提问」**：默认完全在本机完成；如果配置了[第三方模型](ai-providers.md)，匹配片段会发给该服务。
+2. **自托管 MCP 服务**：让 Claude Desktop、Claude Code 等 MCP 客户端只读访问 S3 里已有的转写文字。
    Gateway 或 Mac 一直在线，所以客户端访问时不需要唤醒 iPhone。
 
 ## iPhone：向录音提问
@@ -36,7 +36,9 @@ v1 没有任何写入工具。每个工具结果同时给出 `structuredContent`
 
 ### 读取什么、不读取什么
 
-服务只读取 iPhone 上传到 S3 的这些对象：
+> **iPhone 已不再上传到 S3，也不再连接 Gateway**，新录音不会出现在 MCP 里。这里只能检索旧版本已备份的内容，或你用其他方式写入同样结构的对象。
+
+服务只读取 S3 中的这些对象：
 
 ```text
 <prefix>/recordings/<recording_id>/metadata.json    # 开始时间、标题
@@ -50,9 +52,6 @@ v1 没有任何写入工具。每个工具结果同时给出 `structuredContent`
   已保存声音对应的人名只存在 iPhone 上，MCP 无从得知。
 - 对象按 ETag 缓存在内存里，默认每 30 秒最多重新列一次目录，只重新下载变化的文件。
 
-> 目前 iPhone 只在录音时上传 `metadata.json`，之后修改的标题和设备端摘要还不会同步到 S3，
-> 所以 MCP 返回的标题和摘要可能为空；转写文字会正常同步。
-
 ### 运行
 
 推荐挂在已有的 Realtime Gateway 上，共用同一个 Bearer token。设置 `WAKEONCUE_MCP_S3_BUCKET`
@@ -63,7 +62,7 @@ export WAKEONCUE_REALTIME_API_TOKEN="$(openssl rand -hex 32)"
 export WAKEONCUE_MCP_S3_BUCKET=my-wakeoncue-bucket
 export WAKEONCUE_MCP_S3_REGION=auto                       # R2 用 auto
 export WAKEONCUE_MCP_S3_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com
-export WAKEONCUE_MCP_S3_PREFIX=wakeoncue                   # 与 iPhone 设置里的前缀一致
+export WAKEONCUE_MCP_S3_PREFIX=wakeoncue                   # 与旧版本 iPhone 设置里的前缀一致
 export AWS_ACCESS_KEY_ID=...                               # 建议使用只读 key
 export AWS_SECRET_ACCESS_KEY=...
 PYTHONPATH=server python3 -m recording_service.realtime_main
@@ -77,7 +76,7 @@ WAKEONCUE_MCP_API_TOKEN=... WAKEONCUE_MCP_S3_BUCKET=... PYTHONPATH=server python
 
 | 环境变量 | 说明 |
 | --- | --- |
-| `WAKEONCUE_MCP_S3_BUCKET` | 必填，iPhone 上传的存储桶 |
+| `WAKEONCUE_MCP_S3_BUCKET` | 必填，保存转写的存储桶 |
 | `WAKEONCUE_MCP_S3_REGION` | 默认 `us-east-1` |
 | `WAKEONCUE_MCP_S3_ENDPOINT_URL` | R2、MinIO 等兼容服务的地址 |
 | `WAKEONCUE_MCP_S3_PREFIX` | 默认 `wakeoncue` |

@@ -18,7 +18,7 @@ struct AudioFileImporter {
 
     let recordingID =
       "rec_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
-    let chunkURL = try fileLayout.chunkURL(recordingID: recordingID, index: 0)
+    let chunkURL = try fileLayout.chunkURL(recordingID: recordingID, index: 1)
     let asset = AVURLAsset(url: source)
     guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A)
     else { throw AudioCaptureError.converterUnavailable }
@@ -51,7 +51,7 @@ struct AudioFileImporter {
       ChunkRecord(
         id: UUID().uuidString,
         recordingID: recordingID,
-        index: 0,
+        index: 1,
         localPath: chunkURL.path,
         checksum: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
         size: Int64(data.count),

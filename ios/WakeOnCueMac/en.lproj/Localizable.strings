@@ -29,14 +29,10 @@
 "No live transcript" = "No live transcript";
 "No microphone is available." = "No microphone is available.";
 "Not running" = "Not running";
-"On iPhone, open Settings › Live transcription › Pair self-hosted service and scan this code. Both devices must be on the same network." = "On iPhone, open Settings › Live transcription › Pair self-hosted service and scan this code. Both devices must be on the same network.";
 "Online meeting" = "Online meeting";
 "Open WakeOnCue at login" = "Open WakeOnCue at login";
 "Others" = "Others";
 "Others (system audio)" = "Others (system audio)";
-"Pair iPhone" = "Pair iPhone";
-"Pair iPhone…" = "Pair iPhone…";
-"Pair your iPhone" = "Pair your iPhone";
 "Processor" = "Processor";
 "Python environment missing. In Terminal, run server/scripts/setup_mac.sh from %@." = "Python environment missing. In Terminal, run server/scripts/setup_mac.sh from %@.";
 "Quit WakeOnCue" = "Quit WakeOnCue";
@@ -53,7 +49,6 @@
 "Saved the channel recordings, but could not make meeting.m4a: %@" = "Saved the channel recordings, but could not make meeting.m4a: %@";
 "Saving recording…" = "Saving recording…";
 "Show Live Transcript" = "Show Live Transcript";
-"Show Pairing Code" = "Show Pairing Code";
 "Show Recordings" = "Show Recordings";
 "Speaker %lld" = "Speaker %lld";
 "Speech model" = "Speech model";

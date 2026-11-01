@@ -89,6 +89,18 @@ final class RecordingAnnotationsTests: XCTestCase {
     XCTAssertEqual(transcript[0].speaker?.displayName, "Speaker 1")
   }
 
+  func testExportOmitsSpeakerLabelWhenTranscriptHasNone() {
+    let segment = RealtimeTranscriptEvent(
+      recordingID: "rec", segmentID: "s1", revision: 1, startMilliseconds: 1_000,
+      endMilliseconds: 2_000, text: "Hello", isFinal: true, speaker: nil)
+    XCTAssertEqual(
+      RecordingTranscriptExporter.plainText(transcript: [segment], speakerAliases: [:]),
+      "[00:01] Hello")
+    XCTAssertTrue(
+      RecordingTranscriptExporter.srt(transcript: [segment], speakerAliases: [:])
+        .hasSuffix("\nHello"))
+  }
+
   func testRecordingAliasWinsOverRecognizedSavedVoice() {
     let recognized = RealtimeSpeaker(clusterID: "speaker-1", personID: "p1", displayName: "Speaker 1")
     let anonymous = RealtimeSpeaker(clusterID: "speaker-2", displayName: "Speaker 2")

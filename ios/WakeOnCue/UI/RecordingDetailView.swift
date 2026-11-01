@@ -10,6 +10,7 @@ struct RecordingDetailView: View {
 
   @State private var displayedRecording: RecordingRecord
   @State private var isEditingTitle = false
+  @State private var isRetranscribeConfirmationPresented = false
   @State private var showsRecordingDetails = false
   @State private var transcript: [RealtimeTranscriptEvent] = []
   @State private var transcriptLoaded = false
@@ -137,18 +138,33 @@ struct RecordingDetailView: View {
 
       Menu {
         Button {
-          Task { await model.retranscribe(recording: displayedRecording) }
+          if transcript.contains(where: { $0.speaker != nil }) {
+            isRetranscribeConfirmationPresented = true
+          } else {
+            Task { await model.retranscribe(recording: displayedRecording) }
+          }
         } label: {
           Label(
-            "Retranscribe and identify speakers",
+            "Retranscribe",
             systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
           )
         }
-        .disabled(model.retranscribingRecordingID != nil)
+        .disabled(model.retranscribingRecordingID != nil || !model.canTranscribeRecordings)
         .accessibilityIdentifier("retranscribe-recording")
       } label: {
         Image(systemName: "ellipsis.circle")
           .frame(minWidth: 44, minHeight: 44)
+      }
+      .confirmationDialog(
+        "Replace this transcript?",
+        isPresented: $isRetranscribeConfirmationPresented,
+        titleVisibility: .visible
+      ) {
+        Button("Replace transcript", role: .destructive) {
+          Task { await model.retranscribe(recording: displayedRecording) }
+        }
+      } message: {
+        Text("The speaker labels and names in this transcript will be removed and cannot be recovered.")
       }
       .accessibilityLabel("More recording actions")
       .accessibilityIdentifier("more-recording-actions")
@@ -262,7 +278,7 @@ struct RecordingDetailView: View {
         ProgressView(value: model.retranscriptionProgress)
         Text(
           model.retranscriptionStatusMessage
-            ?? model.settings.language.localized("Transcribing and identifying speakers…")
+            ?? model.settings.language.localized("Transcribing…")
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -270,6 +286,24 @@ struct RecordingDetailView: View {
       .padding(.horizontal, 4)
       .accessibilityIdentifier("retranscription-progress")
     }
+  }
+
+  @ViewBuilder
+  private var transcribeButton: some View {
+      if model.canTranscribeRecordings {
+        Button {
+          Task { await model.processOnDevice(recording: displayedRecording) }
+        } label: {
+          if model.settings.activeSpeechEndpoint == nil {
+            Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
+          } else {
+            Label("Transcribe with your service", systemImage: "cloud")
+          }
+        }
+        .buttonStyle(.bordered)
+        .disabled(isProcessingOnDevice)
+        .accessibilityIdentifier("transcribe-on-device")
+      }
   }
 
   private func transcriptSection(using proxy: ScrollViewProxy) -> some View {
@@ -286,22 +320,14 @@ struct RecordingDetailView: View {
         Text(transcriptError)
           .font(.subheadline)
           .foregroundStyle(.orange)
+        transcribeButton
       } else if transcript.isEmpty {
         Text("No transcript was produced for this recording.")
           .font(.subheadline)
           .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 8)
-        if OnDeviceIntelligence.canTranscribe {
-          Button {
-            Task { await model.processOnDevice(recording: displayedRecording) }
-          } label: {
-            Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
-          }
-          .buttonStyle(.bordered)
-          .disabled(isProcessingOnDevice)
-          .accessibilityIdentifier("transcribe-on-device")
-        }
+        transcribeButton
       } else {
         VStack(alignment: .leading, spacing: 10) {
           LazyVStack(alignment: .leading, spacing: 8) {
@@ -315,20 +341,22 @@ struct RecordingDetailView: View {
                   .frame(minWidth: 42, alignment: .leading)
                   .fixedSize(horizontal: true, vertical: false)
                 VStack(alignment: .leading, spacing: 4) {
-                  Text(
-                    effectiveSpeakerName(
-                      segment.speaker,
-                      aliases: RecordingAnnotationsService.shared
-                        .annotations(for: recording.id).speakerAliases,
-                      personNames: model.settings.personNames,
-                      unknownSpeakerName: localizedSpeakerName(
-                        nil,
-                        language: model.settings.language
+                  if segment.speaker != nil {
+                    Text(
+                      effectiveSpeakerName(
+                        segment.speaker,
+                        aliases: RecordingAnnotationsService.shared
+                          .annotations(for: recording.id).speakerAliases,
+                        personNames: model.settings.personNames,
+                        unknownSpeakerName: localizedSpeakerName(
+                          nil,
+                          language: model.settings.language
+                        )
                       )
                     )
-                  )
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.cyan)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                  }
                   Text(segment.text)
                     .font(.body)
                     .textSelection(.enabled)
@@ -396,7 +424,7 @@ struct RecordingDetailView: View {
   private var summarySection: some View {
     let summary = model.summary(for: recording.id)
     if summary != nil || isProcessingOnDevice
-      || (OnDeviceIntelligence.canSummarize && !transcript.isEmpty)
+      || (model.canSummarizeRecordings && !transcript.isEmpty)
     {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
@@ -405,7 +433,7 @@ struct RecordingDetailView: View {
           Spacer()
           if isProcessingOnDevice {
             ProgressView().controlSize(.small)
-          } else if OnDeviceIntelligence.canSummarize, !transcript.isEmpty {
+          } else if model.canSummarizeRecordings, !transcript.isEmpty {
             Button(summary == nil ? "Summarize" : "Regenerate") {
               Task {
                 await model.processOnDevice(
@@ -437,7 +465,13 @@ struct RecordingDetailView: View {
               }
             }
           }
-          Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
+          Group {
+            if let generatedBy = summary.generatedBy {
+              Text("Written by \(generatedBy). Check it against the transcript.")
+            } else {
+              Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
+            }
+          }
             .font(.caption)
             .foregroundStyle(.secondary)
           Button {
@@ -450,7 +484,11 @@ struct RecordingDetailView: View {
           .buttonStyle(.bordered)
           .accessibilityIdentifier("send-meeting-notes")
         } else if isProcessingOnDevice {
-          Text("Transcribing and summarizing on this iPhone…")
+          Text(
+            model.settings.activeSpeechEndpoint == nil && model.settings.activeLanguageModelProvider == nil
+              ? "Transcribing and summarizing on this iPhone…"
+              : "Transcribing and summarizing with your service…"
+          )
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
