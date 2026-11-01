@@ -140,7 +140,7 @@ struct RecordingDetailView: View {
           Task { await model.retranscribe(recording: displayedRecording) }
         } label: {
           Label(
-            "Retranscribe and identify speakers",
+            model.settings.useRealtimeProcessing ? "Retranscribe and identify speakers" : "Retranscribe",
             systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
           )
         }
@@ -292,11 +292,15 @@ struct RecordingDetailView: View {
           .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 8)
-        if OnDeviceIntelligence.canTranscribe {
+        if model.canTranscribeRecordings {
           Button {
             Task { await model.processOnDevice(recording: displayedRecording) }
           } label: {
-            Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
+            if model.settings.activeSpeechEndpoint == nil {
+              Label("Transcribe on this iPhone", systemImage: "iphone.gen3")
+            } else {
+              Label("Transcribe with your service", systemImage: "cloud")
+            }
           }
           .buttonStyle(.bordered)
           .disabled(isProcessingOnDevice)
@@ -396,7 +400,7 @@ struct RecordingDetailView: View {
   private var summarySection: some View {
     let summary = model.summary(for: recording.id)
     if summary != nil || isProcessingOnDevice
-      || (OnDeviceIntelligence.canSummarize && !transcript.isEmpty)
+      || (model.canSummarizeRecordings && !transcript.isEmpty)
     {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
@@ -405,7 +409,7 @@ struct RecordingDetailView: View {
           Spacer()
           if isProcessingOnDevice {
             ProgressView().controlSize(.small)
-          } else if OnDeviceIntelligence.canSummarize, !transcript.isEmpty {
+          } else if model.canSummarizeRecordings, !transcript.isEmpty {
             Button(summary == nil ? "Summarize" : "Regenerate") {
               Task {
                 await model.processOnDevice(
@@ -437,7 +441,13 @@ struct RecordingDetailView: View {
               }
             }
           }
-          Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
+          Group {
+            if let generatedBy = summary.generatedBy {
+              Text("Written by \(generatedBy). Check it against the transcript.")
+            } else {
+              Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
+            }
+          }
             .font(.caption)
             .foregroundStyle(.secondary)
           Button {
@@ -450,7 +460,11 @@ struct RecordingDetailView: View {
           .buttonStyle(.bordered)
           .accessibilityIdentifier("send-meeting-notes")
         } else if isProcessingOnDevice {
-          Text("Transcribing and summarizing on this iPhone…")
+          Text(
+            model.settings.activeSpeechEndpoint == nil && model.settings.activeLanguageModelProvider == nil
+              ? "Transcribing and summarizing on this iPhone…"
+              : "Transcribing and summarizing with your service…"
+          )
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }

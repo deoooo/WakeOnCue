@@ -113,18 +113,6 @@ final class RecordingFileLayoutTests: XCTestCase {
     XCTAssertEqual(AppSettings().spokenLanguage.recognitionCode, "zh")
   }
 
-  @MainActor
-  func testLocalAudioRetentionSupportsCustomDaysAndClampsInvalidValues() {
-    XCTAssertEqual(AppSettings.defaultLocalAudioRetentionDays, 7)
-    XCTAssertEqual(AppSettings.normalizedLocalAudioRetentionDays(0), 1)
-    XCTAssertEqual(AppSettings.normalizedLocalAudioRetentionDays(14), 14)
-    XCTAssertEqual(AppSettings.normalizedLocalAudioRetentionDays(500), 365)
-    XCTAssertEqual(
-      AppSettings.localAudioRetentionInterval(days: 14),
-      TimeInterval(14 * 24 * 60 * 60)
-    )
-  }
-
   func testCreatesDurableQueuePayload() throws {
     let layout = try RecordingFileLayout()
     let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -166,53 +154,6 @@ final class RecordingFileLayoutTests: XCTestCase {
     let decoded = try JSONDecoder().decode(
       RecordingActivityAttributes.ContentState.self, from: data)
     XCTAssertFalse(decoded.usesS3)
-  }
-
-  func testUploadedRecordingCleanupKeepsFinalM4AUntilRetentionExpires() throws {
-    let layout = try RecordingFileLayout()
-    let recordingID = "rec_cleanup_\(UUID().uuidString)"
-    let directory = try layout.directory(for: recordingID)
-    defer { try? FileManager.default.removeItem(at: directory) }
-
-    let source = try layout.sourceAudioURL(recordingID: recordingID)
-    let chunk = try layout.chunkURL(recordingID: recordingID, index: 1)
-    let finalAudio = try layout.downloadedAudioURL(recordingID: recordingID)
-    try Data("source".utf8).write(to: source)
-    try Data("chunk".utf8).write(to: chunk)
-    try Data("final".utf8).write(to: finalAudio)
-
-    let now = Date()
-    let recording = RecordingRecord(
-      id: recordingID,
-      createdAt: now,
-      startedAt: now,
-      status: .completed,
-      localAudioPath: source.path,
-      uploadStatus: .completed,
-      deviceModel: "test",
-      appVersion: "1"
-    )
-    let chunks = [
-      ChunkRecord(
-        id: "\(recordingID)_1",
-        recordingID: recordingID,
-        index: 1,
-        localPath: chunk.path,
-        checksum: "checksum",
-        size: 5,
-        startedAt: now,
-        duration: 1
-      )
-    ]
-    let maintenance = RecordingStorageMaintenance(fileLayout: layout)
-
-    try maintenance.removeUploadedSourceFiles(recording: recording, chunks: chunks)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: chunk.path))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: finalAudio.path))
-
-    try maintenance.removeExpiredFinalAudio(recordingID: recordingID)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: finalAudio.path))
   }
 
   func testDownloadsMissingFinalM4AFromS3AsARealLocalFile() async throws {

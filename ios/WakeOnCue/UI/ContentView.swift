@@ -465,11 +465,7 @@ struct ContentView: View {
         ProgressView()
           .controlSize(.large)
           .tint(.cyan)
-        Text(
-          model.settings.useS3
-            ? model.settings.language.localized("Securing local audio and syncing")
-            : model.settings.language.localized("Finishing your local recording")
-        )
+        Text(model.settings.language.localized("Finishing your local recording"))
         .font(.subheadline.weight(.medium))
         .foregroundStyle(.secondary)
         Button {
@@ -480,7 +476,7 @@ struct ContentView: View {
         .buttonStyle(.bordered)
         .tint(.cyan)
         .disabled(model.isBusy)
-        .accessibilityHint("Stops waiting for cloud sync and keeps this recording on this iPhone")
+        .accessibilityHint("Keeps this recording on this iPhone")
       }
       .frame(minHeight: 142)
     default:
@@ -823,12 +819,10 @@ struct ContentView: View {
 
   private func storageCaption(_ presentation: RecordingStatusPresentation?) -> String {
     guard let presentation else {
-      return model.settings.useS3
-        ? model.settings.language.localized("Cloud backup is ready for new recordings")
-        : model.settings.language.localized("Cloud backup is optional")
+      return model.settings.language.localized("No account or network needed")
     }
     return switch presentation.cloudBackup {
-    case .notRequested: model.settings.language.localized("Cloud backup off for this recording")
+    case .notRequested: model.settings.language.localized("Saved on this iPhone")
     case .pending: model.settings.language.localized("Cloud backup pending")
     case .synced: model.settings.language.localized("Cloud backup complete")
     case .failed: model.settings.language.localized("Cloud backup needs attention")

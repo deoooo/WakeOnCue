@@ -9,13 +9,15 @@ import WakeOnCueCore
   import Speech
 #endif
 
-/// A short, structured summary of one recording, written on this iPhone.
+/// A short, structured summary of one recording.
 struct RecordingSummary: Codable, Equatable, Sendable {
   var title: String
   var overview: String
   var keyPoints: [String]
   var actionItems: [String]
   var generatedAt: Date
+  /// The configured service's model; nil when Apple Intelligence wrote it on this iPhone.
+  var generatedBy: String? = nil
 }
 
 enum OnDeviceIntelligenceError: LocalizedError {
@@ -33,7 +35,7 @@ enum OnDeviceIntelligenceError: LocalizedError {
 }
 
 /// Free transcription and summaries that run entirely on this iPhone (iOS 26+), used when
-/// no realtime service is configured. Nothing leaves the device.
+/// no realtime or third-party service is configured.
 enum OnDeviceIntelligence {
   static var canTranscribe: Bool {
     if #available(iOS 26.0, *) { return SpeechTranscriber.isAvailable }

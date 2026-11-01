@@ -4,8 +4,7 @@ import SwiftUI
 struct SettingsView: View {
   @Environment(AppModel.self) private var model
   @State private var isActionButtonSetupPresented = false
-  @State private var isEditingS3Configuration = false
-  @State private var isS3AdvancedPresented = false
+  @State private var isForgetS3Presented = false
   @State private var isRealtimeAdvancedPresented = false
   @State private var isRealtimePairingPresented = false
   @State private var realtimeConnectionCheck = RealtimeConnectionCheck.idle
@@ -39,104 +38,25 @@ struct SettingsView: View {
           Text("Follow System updates automatically when your iPhone changes between Light and Dark Mode.")
         }
 
-        Section {
-          Toggle(isOn: $settings.useS3) {
-            Label("Sync to S3", systemImage: "externaldrive.connected.to.line.below")
-          }
-          .accessibilityIdentifier("settings.storage.s3.toggle")
-
-          if settings.useS3 {
-            if settings.s3HasStoredCredentials, !isEditingS3Configuration {
-              Label("S3 configuration saved", systemImage: "key.fill")
-                .foregroundStyle(.secondary)
-              LabeledContent("Bucket", value: settings.s3Bucket)
-              LabeledContent("Region", value: settings.s3Region)
-
-              Button {
-                isEditingS3Configuration = true
-              } label: {
-                Label("Modify S3 configuration", systemImage: "pencil")
-              }
-            } else {
-              TextField("Bucket", text: $settings.s3Bucket)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.storage.s3.bucket")
-              TextField("Region, e.g. us-east-1", text: $settings.s3Region)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.storage.s3.region")
-              TextField(
-                settings.s3HasStoredCredentials
-                  ? settings.language.localized("Access key (leave blank to keep)")
-                  : settings.language.localized("Access key"),
-                text: $settings.s3AccessKeyID
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.storage.s3.access-key")
-              SecureField(
-                settings.s3HasStoredCredentials
-                  ? settings.language.localized("Secret key (leave blank to keep)")
-                  : settings.language.localized("Secret key"),
-                text: $settings.s3SecretAccessKey
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.storage.s3.secret-key")
-
-              DisclosureGroup("Advanced", isExpanded: $isS3AdvancedPresented) {
-                TextField("Custom endpoint (optional)", text: $settings.s3EndpointURL)
-                  .textInputAutocapitalization(.never)
-                  .keyboardType(.URL)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.endpoint")
-                TextField("Object prefix", text: $settings.s3Prefix)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.prefix")
-                SecureField("Session token (optional)", text: $settings.s3SessionToken)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .accessibilityIdentifier("settings.storage.s3.session-token")
-                Toggle("Force path-style URLs", isOn: $settings.s3ForcePathStyle)
-                  .accessibilityIdentifier("settings.storage.s3.path-style")
-              }
-            }
-          }
-        } header: {
-          Text("Storage")
-        } footer: {
-          if settings.useS3 {
-            if settings.s3HasStoredCredentials, !isEditingS3Configuration {
-              Text("Credentials are securely stored in this iPhone's Keychain.")
-            } else {
-              Text(
-                "Save verifies S3 with a tiny temporary object. Raw audio is removed only after the complete M4A reaches S3. Credentials stay in this iPhone's Keychain."
-              )
-            }
-          } else {
-            Text("Local is the default. Recordings stay on this iPhone without a cloud account.")
-          }
-        }
-
-        if settings.useS3 {
+        if settings.hasLegacyS3Credentials {
           Section {
-            Stepper(
-              value: $settings.localAudioRetentionDays,
-              in: AppSettings.localAudioRetentionDaysRange
-            ) {
-              LabeledContent("Keep complete M4A") {
-                Text(retentionLabel(days: settings.localAudioRetentionDays))
-                  .foregroundStyle(.secondary)
-              }
+            Button("Forget S3 credentials", role: .destructive) {
+              isForgetS3Presented = true
             }
+            .accessibilityIdentifier("settings.storage.forget-s3")
           } header: {
-            Text("Local cache")
+            Text("Earlier S3 backups")
           } footer: {
             Text(
-              "After this period, the local M4A is removed. Playing or sharing downloads the real file from S3 and caches it again."
+              "New recordings stay on this iPhone. Recordings backed up earlier still download from S3 when you open them, using the credentials saved on this iPhone."
             )
+          }
+          .confirmationDialog(
+            "Forget S3 credentials?", isPresented: $isForgetS3Presented, titleVisibility: .visible
+          ) {
+            Button("Forget S3 credentials", role: .destructive) { model.forgetLegacyS3Storage() }
+          } message: {
+            Text("Recordings whose audio is only in S3 will no longer open on this iPhone.")
           }
         }
 
@@ -222,6 +142,66 @@ struct SettingsView: View {
 
         if settings.useRealtimeProcessing {
           SpeakerSettingsSection()
+        }
+
+        Section {
+          Picker("Service", selection: $settings.speechEngine) {
+            Text("Apple Speech").tag(SpeechEngine.apple)
+            Text("OpenAI-compatible API").tag(SpeechEngine.openAICompatible)
+          }
+          .accessibilityIdentifier("settings.ai.speech.engine")
+          if let defaultURL = settings.speechEngine.defaultBaseURL {
+            ThirdPartyEndpointFields(
+              identifier: "speech",
+              defaultURL: defaultURL,
+              modelPrompt: "Model, e.g. whisper-1",
+              hasStoredKey: settings.activeSpeechEndpoint?.apiKey.isEmpty == false,
+              baseURL: $settings.speechBaseURL,
+              model: $settings.speechModel,
+              apiKey: $settings.speechAPIKey
+            )
+          }
+        } header: {
+          Text("Transcription after recording")
+        } footer: {
+          if settings.speechEngine == .apple {
+            Text("Runs on this iPhone with iOS 26 or later. Audio does not leave the device.")
+          } else {
+            Text(
+              "Finished recordings without a live transcript are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions."
+            )
+          }
+        }
+
+        Section {
+          Picker("Service", selection: $settings.languageModelEngine) {
+            Text("Apple Intelligence").tag(LanguageModelEngine.apple)
+            Text("OpenAI-compatible API").tag(LanguageModelEngine.openAICompatible)
+            Text("Claude API").tag(LanguageModelEngine.anthropic)
+          }
+          .accessibilityIdentifier("settings.ai.language-model.engine")
+          if let defaultURL = settings.languageModelEngine.defaultBaseURL {
+            ThirdPartyEndpointFields(
+              identifier: "language-model",
+              defaultURL: defaultURL,
+              modelPrompt: settings.languageModelEngine == .anthropic
+                ? "Model, e.g. claude-sonnet-5-5" : "Model name",
+              hasStoredKey: settings.activeLanguageModelProvider?.endpoint.apiKey.isEmpty == false,
+              baseURL: $settings.languageModelBaseURL,
+              model: $settings.languageModelName,
+              apiKey: $settings.languageModelAPIKey
+            )
+          }
+        } header: {
+          Text("Summaries and questions")
+        } footer: {
+          if settings.languageModelEngine == .apple {
+            Text("Runs on this iPhone with Apple Intelligence. Transcripts do not leave the device.")
+          } else {
+            Text(
+              "Transcripts are sent to this service for summaries, and matching passages for questions. Its privacy terms and charges apply. Speaker names are not sent. API keys stay in this iPhone's Keychain."
+            )
+          }
         }
 
         Section {
@@ -337,16 +317,6 @@ struct SettingsView: View {
     }
   }
 
-  private func retentionLabel(days: Int) -> String {
-    days == 1
-      ? model.settings.language.localized("1 day")
-      : String(
-        format: model.settings.language.localized("%d days"),
-        locale: model.settings.language.locale,
-        days
-      )
-  }
-
   @MainActor
   private func testRealtimeConnection(settings: AppSettings) async {
     realtimeConnectionCheck = .testing
@@ -378,6 +348,58 @@ struct SettingsView: View {
     }
   }
 
+}
+
+private struct ThirdPartyEndpointFields: View {
+  @Environment(AppModel.self) private var model
+
+  let identifier: String
+  let defaultURL: String
+  let modelPrompt: LocalizedStringKey
+  let hasStoredKey: Bool
+  @Binding var baseURL: String
+  @Binding var modelName: String
+  @Binding var apiKey: String
+
+  init(
+    identifier: String,
+    defaultURL: String,
+    modelPrompt: LocalizedStringKey,
+    hasStoredKey: Bool,
+    baseURL: Binding<String>,
+    model: Binding<String>,
+    apiKey: Binding<String>
+  ) {
+    self.identifier = identifier
+    self.defaultURL = defaultURL
+    self.modelPrompt = modelPrompt
+    self.hasStoredKey = hasStoredKey
+    _baseURL = baseURL
+    _modelName = model
+    _apiKey = apiKey
+  }
+
+  var body: some View {
+    TextField(defaultURL, text: $baseURL)
+      .textInputAutocapitalization(.never)
+      .keyboardType(.URL)
+      .autocorrectionDisabled()
+      .accessibilityLabel("Service URL")
+      .accessibilityIdentifier("settings.ai.\(identifier).url")
+    TextField(modelPrompt, text: $modelName)
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
+      .accessibilityIdentifier("settings.ai.\(identifier).model")
+    SecureField(
+      hasStoredKey
+        ? model.settings.language.localized("API key (leave blank to keep)")
+        : model.settings.language.localized("API key"),
+      text: $apiKey
+    )
+    .textInputAutocapitalization(.never)
+    .autocorrectionDisabled()
+    .accessibilityIdentifier("settings.ai.\(identifier).key")
+  }
 }
 
 private enum RealtimeConnectionCheck: Equatable {

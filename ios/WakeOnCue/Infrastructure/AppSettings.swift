@@ -33,16 +33,11 @@ enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 @Observable
 final class AppSettings {
-  static let defaultLocalAudioRetentionDays = 7
-  static let localAudioRetentionDaysRange = 1...365
-
-  private static let s3EnabledKey = "recording-storage.s3-enabled"
   private static let endpointKey = "recording-storage.s3.endpoint"
   private static let regionKey = "recording-storage.s3.region"
   private static let bucketKey = "recording-storage.s3.bucket"
   private static let prefixKey = "recording-storage.s3.prefix"
   private static let forcePathStyleKey = "recording-storage.s3.force-path-style"
-  private static let localAudioRetentionDaysKey = "recording-storage.local-audio-retention-days"
   private static let keychainService = "com.deoooo.WakeOnCue.s3"
   private static let accessKeyAccount = "access-key-id"
   private static let secretKeyAccount = "secret-access-key"
@@ -56,19 +51,18 @@ final class AppSettings {
   private static let savedVoicesAccount = "saved-voices"
   private static let speakerDiarizationKey = "speakers.diarization-enabled"
   private static let rememberVoicesKey = "speakers.remember-voices"
+  private static let aiKeychainService = "com.deoooo.WakeOnCue.ai"
+  private static let speechKeyAccount = "speech-api-key"
+  private static let languageModelKeyAccount = "language-model-api-key"
+  private static let speechEngineKey = "ai.speech.engine"
+  private static let speechBaseURLKey = "ai.speech.base-url"
+  private static let speechModelKey = "ai.speech.model"
+  private static let languageModelEngineKey = "ai.language-model.engine"
+  private static let languageModelBaseURLKey = "ai.language-model.base-url"
+  private static let languageModelNameKey = "ai.language-model.model"
   /// Saved voices not heard in a recording for this long are deleted.
   static let savedVoiceExpiry: TimeInterval = 365 * 24 * 60 * 60
 
-  var useS3 = false
-  var s3EndpointURL = ""
-  var s3Region = "us-east-1"
-  var s3Bucket = ""
-  var s3Prefix = "wakeoncue"
-  var s3AccessKeyID = ""
-  var s3SecretAccessKey = ""
-  var s3SessionToken = ""
-  var s3ForcePathStyle = false
-  var localAudioRetentionDays = defaultLocalAudioRetentionDays
   var useRealtimeProcessing = false
   var realtimeGatewayURL = ""
   var realtimeGatewayToken = ""
@@ -85,7 +79,19 @@ final class AppSettings {
       UserDefaults.standard.set(appearance.rawValue, forKey: AppAppearance.preferenceKey)
     }
   }
-  private(set) var s3HasStoredCredentials = false
+  var speechEngine = SpeechEngine.apple
+  var speechBaseURL = ""
+  var speechModel = ""
+  var speechAPIKey = ""
+  var languageModelEngine = LanguageModelEngine.apple
+  var languageModelBaseURL = ""
+  var languageModelName = ""
+  var languageModelAPIKey = ""
+  /// The saved services in use; nil means Apple's on-device frameworks.
+  private(set) var activeSpeechEndpoint: ThirdPartyEndpoint?
+  private(set) var activeLanguageModelProvider: LanguageModelProvider?
+  /// S3 credentials saved by an older version, kept to reach recordings already backed up.
+  private(set) var hasLegacyS3Credentials = false
   private(set) var realtimeHasStoredToken = false
   /// When the device owner enrolled their voice; nil when no voiceprint is stored.
   private(set) var selfVoiceprintEnrolledAt: Date?
@@ -114,23 +120,6 @@ final class AppSettings {
     #endif
   }
 
-  var activeS3Configuration: S3Configuration? {
-    #if DEBUG && targetEnvironment(simulator)
-      let environment = ProcessInfo.processInfo.environment
-      if environment["WAKEONCUE_EXPERIENCE_FIXTURES"] == "1",
-        environment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] == "1"
-      {
-        return S3Configuration(
-          endpointURL: URL(string: "http://127.0.0.1:1"), region: "test",
-          bucket: "offline-fixture", accessKeyID: "fixture", secretAccessKey: "fixture",
-          forcePathStyle: true
-        )
-      }
-    #endif
-    guard UserDefaults.standard.bool(forKey: Self.s3EnabledKey) else { return nil }
-    return persistedS3Configuration()
-  }
-
   var activeRealtimeConfiguration: RealtimeProcessingConfiguration? {
     #if DEBUG
       if var configuration = Self.debugRealtimeConfiguration {
@@ -148,7 +137,7 @@ final class AppSettings {
     return try candidateRealtimeConfiguration()
   }
 
-  /// Stored only in this device's Keychain: excluded from backups, iCloud and S3.
+  /// Stored only in this device's Keychain: excluded from backups and iCloud.
   func persistSelfVoiceprint(_ voiceprint: RealtimeVoiceprint, enrolledAt: Date = .now) throws {
     let record = SelfVoiceprintRecord(voiceprint: voiceprint, enrolledAt: enrolledAt)
     let data = try JSONEncoder().encode(record)
@@ -281,95 +270,93 @@ final class AppSettings {
     }
   #endif
 
-  var activeLocalAudioRetention: TimeInterval {
-    let stored = UserDefaults.standard.integer(forKey: Self.localAudioRetentionDaysKey)
-    let days = stored == 0 ? Self.defaultLocalAudioRetentionDays : stored
-    return Self.localAudioRetentionInterval(days: days)
-  }
-
-  static func normalizedLocalAudioRetentionDays(_ days: Int) -> Int {
-    min(
-      max(days, localAudioRetentionDaysRange.lowerBound),
-      localAudioRetentionDaysRange.upperBound
+  /// The endpoint being edited, or nil when Apple's on-device speech is selected. A blank key
+  /// keeps the stored one only for the same URL, so it is never sent to a different service.
+  func candidateSpeechEndpoint() throws -> ThirdPartyEndpoint? {
+    guard let defaultURL = speechEngine.defaultBaseURL else { return nil }
+    let baseURL = speechBaseURL.isEmpty ? defaultURL : speechBaseURL
+    let isUnchanged = activeSpeechEndpoint?.baseURL.absoluteString == baseURL
+    return try ThirdPartyEndpoint.validated(
+      baseURL: baseURL,
+      model: speechModel,
+      apiKey: speechAPIKey.isEmpty && isUnchanged
+        ? (activeSpeechEndpoint?.apiKey ?? "") : speechAPIKey
     )
   }
 
-  static func localAudioRetentionInterval(days: Int) -> TimeInterval {
-    TimeInterval(normalizedLocalAudioRetentionDays(days) * 24 * 60 * 60)
-  }
-
-  func candidateS3Configuration() throws -> S3Configuration {
-    let endpoint = try endpointURL(from: s3EndpointURL)
-    let accessKey =
-      s3AccessKeyID.isEmpty
-      ? (try KeychainStore.read(service: Self.keychainService, account: Self.accessKeyAccount) ?? "")
-      : s3AccessKeyID
-    let secretKey =
-      s3SecretAccessKey.isEmpty
-      ? (try KeychainStore.read(service: Self.keychainService, account: Self.secretKeyAccount) ?? "")
-      : s3SecretAccessKey
-    let sessionToken =
-      s3SessionToken.isEmpty
-      ? try KeychainStore.read(service: Self.keychainService, account: Self.sessionTokenAccount)
-      : s3SessionToken
-    let bucket = s3Bucket.trimmingCharacters(in: .whitespacesAndNewlines)
-    let region = s3Region.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !bucket.isEmpty, !region.isEmpty else {
-      throw S3SettingsError.invalid(language.localized("S3 bucket and region are required."))
-    }
-    guard !accessKey.isEmpty, !secretKey.isEmpty else {
-      throw S3SettingsError.invalid(
-        language.localized("S3 access key and secret key are required."))
-    }
-    return S3Configuration(
-      endpointURL: endpoint,
-      region: region,
-      bucket: bucket,
-      prefix: s3Prefix.trimmingCharacters(in: CharacterSet(charactersIn: " /")),
-      accessKeyID: accessKey,
-      secretAccessKey: secretKey,
-      sessionToken: sessionToken,
-      forcePathStyle: s3ForcePathStyle
+  func candidateLanguageModelProvider() throws -> LanguageModelProvider? {
+    guard let defaultURL = languageModelEngine.defaultBaseURL else { return nil }
+    let wireProtocol: LanguageModelProvider.WireProtocol =
+      languageModelEngine == .anthropic ? .anthropic : .openAI
+    let baseURL = languageModelBaseURL.isEmpty ? defaultURL : languageModelBaseURL
+    let isUnchanged =
+      activeLanguageModelProvider?.wireProtocol == wireProtocol
+      && activeLanguageModelProvider?.endpoint.baseURL.absoluteString == baseURL
+    return LanguageModelProvider(
+      wireProtocol: wireProtocol,
+      endpoint: try ThirdPartyEndpoint.validated(
+        baseURL: baseURL,
+        model: languageModelName,
+        apiKey: languageModelAPIKey.isEmpty && isUnchanged
+          ? (activeLanguageModelProvider?.endpoint.apiKey ?? "") : languageModelAPIKey
+      )
     )
   }
 
-  func persistS3Configuration(
-    _ configuration: S3Configuration,
-    localAudioRetentionDays: Int
+  /// Keys are deleted as soon as a service is turned off.
+  func persistAIProviders(
+    speech: ThirdPartyEndpoint?, languageModel: LanguageModelProvider?
   ) throws {
     try KeychainStore.save(
-      configuration.accessKeyID,
-      service: Self.keychainService,
-      account: Self.accessKeyAccount
-    )
+      speech?.apiKey ?? "", service: Self.aiKeychainService, account: Self.speechKeyAccount)
     try KeychainStore.save(
-      configuration.secretAccessKey,
-      service: Self.keychainService,
-      account: Self.secretKeyAccount
+      languageModel?.endpoint.apiKey ?? "",
+      service: Self.aiKeychainService,
+      account: Self.languageModelKeyAccount
     )
-    try KeychainStore.save(
-      configuration.sessionToken ?? "",
-      service: Self.keychainService,
-      account: Self.sessionTokenAccount
-    )
-
     let defaults = UserDefaults.standard
-    defaults.set(configuration.endpointURL?.absoluteString ?? "", forKey: Self.endpointKey)
-    defaults.set(configuration.region, forKey: Self.regionKey)
-    defaults.set(configuration.bucket, forKey: Self.bucketKey)
-    defaults.set(configuration.prefix, forKey: Self.prefixKey)
-    defaults.set(configuration.forcePathStyle, forKey: Self.forcePathStyleKey)
-    defaults.set(
-      Self.normalizedLocalAudioRetentionDays(localAudioRetentionDays),
-      forKey: Self.localAudioRetentionDaysKey
-    )
-    defaults.set(true, forKey: Self.s3EnabledKey)
-    restorePersistedStorageMode()
+    defaults.set(speechEngine.rawValue, forKey: Self.speechEngineKey)
+    defaults.set(speechBaseURL, forKey: Self.speechBaseURLKey)
+    defaults.set(speechModel, forKey: Self.speechModelKey)
+    defaults.set(languageModelEngine.rawValue, forKey: Self.languageModelEngineKey)
+    defaults.set(languageModelBaseURL, forKey: Self.languageModelBaseURLKey)
+    defaults.set(languageModelName, forKey: Self.languageModelNameKey)
+    restorePersistedAIProviders()
   }
 
-  func persistLocalMode() {
-    UserDefaults.standard.set(false, forKey: Self.s3EnabledKey)
-    restorePersistedStorageMode()
+  private func restorePersistedAIProviders() {
+    let defaults = UserDefaults.standard
+    speechEngine =
+      SpeechEngine(rawValue: defaults.string(forKey: Self.speechEngineKey) ?? "") ?? .apple
+    speechBaseURL = defaults.string(forKey: Self.speechBaseURLKey) ?? ""
+    speechModel = defaults.string(forKey: Self.speechModelKey) ?? ""
+    speechAPIKey = ""
+    languageModelEngine =
+      LanguageModelEngine(rawValue: defaults.string(forKey: Self.languageModelEngineKey) ?? "")
+      ?? .apple
+    languageModelBaseURL = defaults.string(forKey: Self.languageModelBaseURLKey) ?? ""
+    languageModelName = defaults.string(forKey: Self.languageModelNameKey) ?? ""
+    languageModelAPIKey = ""
+
+    activeSpeechEndpoint = speechEngine.defaultBaseURL.flatMap { defaultURL in
+      try? ThirdPartyEndpoint.validated(
+        baseURL: speechBaseURL.isEmpty ? defaultURL : speechBaseURL,
+        model: speechModel,
+        apiKey: (try? KeychainStore.read(
+          service: Self.aiKeychainService, account: Self.speechKeyAccount)) ?? ""
+      )
+    }
+    activeLanguageModelProvider = languageModelEngine.defaultBaseURL.flatMap { defaultURL in
+      (try? ThirdPartyEndpoint.validated(
+        baseURL: languageModelBaseURL.isEmpty ? defaultURL : languageModelBaseURL,
+        model: languageModelName,
+        apiKey: (try? KeychainStore.read(
+          service: Self.aiKeychainService, account: Self.languageModelKeyAccount)) ?? ""
+      )).map {
+        LanguageModelProvider(
+          wireProtocol: languageModelEngine == .anthropic ? .anthropic : .openAI, endpoint: $0)
+      }
+    }
   }
 
   func candidateRealtimeConfiguration() throws -> RealtimeProcessingConfiguration {
@@ -409,36 +396,13 @@ final class AppSettings {
   }
 
   func restorePersistedSettings() {
-    restorePersistedStorageMode()
+    hasLegacyS3Credentials = storedCredentials() != nil
     restorePersistedRealtimeConfiguration()
+    restorePersistedAIProviders()
   }
 
   func persistRealtimeDisabled() {
     UserDefaults.standard.set(false, forKey: Self.realtimeEnabledKey)
-    restorePersistedRealtimeConfiguration()
-  }
-
-  func restorePersistedStorageMode() {
-    let defaults = UserDefaults.standard
-    let credentials = storedCredentials()
-    s3HasStoredCredentials = credentials != nil
-    useS3 = defaults.bool(forKey: Self.s3EnabledKey) && credentials != nil
-    if defaults.bool(forKey: Self.s3EnabledKey), credentials == nil {
-      defaults.set(false, forKey: Self.s3EnabledKey)
-    }
-    s3EndpointURL = defaults.string(forKey: Self.endpointKey) ?? ""
-    s3Region = defaults.string(forKey: Self.regionKey) ?? "us-east-1"
-    s3Bucket = defaults.string(forKey: Self.bucketKey) ?? ""
-    s3Prefix = defaults.string(forKey: Self.prefixKey) ?? "wakeoncue"
-    s3ForcePathStyle = defaults.bool(forKey: Self.forcePathStyleKey)
-    let storedRetentionDays = defaults.integer(forKey: Self.localAudioRetentionDaysKey)
-    localAudioRetentionDays =
-      storedRetentionDays == 0
-      ? Self.defaultLocalAudioRetentionDays
-      : Self.normalizedLocalAudioRetentionDays(storedRetentionDays)
-    s3AccessKeyID = ""
-    s3SecretAccessKey = ""
-    s3SessionToken = ""
     restorePersistedRealtimeConfiguration()
   }
 
@@ -471,12 +435,12 @@ final class AppSettings {
     return configuration
   }
 
-  private func persistedS3Configuration() -> S3Configuration? {
+  var legacyS3Configuration: S3Configuration? {
     let defaults = UserDefaults.standard
     guard let credentials = storedCredentials() else { return nil }
-    let endpointString = defaults.string(forKey: Self.endpointKey) ?? ""
+    let endpoint = (defaults.string(forKey: Self.endpointKey)).flatMap { URL(string: $0) }
     return S3Configuration(
-      endpointURL: try? endpointURL(from: endpointString),
+      endpointURL: endpoint?.host == nil ? nil : endpoint,
       region: defaults.string(forKey: Self.regionKey) ?? "us-east-1",
       bucket: defaults.string(forKey: Self.bucketKey) ?? "",
       prefix: defaults.string(forKey: Self.prefixKey) ?? "wakeoncue",
@@ -485,6 +449,13 @@ final class AppSettings {
       sessionToken: credentials.sessionToken,
       forcePathStyle: defaults.bool(forKey: Self.forcePathStyleKey)
     )
+  }
+
+  func forgetLegacyS3Storage() throws {
+    for account in [Self.accessKeyAccount, Self.secretKeyAccount, Self.sessionTokenAccount] {
+      try KeychainStore.delete(service: Self.keychainService, account: account)
+    }
+    hasLegacyS3Credentials = false
   }
 
   private func storedCredentials() -> (accessKey: String, secretKey: String, sessionToken: String?)?
@@ -500,17 +471,6 @@ final class AppSettings {
     let token = try? KeychainStore.read(
       service: Self.keychainService, account: Self.sessionTokenAccount)
     return (accessKey, secretKey, token?.isEmpty == false ? token : nil)
-  }
-
-  private func endpointURL(from value: String) throws -> URL? {
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-    guard let url = URL(string: trimmed), let scheme = url.scheme,
-      ["http", "https"].contains(scheme), url.host != nil
-    else {
-      throw S3SettingsError.invalid(language.localized("Enter a valid HTTP(S) S3 endpoint."))
-    }
-    return url
   }
 }
 
@@ -546,16 +506,6 @@ private struct SelfVoiceprintRecord: Codable {
 }
 
 enum RealtimeSettingsError: LocalizedError {
-  case invalid(String)
-
-  var errorDescription: String? {
-    switch self {
-    case .invalid(let message): message
-    }
-  }
-}
-
-enum S3SettingsError: LocalizedError {
   case invalid(String)
 
   var errorDescription: String? {

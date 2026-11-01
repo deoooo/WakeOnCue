@@ -3,14 +3,14 @@
 WakeOnCue 的实时分析是一条可失败的旁路，不能成为录音链路的依赖：
 
 ```text
-                                  ┌→ source.caf → 10s AAC chunks → local / S3
+                                  ┌→ source.caf → 10s AAC chunks → local
 iPhone microphone → 24 kHz mono ──┤
                                   └→ 0.5s PCM frames → Realtime Gateway → Processor
                                                                      ↓
                                       iPhone live transcript ← versioned events
 ```
 
-Gateway 是 App 唯一固定依赖。当前 Processor 可以运行在 Mac，后续可以换成云 GPU、Kubernetes worker 或第三方服务，而无需修改 iOS 协议。Gateway 不运行 ASR，也不轮询 R2；R2 的完整 `source.m4a` 继续作为录音完成后的校正和补处理来源。
+Gateway 是 App 唯一固定依赖。当前 Processor 可以运行在 Mac，后续可以换成云 GPU、Kubernetes worker 或第三方服务，而无需修改 iOS 协议。Gateway 不运行 ASR。
 
 ## Protocol v1
 
@@ -69,7 +69,7 @@ Processor 返回：
 }
 ```
 
-Gateway 为每个会话分配单调递增的 revision，并保留最近 500 个可重放事件。音频帧不会在 Gateway 持久化；Processor 离线期间实时文字可能缺失，但本地录音不会缺失，完整录音可在结束后从 S3 补处理。
+Gateway 为每个会话分配单调递增的 revision，并保留最近 500 个可重放事件。音频帧不会在 Gateway 持久化；Processor 离线期间实时文字可能缺失，但本地录音不会缺失，完整录音可在结束后重新转写。
 
 ## 多声道录音（Mac 线上会议）
 
@@ -240,12 +240,10 @@ Cloudflare Tunnel transport. This Mac uses HTTP/2 explicitly for predictable beh
 ## Transcript persistence
 
 The iOS app writes the current transcript atomically beside the recording as
-`RecordingData/recordings/<recording_id>/transcript.json`. When S3 is enabled, the
-finished transcript is also queued through the durable uploader and stored at
-`recordings/<recording_id>/transcript.json`, beside `source.m4a`. Opening a recording
-restores a missing local transcript from S3 and caches the real JSON file locally.
-Retranscription replaces the local transcript and uploads a new version to the same
-object key. Audio retention cleanup does not delete transcript JSON.
+`RecordingData/recordings/<recording_id>/transcript.json`. Transcripts are not uploaded.
+For a recording an older version backed up to S3, opening it restores a missing local
+transcript from S3 and caches the real JSON file locally. Retranscription replaces the
+local transcript.
 
 ## Local-first transport
 
@@ -291,7 +289,7 @@ The checked-in `wakeoncue.remote-mac.plist` is a path-neutral template. Replace 
 - App WebSocket 事件格式；
 - Processor 注册、`session.started`、`audio.append` 和结果事件。
 
-只替换 Processor 部署和模型实现。后处理 worker 可订阅录音完成事件或对象存储事件，读取完整 `source.m4a`，再通过相同 revision/upsert 语义生成最终校正版 transcript。
+只替换 Processor 部署和模型实现。
 
 ## MCP
 

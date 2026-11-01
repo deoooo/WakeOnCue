@@ -1,5 +1,5 @@
 "NSMicrophoneUsageDescription" = "WakeOnCue 需要麦克风权限，以录制你明确开始的会议。";
-"NSLocalNetworkUsageDescription" = "WakeOnCue 会直接连接到用户配置的 S3 兼容存储端点。";
+"NSLocalNetworkUsageDescription" = "WakeOnCue 会连接到你配置在局域网内的实时转写或 AI 服务。";
 "CFBundleDisplayName" = "WakeOnCue";
 
 "NSCameraUsageDescription" = "WakeOnCue 仅使用相机扫描自托管服务的配对二维码。";

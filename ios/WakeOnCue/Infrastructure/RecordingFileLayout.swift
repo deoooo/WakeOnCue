@@ -19,8 +19,7 @@ struct RecordingFileLayout: Sendable {
     #if DEBUG && targetEnvironment(simulator)
       let environment = ProcessInfo.processInfo.environment
       let directoryName = environment["WAKEONCUE_EXPERIENCE_FIXTURES"] == "1"
-        ? (environment["WAKEONCUE_EXPERIENCE_OFFLINE_BACKUP"] == "1"
-          ? "ExperienceOfflineTestData" : "ExperienceTestData") : "RecordingData"
+        ? "ExperienceTestData" : "RecordingData"
     #else
       let directoryName = "RecordingData"
     #endif
