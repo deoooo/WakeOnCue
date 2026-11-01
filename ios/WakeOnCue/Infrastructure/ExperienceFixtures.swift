@@ -42,6 +42,10 @@ enum ExperienceFixtures {
       }
       try JSONEncoder().encode(segments).write(to: layout.transcriptURL(recordingID: id), options: .atomic)
     }
+    if ProcessInfo.processInfo.environment["WAKEONCUE_EXPERIENCE_UNREADABLE_TRANSCRIPT"] == "1" {
+      try Data("unreadable".utf8).write(
+        to: layout.transcriptURL(recordingID: "experience-01"), options: .atomic)
+    }
     let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     let input = documents.appending(path: "experience-input.m4a")
     if !FileManager.default.fileExists(atPath: input.path) {
