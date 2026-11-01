@@ -35,7 +35,7 @@ enum OnDeviceIntelligenceError: LocalizedError {
 }
 
 /// Free transcription and summaries that run entirely on this iPhone (iOS 26+), used when
-/// no realtime or third-party service is configured.
+/// no third-party service is configured.
 enum OnDeviceIntelligence {
   static var canTranscribe: Bool {
     if #available(iOS 26.0, *) { return SpeechTranscriber.isAvailable }

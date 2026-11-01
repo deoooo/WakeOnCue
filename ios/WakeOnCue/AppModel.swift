@@ -25,9 +25,6 @@ final class AppModel {
   private(set) var playbackIsPlaying = false
   private(set) var playbackPosition: TimeInterval = 0
   private(set) var playbackDuration: TimeInterval = 0
-  private(set) var realtimeState: RealtimeConnectionState = .disabled
-  private(set) var liveTranscriptSegments: [RealtimeTranscriptEvent] = []
-  private(set) var realtimeUpdateSequence = 0
   private(set) var retranscribingRecordingID: String?
   private(set) var retranscriptionProgress = 0.0
   private(set) var retranscriptionStatusMessage: String?
@@ -53,8 +50,6 @@ final class AppModel {
   @ObservationIgnored private var tickCount = 0
   @ObservationIgnored private var audioPlayer: AVAudioPlayer?
   @ObservationIgnored private var playbackMonitor: Task<Void, Never>?
-  @ObservationIgnored private var realtimeClient: RealtimeProcessingClient?
-  @ObservationIgnored private var liveTranscriptRecordingID: String?
 
   var canTranscribeRecordings: Bool {
     settings.activeSpeechEndpoint != nil || OnDeviceIntelligence.canTranscribe
@@ -135,9 +130,6 @@ final class AppModel {
       return
     }
     started = true
-    #if DEBUG
-      await persistDebugRealtimeConfigurationIfRequested()
-    #endif
     commandObserver = RecordingCommandObserver { [weak self] in
       Task { @MainActor in await self?.processPendingCommand() }
     }
@@ -171,35 +163,6 @@ final class AppModel {
     await processPendingCommand()
   }
 
-  #if DEBUG
-    private func persistDebugRealtimeConfigurationIfRequested() async {
-      let environment = ProcessInfo.processInfo.environment
-      guard environment["WAKEONCUE_TEST_PERSIST_REALTIME_CONFIGURATION"] == "1",
-        let configuration = settings.activeRealtimeConfiguration
-      else { return }
-
-      do {
-        try await RealtimeProcessingClient.validate(configuration: configuration)
-        try settings.persistRealtimeConfiguration(configuration)
-        settings.restorePersistedSettings()
-        writeRealtimeConfigurationDiagnostic("PASS")
-      } catch {
-        writeRealtimeConfigurationDiagnostic("FAIL | error=\(String(reflecting: error))")
-        errorMessage = String(
-          format: AppLanguage.localized("Could not save realtime processing settings: %@"),
-          error.localizedDescription
-        )
-      }
-    }
-
-    private func writeRealtimeConfigurationDiagnostic(_ message: String) {
-      let url = fileLayout.root.appending(path: "last-realtime-configuration.txt")
-      let payload = "\(Date().ISO8601Format()) | \(message)\n"
-      try? payload.write(to: url, atomically: true, encoding: .utf8)
-      try? RecordingFileLayout.protect(url)
-    }
-  #endif
-
   func requestMicrophonePermission() async -> Bool {
     let granted = await AVAudioApplication.requestRecordPermission()
     microphonePermission = AVAudioApplication.shared.recordPermission
@@ -215,8 +178,6 @@ final class AppModel {
       guard await requestMicrophonePermission() else {
         throw RecordingUIError.microphoneDenied
       }
-      await realtimeClient?.stop()
-      realtimeClient = nil
       startupStage = "preparing local recording files"
       let now = Date()
       let recordingID =
@@ -235,17 +196,12 @@ final class AppModel {
         metadata: [:]
       )
       let payloadURL = try fileLayout.createPayload(recording: recording)
-      liveTranscriptSegments = []
-      realtimeUpdateSequence += 1
-      liveTranscriptRecordingID = recordingID
-      let realtimeClient = makeRealtimeClient()
-      self.realtimeClient = realtimeClient
       let capture = AudioCaptureService(
         recordingID: recordingID,
         fileLayout: fileLayout,
         testFixtureURL: Self.debugAudioFixtureURL
       )
-      configure(capture, realtimeClient: realtimeClient)
+      configure(capture)
       startupStage = "starting the iPhone audio session"
       try capture.start()
       do {
@@ -271,19 +227,8 @@ final class AppModel {
         _ = try? await store.updateRecordingMetadata(recordingID: recordingID, values: meetingMetadata)
       }
       await refresh()
-      if let realtimeClient {
-        Task {
-          await realtimeClient.start(
-            recordingID: recordingID,
-            language: settings.spokenLanguage.recognitionCode
-          )
-        }
-      }
       writeStartupDiagnostic("PASS | recording_id=\(recordingID)")
     } catch {
-      await realtimeClient?.stop()
-      realtimeClient = nil
-      realtimeState = .disabled
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
       let detail = String(reflecting: error)
       writeStartupDiagnostic("FAIL | stage=\(startupStage) | error=\(detail)")
@@ -311,7 +256,6 @@ final class AppModel {
     defer { isBusy = false }
     do {
       try capture.pause()
-      await realtimeClient?.pause()
       try await recordPause(recordingID: recording.id, duration: capture.duration)
       if var paused = currentRecording { paused.status = .paused; currentRecording = paused }
       PhoneWatchBridge.shared.publish(watchSnapshot())
@@ -328,7 +272,6 @@ final class AppModel {
     defer { isBusy = false }
     do {
       try capture.resume()
-      await realtimeClient?.resume()
       try await recordResume(recordingID: recording.id, duration: capture.duration)
       if var resumed = currentRecording { resumed.status = .recording; currentRecording = resumed }
       PhoneWatchBridge.shared.publish(watchSnapshot())
@@ -346,14 +289,6 @@ final class AppModel {
     defer { isBusy = false }
     do {
       try capture.stop()
-      let finishingRealtimeClient = realtimeClient
-      realtimeClient = nil
-      if liveTranscriptRecordingID == recording.id {
-        persistLiveTranscript(recordingID: recording.id)
-      }
-      if let finishingRealtimeClient {
-        Task { await finishingRealtimeClient.finish() }
-      }
       let duration = capture.duration
       await chunkConsumer?.value
       chunkConsumer = nil
@@ -463,14 +398,9 @@ final class AppModel {
     settingsStatusMessage = AppLanguage.localized("Testing configured services…")
     defer { isSavingSettings = false }
     do {
-      let realtimeConfiguration =
-        try settings.useRealtimeProcessing ? settings.candidateRealtimeConfiguration() : nil
       let speechEndpoint = try settings.candidateSpeechEndpoint()
       let languageModelProvider = try settings.candidateLanguageModelProvider()
 
-      if let realtimeConfiguration {
-        try await RealtimeProcessingClient.validate(configuration: realtimeConfiguration)
-      }
       // Checks cost the user a small API call, so unchanged services are not checked again.
       if let speechEndpoint, speechEndpoint != settings.activeSpeechEndpoint {
         try await ThirdPartyTranscriber.verify(endpoint: speechEndpoint)
@@ -479,11 +409,6 @@ final class AppModel {
         try await ThirdPartyLanguageModel.verify(provider: languageModelProvider)
       }
 
-      if let realtimeConfiguration {
-        try settings.persistRealtimeConfiguration(realtimeConfiguration)
-      } else {
-        settings.persistRealtimeDisabled()
-      }
       try settings.persistAIProviders(
         speech: speechEndpoint, languageModel: languageModelProvider)
       await refresh()
@@ -649,76 +574,12 @@ final class AppModel {
 
   func retranscribe(recording: RecordingRecord) async {
     guard retranscribingRecordingID == nil else { return }
-    guard let configuration = settings.activeRealtimeConfiguration else {
-      if let endpoint = settings.activeSpeechEndpoint {
-        await retranscribe(recording: recording, endpoint: endpoint)
-      } else {
-        errorMessage = AppLanguage.localized(
-          "Configure realtime processing or a transcription service before retranscribing a recording."
-        )
-      }
+    guard canTranscribeRecordings else {
+      errorMessage = AppLanguage.localized(
+        "Transcription needs iOS 26 or later, or a transcription service in Settings."
+      )
       return
     }
-
-    retranscribingRecordingID = recording.id
-    retranscriptionProgress = 0
-    retranscriptionStatusMessage = AppLanguage.localized("Preparing audio…")
-    audioBusyRecordingID = recording.id
-    defer {
-      retranscribingRecordingID = nil
-      retranscriptionStatusMessage = nil
-      audioBusyRecordingID = nil
-    }
-
-    let pair = AsyncStream<RealtimeProcessingEvent>.makeStream()
-    let client = RealtimeProcessingClient(configuration: configuration) { event in
-      pair.continuation.yield(event)
-    }
-    let eventTask = Task {
-      try await Self.collectRetranscriptionEvents(from: pair.stream)
-    }
-
-    do {
-      let chunks = try await store.chunks(recordingID: recording.id)
-      let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-        for: recording,
-        chunks: chunks,
-        s3Configuration: s3Configuration(for: recording)
-      )
-
-      retranscriptionStatusMessage = AppLanguage.localized("Connecting to processor…")
-      await client.start(
-        recordingID: recording.id,
-        language: settings.spokenLanguage.recognitionCode
-      )
-      retranscriptionStatusMessage = AppLanguage.localized("Transcribing and identifying speakers…")
-
-      for try await frame in try await RealtimeAudioFileReader.frames(from: file) {
-        try Task.checkCancellation()
-        await client.appendAudio(frame.audio)
-        retranscriptionProgress = min(0.92, frame.progress * 0.92)
-      }
-      retranscriptionStatusMessage = AppLanguage.localized("Finalizing speaker identification…")
-      await client.finish()
-
-      let segments = try await eventTask.value
-      try writeTranscript(segments, recordingID: recording.id)
-      retranscriptionProgress = 1
-      retranscriptionStatusMessage = AppLanguage.localized("Retranscription completed.")
-      transcriptVersion += 1
-    } catch {
-      eventTask.cancel()
-      retranscriptionStatusMessage = nil
-      errorMessage = String(
-        format: AppLanguage.localized("Could not retranscribe this recording: %@"),
-        error.localizedDescription
-      )
-    }
-    pair.continuation.finish()
-    await client.stop()
-  }
-
-  private func retranscribe(recording: RecordingRecord, endpoint: ThirdPartyEndpoint) async {
     retranscribingRecordingID = recording.id
     retranscriptionProgress = 0
     retranscriptionStatusMessage = AppLanguage.localized("Transcribing…")
@@ -734,12 +595,7 @@ final class AppModel {
         chunks: try await store.chunks(recordingID: recording.id),
         s3Configuration: s3Configuration(for: recording)
       )
-      let segments = try await ThirdPartyTranscriber.transcribe(
-        audioURL: file,
-        recordingID: recording.id,
-        language: settings.spokenLanguage.recognitionCode,
-        endpoint: endpoint
-      )
+      let segments = try await transcribe(audioURL: file, recordingID: recording.id)
       guard !segments.isEmpty else { return }
       try writeTranscript(segments, recordingID: recording.id)
       retranscriptionProgress = 1
@@ -752,38 +608,31 @@ final class AppModel {
     }
   }
 
+  /// Uses the service the user configured in Settings, otherwise Apple's on-device speech.
+  private func transcribe(
+    audioURL: URL, recordingID: String
+  ) async throws -> [RealtimeTranscriptEvent] {
+    if let endpoint = settings.activeSpeechEndpoint {
+      return try await ThirdPartyTranscriber.transcribe(
+        audioURL: audioURL,
+        recordingID: recordingID,
+        language: settings.spokenLanguage.recognitionCode,
+        endpoint: endpoint
+      )
+    }
+    return try await OnDeviceIntelligence.transcribe(
+      audioURL: audioURL,
+      recordingID: recordingID,
+      spokenLanguage: settings.spokenLanguage
+    )
+  }
+
   private func writeTranscript(_ segments: [RealtimeTranscriptEvent], recordingID: String) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let transcriptURL = try fileLayout.transcriptURL(recordingID: recordingID)
     try encoder.encode(segments).write(to: transcriptURL, options: [.atomic])
     try RecordingFileLayout.protect(transcriptURL)
-  }
-
-  private static func collectRetranscriptionEvents(
-    from stream: AsyncStream<RealtimeProcessingEvent>
-  ) async throws -> [RealtimeTranscriptEvent] {
-    var segments: [String: RealtimeTranscriptEvent] = [:]
-    for await event in stream {
-      try Task.checkCancellation()
-      switch event {
-      case .transcript(let transcript):
-        if let existing = segments[transcript.id], existing.revision > transcript.revision {
-          continue
-        }
-        segments[transcript.id] = transcript
-      case .state(.unavailable(let message)):
-        throw RecordingUIError.realtimeUnavailable(message)
-      case .completed:
-        return segments.values.sorted {
-          if $0.startMilliseconds == $1.startMilliseconds { return $0.id < $1.id }
-          return $0.startMilliseconds < $1.startMilliseconds
-        }
-      case .state:
-        continue
-      }
-    }
-    throw RealtimeClientError.disconnected
   }
 
   private func stopPlayback() {
@@ -914,10 +763,7 @@ final class AppModel {
     }
   }
 
-  private func configure(
-    _ capture: AudioCaptureService,
-    realtimeClient: RealtimeProcessingClient?
-  ) {
+  private func configure(_ capture: AudioCaptureService) {
     captureFeedback = .idle
     capture.onCaptureFeedback = { [weak self, weak capture] feedback in
       guard let self, let capture, self.capture === capture else { return }
@@ -946,10 +792,6 @@ final class AppModel {
           self.errorMessage = error.localizedDescription
         }
       }
-    }
-    capture.onRealtimeAudioFrame = { frame in
-      guard let realtimeClient else { return }
-      Task { await realtimeClient.appendAudio(frame) }
     }
   }
 
@@ -980,8 +822,8 @@ final class AppModel {
     return try? JSONDecoder().decode(RecordingSummary.self, from: data)
   }
 
-  /// Transcribes when no realtime transcript exists, then writes a summary. Uses the service
-  /// the user configured in Settings, otherwise Apple's on-device frameworks.
+  /// Transcribes when no transcript exists, then writes a summary. Uses the services the
+  /// user configured in Settings, otherwise Apple's on-device frameworks.
   /// `regenerateSummary` replaces an existing summary.
   func processOnDevice(
     recording: RecordingRecord,
@@ -1004,20 +846,7 @@ final class AppModel {
             s3Configuration: s3Configuration(for: recording)
           )
         }
-        if let endpoint = settings.activeSpeechEndpoint {
-          segments = try await ThirdPartyTranscriber.transcribe(
-            audioURL: file,
-            recordingID: recording.id,
-            language: settings.spokenLanguage.recognitionCode,
-            endpoint: endpoint
-          )
-        } else {
-          segments = try await OnDeviceIntelligence.transcribe(
-            audioURL: file,
-            recordingID: recording.id,
-            spokenLanguage: settings.spokenLanguage
-          )
-        }
+        segments = try await transcribe(audioURL: file, recordingID: recording.id)
         guard !segments.isEmpty else { return }
         try writeTranscript(segments, recordingID: recording.id)
         transcriptVersion += 1
@@ -1049,96 +878,6 @@ final class AppModel {
         format: AppLanguage.localized("Could not process this recording: %@"),
         error.localizedDescription
       )
-    }
-  }
-
-  /// Saves the voice of one speaker in a finished recording under the name the user gave.
-  /// Only the passages labeled with that speaker are sent, once, to the user's own service.
-  func rememberVoice(
-    recording: RecordingRecord,
-    clusterID: String,
-    name: String,
-    transcript: [RealtimeTranscriptEvent],
-    replacing personID: String? = nil
-  ) async throws {
-    guard settings.rememberVoicesEnabled else { return }
-    let configuration = try settings.voiceEnrollmentConfiguration()
-    let ranges = transcript
-      .filter { $0.speaker?.clusterID == clusterID }
-      .map { $0.startMilliseconds..<$0.endMilliseconds }
-    let chunks = try await store.chunks(recordingID: recording.id)
-    let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-      for: recording,
-      chunks: chunks,
-      s3Configuration: s3Configuration(for: recording)
-    )
-    let maximumBytes =
-      Int(RealtimeVoiceprintEnrollmentRequest.recommendedDuration) * RealtimeProtocol.sampleRate * 2
-    var sample = Data()
-    for try await frame in try await RealtimeAudioFileReader.frames(from: file) {
-      let start = frame.audio.startMilliseconds
-      let end = start + frame.audio.pcm16LittleEndian.count * 1_000 / (RealtimeProtocol.sampleRate * 2)
-      if ranges.contains(where: { $0.lowerBound <= start && end <= $0.upperBound }) {
-        sample.append(frame.audio.pcm16LittleEndian)
-        if sample.count >= maximumBytes { break }
-      }
-    }
-    guard !sample.isEmpty else { throw RealtimeClientError.voiceprintNeedsMoreSpeech }
-    let enrolled = try await RealtimeProcessingClient.enrollVoiceprint(
-      configuration: configuration,
-      pcm16LittleEndian: sample
-    )
-    try settings.saveVoice(name: name, voiceprint: enrolled.voiceprint, replacing: personID)
-  }
-
-  private func makeRealtimeClient() -> RealtimeProcessingClient? {
-    guard let configuration = settings.activeRealtimeConfiguration else {
-      realtimeState = .disabled
-      return nil
-    }
-    return RealtimeProcessingClient(configuration: configuration) { [weak self] event in
-      Task { @MainActor in self?.handleRealtimeEvent(event) }
-    }
-  }
-
-  private func handleRealtimeEvent(_ event: RealtimeProcessingEvent) {
-    switch event {
-    case .state(let state):
-      realtimeState = state
-    case .transcript(let transcript):
-      guard transcript.recordingID == liveTranscriptRecordingID else { return }
-      if let personID = transcript.speaker?.personID {
-        settings.markVoicesHeard([personID])
-      }
-      if let index = liveTranscriptSegments.firstIndex(where: { $0.id == transcript.id }) {
-        guard transcript.revision >= liveTranscriptSegments[index].revision else { return }
-        liveTranscriptSegments[index] = transcript
-      } else {
-        liveTranscriptSegments.append(transcript)
-      }
-      liveTranscriptSegments.sort {
-        if $0.startMilliseconds == $1.startMilliseconds { return $0.id < $1.id }
-        return $0.startMilliseconds < $1.startMilliseconds
-      }
-      realtimeUpdateSequence += 1
-      persistLiveTranscript(recordingID: transcript.recordingID)
-    case .completed:
-      if let recordingID = liveTranscriptRecordingID {
-        persistLiveTranscript(recordingID: recordingID)
-      }
-      realtimeUpdateSequence += 1
-    }
-  }
-
-  private func persistLiveTranscript(recordingID: String) {
-    do {
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-      let url = try fileLayout.transcriptURL(recordingID: recordingID)
-      try encoder.encode(liveTranscriptSegments).write(to: url, options: [.atomic])
-      try RecordingFileLayout.protect(url)
-    } catch {
-      print("WakeOnCue could not persist live transcript: \(error.localizedDescription)")
     }
   }
 
@@ -1381,7 +1120,6 @@ extension AppModel {
 enum RecordingUIError: Error, LocalizedError {
   case microphoneDenied
   case playbackFailed
-  case realtimeUnavailable(String)
 
   var errorDescription: String? {
     switch self {
@@ -1391,8 +1129,6 @@ enum RecordingUIError: Error, LocalizedError {
       )
     case .playbackFailed:
       AppLanguage.localized("The audio player could not start.")
-    case .realtimeUnavailable(let message):
-      message
     }
   }
 }

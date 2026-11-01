@@ -26,12 +26,6 @@
 	<true/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>WakeOnCue records audio played on this Mac, such as the other side of an online meeting, only during a recording you start.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_wakeoncue._tcp</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>WakeOnCue lets your iPhone find the realtime service running on this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WakeOnCue records your microphone only during a meeting recording you start.</string>
 	<key>WakeOnCueSourceRoot</key>

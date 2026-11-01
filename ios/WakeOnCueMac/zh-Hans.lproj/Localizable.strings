@@ -29,14 +29,10 @@
 "No live transcript" = "暂无实时文字";
 "No microphone is available." = "没有可用的麦克风。";
 "Not running" = "未运行";
-"On iPhone, open Settings › Live transcription › Pair self-hosted service and scan this code. Both devices must be on the same network." = "在 iPhone 上打开“设置 › 实时转写 › 配对自托管服务”并扫描此二维码。两台设备需在同一网络。";
 "Online meeting" = "线上会议";
 "Open WakeOnCue at login" = "登录时打开 WakeOnCue";
 "Others" = "对方";
 "Others (system audio)" = "对方（系统声音）";
-"Pair iPhone" = "配对 iPhone";
-"Pair iPhone…" = "配对 iPhone…";
-"Pair your iPhone" = "配对你的 iPhone";
 "Processor" = "Processor";
 "Python environment missing. In Terminal, run server/scripts/setup_mac.sh from %@." = "缺少 Python 环境。请在终端中于 %@ 运行 server/scripts/setup_mac.sh。";
 "Quit WakeOnCue" = "退出 WakeOnCue";
@@ -53,7 +49,6 @@
 "Saved the channel recordings, but could not make meeting.m4a: %@" = "已保存各声道录音，但无法生成 meeting.m4a：%@";
 "Saving recording…" = "正在保存录音…";
 "Show Live Transcript" = "显示实时文字";
-"Show Pairing Code" = "显示配对二维码";
 "Show Recordings" = "显示录音";
 "Speaker %lld" = "说话人 %lld";
 "Speech model" = "语音模型";

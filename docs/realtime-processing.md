@@ -1,5 +1,7 @@
 # Realtime Processing
 
+> **iPhone 已不再接入 Gateway。** 实时字幕、说话人区分和声纹功能已从 iPhone App 移除，本文描述的协议现在只供 Mac 菜单栏 App 在本机使用；涉及 iPhone 配对、局域网发现和声纹登记的部分是旧设计。iPhone 的转写和摘要见[第三方服务说明](ai-providers.md)。
+
 WakeOnCue 的实时分析是一条可失败的旁路，不能成为录音链路的依赖：
 
 ```text

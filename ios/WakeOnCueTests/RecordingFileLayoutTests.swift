@@ -28,47 +28,6 @@ final class RecordingFileLayoutTests: XCTestCase {
     XCTAssertEqual(AppLanguage.simplifiedChinese.localized("Automatic detection"), "自动识别")
   }
 
-  func testCompletedAudioIsStreamedAsHalfSecondRealtimeFrames() async throws {
-    let url = FileManager.default.temporaryDirectory.appending(
-      path: "retranscription-\(UUID().uuidString).caf"
-    )
-    defer { try? FileManager.default.removeItem(at: url) }
-    let format = try XCTUnwrap(
-      AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 48_000,
-        channels: 2,
-        interleaved: false
-      )
-    )
-    do {
-      let file = try AVAudioFile(forWriting: url, settings: format.settings)
-      let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
-      buffer.frameLength = 48_000
-      for channelIndex in 0..<Int(format.channelCount) {
-        let channel = try XCTUnwrap(buffer.floatChannelData?[channelIndex])
-        for frame in 0..<Int(buffer.frameLength) {
-          channel[frame] = sin(Float(frame) * 0.01) * 0.1
-        }
-      }
-      try file.write(from: buffer)
-    }
-
-    var frames: [RealtimeAudioFileFrame] = []
-    for try await frame in try await RealtimeAudioFileReader.frames(from: url) {
-      frames.append(frame)
-    }
-
-    XCTAssertEqual(frames.count, 2)
-    XCTAssertEqual(frames.map(\.audio.startMilliseconds), [0, 500])
-    XCTAssertEqual(
-      frames.reduce(0) { $0 + $1.audio.pcm16LittleEndian.count },
-      48_000,
-      accuracy: 128
-    )
-    XCTAssertEqual(frames.last?.progress, 1)
-  }
-
   func testLanguageDefaultsToSystemAndPersistsExplicitSelection() throws {
     let defaults = try XCTUnwrap(UserDefaults(suiteName: SharedRecordingState.appGroup))
     let previousValue = defaults.object(forKey: AppLanguage.preferenceKey)
@@ -111,6 +70,42 @@ final class RecordingFileLayoutTests: XCTestCase {
       SpokenLanguage.simplifiedChinese.rawValue
     )
     XCTAssertEqual(AppSettings().spokenLanguage.recognitionCode, "zh")
+  }
+
+  @MainActor
+  func testRetiringRealtimeServiceDeletesVoiceprintsAndTokenButKeepsNames() throws {
+    let suiteName = "retire-realtime-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let service = "com.deoooo.WakeOnCue.realtime"
+    defer { try? KeychainStore.delete(service: service, account: "remembered-voice-names") }
+    defaults.set(true, forKey: "realtime-processing.enabled")
+    try KeychainStore.save("token", service: service, account: "gateway-token")
+    try KeychainStore.save("{}", service: service, account: "self-voiceprint")
+    try KeychainStore.save(
+      #"[{"id":"p1","name":"Avery","voiceprint":{"model":"m","embedding":[0.1]},"createdAt":0,"lastHeardAt":0}]"#,
+      service: service,
+      account: "saved-voices"
+    )
+
+    AppSettings.retireRealtimeService(defaults: defaults)
+
+    for account in ["gateway-token", "self-voiceprint", "saved-voices"] {
+      XCTAssertNil(try KeychainStore.read(service: service, account: account))
+    }
+    XCTAssertFalse(defaults.bool(forKey: "realtime-processing.enabled"))
+    let names = try XCTUnwrap(
+      try KeychainStore.read(service: service, account: "remembered-voice-names"))
+    XCTAssertFalse(names.contains("embedding"))
+    XCTAssertEqual(
+      try JSONDecoder().decode([String: String].self, from: Data(names.utf8)), ["p1": "Avery"])
+
+    try KeychainStore.save("again", service: service, account: "gateway-token")
+    defer { try? KeychainStore.delete(service: service, account: "gateway-token") }
+    AppSettings.retireRealtimeService(defaults: defaults)
+    XCTAssertEqual(
+      try KeychainStore.read(service: service, account: "gateway-token"), "again",
+      "Retirement runs once")
   }
 
   func testCreatesDurableQueuePayload() throws {
@@ -219,88 +214,6 @@ final class RecordingFileLayoutTests: XCTestCase {
     XCTAssertEqual(downloaded, destination)
     XCTAssertEqual(try Data(contentsOf: downloaded), S3DownloadURLProtocol.payload)
   }
-
-  func testRealtimeWebSocketUsesTheSelectedGatewayWhileKeepingTheSessionPath() throws {
-    let sessionURL = try XCTUnwrap(
-      URL(string: "wss://public.example/v1/realtime/sessions/rts_123/stream?resume=1")
-    )
-    let localGateway = try XCTUnwrap(URL(string: "http://wakeoncue-mac.local:8090"))
-
-    let rewritten = try RealtimeProcessingClient.websocketURL(
-      sessionURL: sessionURL,
-      through: localGateway
-    )
-
-    XCTAssertEqual(
-      rewritten.absoluteString,
-      "ws://wakeoncue-mac.local:8090/v1/realtime/sessions/rts_123/stream?resume=1"
-    )
-  }
-
-  func testRealtimeGatewaySelectionPrefersAReachableLocalGateway() async throws {
-    let local = try XCTUnwrap(URL(string: "http://available.local:8090"))
-    let publicGateway = try XCTUnwrap(URL(string: "https://public.example"))
-    let selected = try await RealtimeGatewaySelector.select(
-      configuration: RealtimeProcessingConfiguration(
-        gatewayURL: publicGateway,
-        bearerToken: "test-token"
-      ),
-      discovery: FixedRealtimeGatewayDiscovery(gateways: [local]),
-      urlSession: realtimeProbeSession()
-    )
-
-    XCTAssertEqual(selected, local)
-  }
-
-  func testRealtimeGatewaySelectionFallsBackToPublicGateway() async throws {
-    let unavailableLocal = try XCTUnwrap(URL(string: "http://unavailable.local:8090"))
-    let publicGateway = try XCTUnwrap(URL(string: "https://public.example"))
-    let selected = try await RealtimeGatewaySelector.select(
-      configuration: RealtimeProcessingConfiguration(
-        gatewayURL: publicGateway,
-        bearerToken: "test-token"
-      ),
-      discovery: FixedRealtimeGatewayDiscovery(gateways: [unavailableLocal]),
-      urlSession: realtimeProbeSession()
-    )
-
-    XCTAssertEqual(selected, publicGateway)
-  }
-
-  private func realtimeProbeSession() -> URLSession {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [RealtimeGatewayProbeURLProtocol.self]
-    return URLSession(configuration: configuration)
-  }
-}
-
-private struct FixedRealtimeGatewayDiscovery: RealtimeGatewayDiscovering {
-  let gateways: [URL]
-
-  func discoverGateways(timeout: Duration) async -> [URL] { gateways }
-}
-
-private final class RealtimeGatewayProbeURLProtocol: URLProtocol {
-  override class func canInit(with request: URLRequest) -> Bool { true }
-
-  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-  override func startLoading() {
-    guard let url = request.url else { return }
-    let statusCode = url.host == "unavailable.local" ? 503 : 200
-    let payload = Data("{\"protocol_version\":1}".utf8)
-    let response = HTTPURLResponse(
-      url: url,
-      statusCode: statusCode,
-      httpVersion: "HTTP/1.1",
-      headerFields: ["Content-Type": "application/json"]
-    )!
-    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-    client?.urlProtocol(self, didLoad: payload)
-    client?.urlProtocolDidFinishLoading(self)
-  }
-
-  override func stopLoading() {}
 }
 
 private final class S3DownloadURLProtocol: URLProtocol {

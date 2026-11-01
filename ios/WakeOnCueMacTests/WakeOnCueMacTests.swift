@@ -1,29 +1,9 @@
 import AVFoundation
-import CoreImage
 import Foundation
 import Testing
 import WakeOnCueCore
 
 @testable import WakeOnCue
-
-@Test func pairingPayloadMatchesDocumentedContractAndScans() throws {
-  let payload = try PairingCode.payload(
-    gatewayURL: URL(string: "http://studio.local:8090")!, token: "secret-token")
-  let object = try #require(
-    JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any])
-  #expect(object["type"] as? String == "wakeoncue.realtime-gateway")
-  #expect(object["version"] as? Int == 1)
-  #expect(object["gateway_url"] as? String == "http://studio.local:8090")
-  #expect(object["gateway_token"] as? String == "secret-token")
-
-  let image = try #require(PairingCode.qrImage(for: payload))
-  let cgImage = try #require(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
-  let detector = try #require(
-    CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: nil))
-  let decoded = detector.features(in: CIImage(cgImage: cgImage))
-    .compactMap { ($0 as? CIQRCodeFeature)?.messageString }
-  #expect(decoded == [payload])
-}
 
 private final class FrameSink: @unchecked Sendable {
   private let lock = NSLock()

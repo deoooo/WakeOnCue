@@ -5,9 +5,6 @@ struct SettingsView: View {
   @Environment(AppModel.self) private var model
   @State private var isActionButtonSetupPresented = false
   @State private var isForgetS3Presented = false
-  @State private var isRealtimeAdvancedPresented = false
-  @State private var isRealtimePairingPresented = false
-  @State private var realtimeConnectionCheck = RealtimeConnectionCheck.idle
 
   var body: some View {
     @Bindable var settings = model.settings
@@ -61,95 +58,16 @@ struct SettingsView: View {
         }
 
         Section {
-          Toggle(isOn: $settings.useRealtimeProcessing) {
-            Label("Live transcription", systemImage: "captions.bubble.fill")
-          }
-          .accessibilityIdentifier("settings.transcription.toggle")
-
-          if settings.useRealtimeProcessing {
-            Picker("Spoken language", selection: $settings.spokenLanguage) {
-              ForEach(SpokenLanguage.allCases) { language in
-                Text(language.title).tag(language)
-              }
-            }
-            if settings.realtimeHasStoredToken {
-              Label("Gateway credentials saved", systemImage: "key.fill")
-                .foregroundStyle(.secondary)
-            }
-
-            Button {
-              isRealtimePairingPresented = true
-            } label: {
-              Label("Pair self-hosted service", systemImage: "qrcode.viewfinder")
-            }
-            .accessibilityIdentifier("settings.transcription.pair")
-
-            Button {
-              Task { await testRealtimeConnection(settings: settings) }
-            } label: {
-              if realtimeConnectionCheck.isTesting {
-                HStack {
-                  ProgressView().controlSize(.small)
-                  Text("Testing connection…")
-                }
-              } else {
-                Label("Test connection", systemImage: "network")
-              }
-            }
-            .disabled(realtimeConnectionCheck.isTesting)
-            .accessibilityIdentifier("settings.transcription.test-connection")
-
-            if let result = realtimeConnectionCheck.result {
-              Label(
-                result.message,
-                systemImage: result.isError ? "xmark.circle.fill" : "checkmark.circle.fill"
-              )
-                .font(.footnote)
-                .foregroundStyle(result.isError ? .orange : .green)
-                .accessibilityIdentifier("settings.transcription.connection-result")
-            }
-
-            DisclosureGroup("Manual setup", isExpanded: $isRealtimeAdvancedPresented) {
-              TextField("Gateway URL", text: $settings.realtimeGatewayURL)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("settings.transcription.gateway-url")
-                .onChange(of: settings.realtimeGatewayURL) { _, _ in
-                  realtimeConnectionCheck = .idle
-                }
-              SecureField(
-                settings.realtimeHasStoredToken
-                  ? settings.language.localized("Gateway token (leave blank to keep)")
-                  : settings.language.localized("Gateway token"),
-                text: $settings.realtimeGatewayToken
-              )
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .accessibilityIdentifier("settings.transcription.gateway-token")
-              .onChange(of: settings.realtimeGatewayToken) { _, _ in
-                realtimeConnectionCheck = .idle
-              }
-            }
-          }
-        } header: {
-          Text("Live transcription")
-        } footer: {
-          Text(
-            "Optional. Pair your own Gateway by QR code or paste its pairing JSON. Save checks the service and token before storing them. Audio always saves locally first."
-          )
-        }
-
-        if settings.useRealtimeProcessing {
-          SpeakerSettingsSection()
-        }
-
-        Section {
           Picker("Service", selection: $settings.speechEngine) {
             Text("Apple Speech").tag(SpeechEngine.apple)
             Text("OpenAI-compatible API").tag(SpeechEngine.openAICompatible)
           }
           .accessibilityIdentifier("settings.ai.speech.engine")
+          Picker("Spoken language", selection: $settings.spokenLanguage) {
+            ForEach(SpokenLanguage.allCases) { language in
+              Text(language.title).tag(language)
+            }
+          }
           if let defaultURL = settings.speechEngine.defaultBaseURL {
             ThirdPartyEndpointFields(
               identifier: "speech",
@@ -168,7 +86,7 @@ struct SettingsView: View {
             Text("Runs on this iPhone with iOS 26 or later. Audio does not leave the device.")
           } else {
             Text(
-              "Finished recordings without a live transcript are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions."
+              "Finished recordings are uploaded to this service automatically. Its privacy terms and charges apply. Save sends one second of silence to check the settings. Works with any service that implements /audio/transcriptions."
             )
           }
         }
@@ -288,13 +206,6 @@ struct SettingsView: View {
       .sheet(isPresented: $isActionButtonSetupPresented) {
         ActionButtonSetupView()
       }
-      .sheet(isPresented: $isRealtimePairingPresented) {
-        RealtimePairingView { pairing in
-          settings.applyRealtimePairing(pairing)
-          isRealtimePairingPresented = false
-          Task { await model.saveSettings() }
-        }
-      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { model.cancelSettings() }
@@ -314,37 +225,6 @@ struct SettingsView: View {
           .accessibilityIdentifier("settings.save")
         }
       }
-    }
-  }
-
-  @MainActor
-  private func testRealtimeConnection(settings: AppSettings) async {
-    realtimeConnectionCheck = .testing
-    do {
-      let configuration = try settings.candidateRealtimeConfiguration()
-      try await RealtimeProcessingClient.validate(configuration: configuration)
-      realtimeConnectionCheck = .success(
-        AppLanguage.localized("Connection verified just now. Save to keep this configuration."))
-    } catch let error as RealtimeClientError {
-      switch error {
-      case .validationFailed:
-        realtimeConnectionCheck = .failure(
-          AppLanguage.localized(
-            "The Gateway rejected the token or does not support WakeOnCue protocol v1. Check the token and service version."
-          ))
-      default:
-        realtimeConnectionCheck = .failure(error.localizedDescription)
-      }
-    } catch let error as URLError {
-      realtimeConnectionCheck = .failure(
-        String(
-          format: AppLanguage.localized(
-            "Could not reach the Gateway: %@ Check the URL, network, and Gateway process."
-          ),
-          error.localizedDescription
-        ))
-    } catch {
-      realtimeConnectionCheck = .failure(error.localizedDescription)
     }
   }
 
@@ -399,151 +279,6 @@ private struct ThirdPartyEndpointFields: View {
     .textInputAutocapitalization(.never)
     .autocorrectionDisabled()
     .accessibilityIdentifier("settings.ai.\(identifier).key")
-  }
-}
-
-private enum RealtimeConnectionCheck: Equatable {
-  case idle
-  case testing
-  case success(String)
-  case failure(String)
-
-  var isTesting: Bool { self == .testing }
-
-  var result: (message: String, isError: Bool)? {
-    switch self {
-    case .success(let message): (message, false)
-    case .failure(let message): (message, true)
-    case .idle, .testing: nil
-    }
-  }
-}
-
-private struct RealtimePairingView: View {
-  @Environment(\.dismiss) private var dismiss
-  @State private var mode = PairingInputMode.camera
-  @State private var pastedPayload = ""
-  @State private var candidate: RealtimeServicePairing?
-  @State private var errorMessage: String?
-
-  let onConfirm: (RealtimeServicePairing) -> Void
-
-  var body: some View {
-    NavigationStack {
-      Form {
-        if let candidate {
-          Section("Review service") {
-            LabeledContent("Gateway", value: candidate.gatewayURL.absoluteString)
-            LabeledContent("Transport", value: transportLabel(candidate.gatewayURL))
-            LabeledContent("Token", value: maskedToken(candidate.gatewayToken))
-          }
-
-          Section {
-            Button {
-              onConfirm(candidate)
-            } label: {
-              Label("Verify and save", systemImage: "checkmark.shield")
-            }
-            Button("Scan or paste a different code") {
-              self.candidate = nil
-              errorMessage = nil
-            }
-          } footer: {
-            Text("WakeOnCue will contact this Gateway and validate the token before saving it.")
-          }
-        } else {
-          Section {
-            Picker("Pair using", selection: $mode) {
-              ForEach(PairingInputMode.allCases) { inputMode in
-                Text(inputMode.title).tag(inputMode)
-              }
-            }
-            .pickerStyle(.segmented)
-
-            if mode == .camera {
-              RealtimePairingScanner(
-                onPayload: decode,
-                onError: { errorMessage = $0 }
-              )
-              .frame(height: 300)
-              .clipShape(RoundedRectangle(cornerRadius: 12))
-              .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                  .stroke(.white.opacity(0.7), lineWidth: 2)
-                  .frame(width: 210, height: 210)
-              }
-              .accessibilityLabel("QR code scanner")
-            } else {
-              TextEditor(text: $pastedPayload)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .frame(minHeight: 150)
-                .font(.system(.footnote, design: .monospaced))
-              Button("Review pairing") { decode(pastedPayload) }
-                .disabled(pastedPayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-          } header: {
-            Text("Self-hosted Gateway")
-          } footer: {
-            Text("Pairing data contains a service URL and secret token. Review both before saving.")
-          }
-        }
-
-        if let errorMessage {
-          Section {
-            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-              .foregroundStyle(.orange)
-          } footer: {
-            if mode == .camera {
-              Text("Try again, or choose Paste and enter the complete pairing JSON.")
-            } else {
-              Text("Copy the complete JSON generated by the WakeOnCue pairing command.")
-            }
-          }
-        }
-      }
-      .navigationTitle("Pair service")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
-        }
-      }
-    }
-  }
-
-  private func decode(_ payload: String) {
-    do {
-      candidate = try RealtimeServicePairing(payload: payload)
-      errorMessage = nil
-    } catch {
-      candidate = nil
-      errorMessage = error.localizedDescription
-    }
-  }
-
-  private func maskedToken(_ token: String) -> String {
-    guard token.count > 8 else { return String(repeating: "•", count: token.count) }
-    return "\(token.prefix(4))••••\(token.suffix(4))"
-  }
-
-  private func transportLabel(_ url: URL) -> String {
-    url.scheme?.lowercased() == "https"
-      ? AppLanguage.localized("Encrypted HTTPS")
-      : AppLanguage.localized("HTTP (use only on a trusted private network)")
-  }
-}
-
-private enum PairingInputMode: String, CaseIterable, Identifiable {
-  case camera
-  case paste
-
-  var id: Self { self }
-  var title: LocalizedStringKey {
-    switch self {
-    case .camera: "Scan QR"
-    case .paste: "Paste"
-    }
   }
 }
 

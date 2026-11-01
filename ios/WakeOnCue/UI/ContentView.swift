@@ -7,7 +7,6 @@ struct ContentView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-  @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
   @State private var dismissedRecordingID: String?
 
   private let accent = Color(red: 1.0, green: 0.25, blue: 0.34)
@@ -33,9 +32,6 @@ struct ContentView: View {
             }
             if isCaptureActive {
               activeRecorderPanel
-              if model.realtimeState.isEnabled || !model.liveTranscriptSegments.isEmpty {
-                liveTranscriptPanel
-              }
               allRecordingsLink
             } else {
               recorderPanel
@@ -79,138 +75,6 @@ struct ContentView: View {
       }
     }
     .environment(\.locale, model.settings.language.locale)
-  }
-
-  private var liveTranscriptPanel: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(spacing: 9) {
-        Image(systemName: "captions.bubble.fill")
-          .foregroundStyle(.cyan)
-        Text("Live transcript")
-          .font(.headline)
-        Spacer()
-        realtimeStatusBadge
-      }
-
-      if model.liveTranscriptSegments.isEmpty {
-        Text(emptyTranscriptMessage)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.vertical, 10)
-      } else {
-        ScrollViewReader { proxy in
-          VStack(spacing: 10) {
-            ScrollView(.vertical, showsIndicators: true) {
-              LazyVStack(alignment: .leading, spacing: 14) {
-                ForEach(model.liveTranscriptSegments) { segment in
-                  transcriptRow(segment)
-                    .id(segment.id)
-                }
-              }
-            }
-            .frame(maxHeight: 320)
-            .simultaneousGesture(
-              DragGesture(minimumDistance: 2)
-                .onChanged { _ in
-                  _ = transcriptFollowPolicy.handle(.manualScrollBegan)
-                }
-            )
-
-            if !transcriptFollowPolicy.isFollowingPlayback {
-              Button {
-                _ = transcriptFollowPolicy.handle(.returnToPlayback)
-                scrollToLatestTranscript(using: proxy, animated: true)
-              } label: {
-                Label("Return to live", systemImage: "arrow.down.to.line.compact")
-                  .font(.subheadline.weight(.semibold))
-              }
-              .buttonStyle(.bordered)
-              .accessibilityIdentifier("return-to-live-transcript")
-            }
-          }
-          .onAppear { scrollToLatestTranscript(using: proxy, animated: false) }
-          .onChange(of: model.realtimeUpdateSequence) {
-            guard transcriptFollowPolicy.isFollowingPlayback else { return }
-            scrollToLatestTranscript(using: proxy, animated: true)
-          }
-        }
-      }
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(border))
-  }
-
-  private func scrollToLatestTranscript(using proxy: ScrollViewProxy, animated: Bool) {
-    guard let id = model.liveTranscriptSegments.last?.id else { return }
-    if animated && !reduceMotion {
-      withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo(id, anchor: .bottom) }
-    } else {
-      proxy.scrollTo(id, anchor: .bottom)
-    }
-  }
-
-  private var realtimeStatusBadge: some View {
-    let (title, color): (String, Color) =
-      switch model.realtimeState {
-      case .disabled: (model.settings.language.localized("Finished"), .secondary)
-      case .connecting: (model.settings.language.localized("Connecting"), .orange)
-      case .waitingForProcessor:
-        (model.settings.language.localized("Waiting for processor"), .orange)
-      case .processing: (model.settings.language.localized("Live"), .green)
-      case .reconnecting: (model.settings.language.localized("Reconnecting"), .orange)
-      case .unavailable: (model.settings.language.localized("Offline"), .secondary)
-      }
-    return Text(title)
-      .font(.caption2.weight(.bold))
-      .padding(.horizontal, 9)
-      .padding(.vertical, 5)
-      .foregroundStyle(color)
-      .background(color.opacity(0.13), in: Capsule())
-      .accessibilityIdentifier("realtime-status")
-  }
-
-  private var emptyTranscriptMessage: String {
-    switch model.realtimeState {
-    case .waitingForProcessor:
-      model.settings.language.localized("Recording is safe. Waiting for an analysis processor.")
-    case .unavailable(let message): message
-    default: model.settings.language.localized("Listening for speech…")
-    }
-  }
-
-  private func transcriptRow(_ segment: RealtimeTranscriptEvent) -> some View {
-    HStack(alignment: .top, spacing: 10) {
-      Text(timestamp(milliseconds: segment.startMilliseconds))
-        .font(.caption2.monospacedDigit())
-        .foregroundStyle(.tertiary)
-        .frame(width: 38, alignment: .leading)
-
-      VStack(alignment: .leading, spacing: 4) {
-        Text(
-          localizedSpeakerName(
-            segment.speaker,
-            language: model.settings.language,
-            personNames: model.settings.personNames
-          ))
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.cyan)
-        Text(segment.text)
-          .font(.subheadline)
-          .foregroundStyle(segment.isFinal ? .primary : .secondary)
-          .italic(!segment.isFinal)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      }
-    }
-    .accessibilityElement(children: .combine)
-    .accessibilityIdentifier("live-transcript-segment-\(segment.id)")
-  }
-
-  private func timestamp(milliseconds: Int) -> String {
-    let totalSeconds = max(0, milliseconds / 1_000)
-    return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
   }
 
   private var background: some View {

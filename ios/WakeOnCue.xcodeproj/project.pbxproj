@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		03F32A464D9F57116A9320C3 /* RealtimeGatewayDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */; };
 		057DC271DC7A756AA99C8953 /* ThirdPartyAITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */; };
 		0613C041BE30DBB585D12CB3 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 11B4A8475A46E49F4252083D /* WakeOnCueCore */; };
 		0B06350E90B3DDB84D6F2BD3 /* RecordingAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */; };
@@ -29,7 +28,6 @@
 		28F3DC9E72616B532F5FF623 /* WatchSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */; };
 		2A8610AB1AF7A3586F04A4A6 /* RecordingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81F7307DD7F72D8760C28A1 /* RecordingLibraryView.swift */; };
 		2DBD994F5A1A4F58D14958D0 /* WatchSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */; };
-		306C98F3DF305D7BDDF91B28 /* PairingCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 971F06E9FF42AB1D3C9F3EAA /* PairingCode.swift */; };
 		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
 		31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */; };
 		3AE9B935CA1890C7062EF162 /* WatchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */; };
@@ -38,7 +36,6 @@
 		3EBC44400AD284B01FFE86D5 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
 		4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */; };
 		4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28875075914483902B567040 /* ContactNamePicker.swift */; };
-		49AD10C178774912B9BBF042 /* RealtimeServicePairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */; };
 		4B211C375A1E8FBFCBFFACAB /* SharedRecordingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430BD843F968775BC442DAE5 /* SharedRecordingState.swift */; };
 		4DB243F93C2B46B35F1CDACB /* NotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B22C931D5E3EC537DF952E2 /* NotificationRouter.swift */; };
 		4DF281C33F88AD3E15421D24 /* WakeOnCueWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -50,7 +47,6 @@
 		5F805F7A42983C06C29DF7E0 /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
 		6021FF573FCC07D085701CE6 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
 		6D52E05F042A6D470D9629EA /* MacAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */; };
-		6D69FB68B6C022840F15C058 /* VoiceEnrollmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28FF209BB7C0895284F5470 /* VoiceEnrollmentView.swift */; };
 		6F05CED013A1AF8884D57F5F /* RecordingCompletionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */; };
 		6FA971851ECD7F66B49FC27F /* ServerCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */; };
 		72C7F91E8D3B08750F13990D /* RecordingStatusPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */; };
@@ -73,7 +69,6 @@
 		874D75F43BECEE59E2824119 /* RecordingOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BF08F571BBECD7CDB5A1624 /* RecordingOrganization.swift */; };
 		8AD40F5D04CE05D71749C948 /* RecordingFileLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */; };
 		8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */; };
-		9053AA1361C0B9523EBF48E4 /* RealtimePairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F42A8E0C58FFBD68D37782 /* RealtimePairingScanner.swift */; };
 		920E0E8B46A2126A7498B445 /* RecordingCommandObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */; };
 		96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84E710F1E8E75F4010D1A19 /* ThirdPartyAI.swift */; };
 		982D1A7A9C67C37CF0258F03 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
@@ -84,7 +79,6 @@
 		A2F5FC830416568E1FE30DB5 /* RealtimeChannelStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1367632068864972664C459 /* RealtimeChannelStream.swift */; };
 		A4A153D12ABFD2BBFAE72367 /* ChannelRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */; };
 		A58C99A13BF887A827FDEF83 /* WatchSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C158855675A574042A201393 /* WatchSessionClient.swift */; };
-		A8B9CC2CECA4FC59F8B76254 /* VoiceEnrollmentRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3336EC7D45C4FCBE37F20EE2 /* VoiceEnrollmentRecorder.swift */; };
 		AFDC699951B16BFB8C96ABB8 /* AskRecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B487556E3A1F8594032A540B /* AskRecordingsView.swift */; };
 		B0F9A4F91F18B4AFE9C48CF4 /* S3StorageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */; };
 		B1BE1BF1689A76AE23B205D0 /* WakeOnCueMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EC2EA3CFE00AECF7F18796 /* WakeOnCueMacApp.swift */; };
@@ -98,7 +92,6 @@
 		B8EC165E40AC6C92613F52CD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E745A03BE489FE9A6A44E7FF /* AppModel.swift */; };
 		B9FF50CB284BB7E39D70F7CB /* CaptureFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285C45F948055C39CB834C56 /* CaptureFeedbackView.swift */; };
 		BC0F528B13A6EE6A6B044819 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */; };
-		BE70F94592C0DBAD15D6F145 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA2F2C546667059444318E3 /* PairingView.swift */; };
 		BE75DC724B8912D09D73C4C3 /* RecordingQuestionAnsweringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3097B0FBE62F96DCF9550CEA /* RecordingQuestionAnsweringTests.swift */; };
 		BE9A905CC49C9DCE3B734AF3 /* RecordingFileLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */; };
 		C24DF066904D9578C60CDC8D /* RecordingStatusPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */; };
@@ -123,8 +116,6 @@
 		EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */; };
 		EBD66C251B633A70DE738E31 /* RecordingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */; };
 		ED080307416FFB108965D5FA /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
-		F1C2A96BFA1E3FDC3D3CB1E6 /* RealtimeProcessingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */; };
-		F5CA7695214615D8EC520C2E /* RealtimeServicePairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AF18675D8D6F18ECE0790B9 /* RealtimeServicePairing.swift */; };
 		F7D351A58E04C9EC6DA4901B /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B804F0E376CE6B89B8E6699 /* PlacesView.swift */; };
 		FAAE677CFF2A227CC45E0B4E /* WatchCompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB40A4A34EDA59047776592D /* WatchCompanionUITests.swift */; };
 		FE9AB9FEA87CF11CD104CF6E /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
@@ -236,10 +227,8 @@
 		2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRecorder.swift; sourceTree = "<group>"; };
 		2CC637367C079CD3E80E2BB4 /* LiveTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscript.swift; sourceTree = "<group>"; };
 		2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivityWidget.swift; sourceTree = "<group>"; };
-		2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeProcessingClient.swift; sourceTree = "<group>"; };
 		3097B0FBE62F96DCF9550CEA /* RecordingQuestionAnsweringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingQuestionAnsweringTests.swift; sourceTree = "<group>"; };
 		328322C51CF0274889CB9174 /* WakeOnCueMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueMac.entitlements; sourceTree = "<group>"; };
-		3336EC7D45C4FCBE37F20EE2 /* VoiceEnrollmentRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEnrollmentRecorder.swift; sourceTree = "<group>"; };
 		3368F34F6AC47A8E86B0F92F /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingIntents.swift; sourceTree = "<group>"; };
 		38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCheckout.swift; sourceTree = "<group>"; };
@@ -264,7 +253,6 @@
 		5C2C0A3BB0F7CB999F01D1E4 /* WakeOnCueCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WakeOnCueCore; path = Packages/WakeOnCueCore; sourceTree = SOURCE_ROOT; };
 		5C5114114E79A9EAFC6FD38A /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioAssembler.swift; sourceTree = "<group>"; };
-		5FA2F2C546667059444318E3 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		63940CE303CB1C58ED20C263 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		64CFD6A5039DEA1AD2FBC079 /* WatchCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureUITests.swift; sourceTree = "<group>"; };
 		67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailView.swift; sourceTree = "<group>"; };
@@ -276,7 +264,6 @@
 		716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarTests.swift; sourceTree = "<group>"; };
 		76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppModel.swift; sourceTree = "<group>"; };
 		77D935DF36510C3E4241B30D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		7AF18675D8D6F18ECE0790B9 /* RealtimeServicePairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeServicePairing.swift; sourceTree = "<group>"; };
 		7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageStatus.swift; sourceTree = "<group>"; };
 		7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StorageClient.swift; sourceTree = "<group>"; };
@@ -289,17 +276,14 @@
 		925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureMeterTests.swift; sourceTree = "<group>"; };
 		9555026A4CBDBF9E6436266A /* WatchHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHomeView.swift; sourceTree = "<group>"; };
 		963C6B34ACD7DFD69290A796 /* WakeOnCueWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCueWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		971F06E9FF42AB1D3C9F3EAA /* PairingCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCode.swift; sourceTree = "<group>"; };
 		976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCompletionCard.swift; sourceTree = "<group>"; };
 		990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptFollowPolicyTests.swift; sourceTree = "<group>"; };
-		9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeServicePairingTests.swift; sourceTree = "<group>"; };
 		9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCue.entitlements; sourceTree = "<group>"; };
 		9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureFeedback.swift; sourceTree = "<group>"; };
 		A01ED94A406F296B5E9C800E /* GatewayToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayToken.swift; sourceTree = "<group>"; };
 		A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayout.swift; sourceTree = "<group>"; };
 		A1ADBD56EE417C63D3FCA1F5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
-		A28FF209BB7C0895284F5470 /* VoiceEnrollmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEnrollmentView.swift; sourceTree = "<group>"; };
 		A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A594CC2666FFD10327B58885 /* MeetingRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorder.swift; sourceTree = "<group>"; };
 		A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -320,7 +304,6 @@
 		BBF0F55A11D680FBB9517809 /* WakeOnCueWatchWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWatchWidgets.swift; sourceTree = "<group>"; };
 		BF1ACF7A003B23FDA9918DD7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		C158855675A574042A201393 /* WatchSessionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSessionClient.swift; sourceTree = "<group>"; };
-		C5F42A8E0C58FFBD68D37782 /* RealtimePairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimePairingScanner.swift; sourceTree = "<group>"; };
 		C63D8705D5FD51844884330D /* WakeOnCueWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatchWidgets.entitlements; sourceTree = "<group>"; };
 		C65E1A987A93274405990977 /* AudioFileImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileImporter.swift; sourceTree = "<group>"; };
 		C8FD08CBBCC70EF4C3942C05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -337,7 +320,6 @@
 		E745A03BE489FE9A6A44E7FF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		EC66F4DB820A5BEF37B9B2FE /* ProductExperienceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductExperienceUITests.swift; sourceTree = "<group>"; };
 		ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivityController.swift; sourceTree = "<group>"; };
-		EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeGatewayDiscovery.swift; sourceTree = "<group>"; };
 		EDE36A0BFE6304551A90D527 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WakeOnCueWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -408,7 +390,6 @@
 				AE9976BCB1134AB12DBA8FC2 /* ExperienceFixtures.swift */,
 				5B22C931D5E3EC537DF952E2 /* NotificationRouter.swift */,
 				0D617E1495504C52549F0C12 /* PlaceAutomation.swift */,
-				7AF18675D8D6F18ECE0790B9 /* RealtimeServicePairing.swift */,
 				20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */,
 				0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */,
 				AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */,
@@ -433,7 +414,6 @@
 			isa = PBXGroup;
 			children = (
 				7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */,
-				5FA2F2C546667059444318E3 /* PairingView.swift */,
 				88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */,
 			);
 			path = UI;
@@ -460,7 +440,6 @@
 			isa = PBXGroup;
 			children = (
 				A01ED94A406F296B5E9C800E /* GatewayToken.swift */,
-				971F06E9FF42AB1D3C9F3EAA /* PairingCode.swift */,
 				8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */,
 				38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */,
 			);
@@ -518,7 +497,6 @@
 				5F3950AA16FB16F9FD2942CD /* RecordingAudioAssembler.swift */,
 				9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */,
 				2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */,
-				3336EC7D45C4FCBE37F20EE2 /* VoiceEnrollmentRecorder.swift */,
 			);
 			path = Recording;
 			sourceTree = "<group>";
@@ -569,15 +547,6 @@
 			path = WatchResources;
 			sourceTree = "<group>";
 		};
-		9C138B15FA5115EF6485DB8D /* Realtime */ = {
-			isa = PBXGroup;
-			children = (
-				EDC7A2EA135BF63224990527 /* RealtimeGatewayDiscovery.swift */,
-				2F92BD61A13A0E17EA4AE9C6 /* RealtimeProcessingClient.swift */,
-			);
-			path = Realtime;
-			sourceTree = "<group>";
-		};
 		A631CC4FC9C3E17C35988B30 /* Capture */ = {
 			isa = PBXGroup;
 			children = (
@@ -616,7 +585,6 @@
 				1C1600BD98E1C2C297C4FDF5 /* Infrastructure */,
 				D658166ED83E134030839806 /* Intelligence */,
 				DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */,
-				9C138B15FA5115EF6485DB8D /* Realtime */,
 				762FBE8986157697A72EC117 /* Recording */,
 				EA99173F170291CF0B9F5E68 /* UI */,
 				21424503D95B6E4A2E151C5D /* Watch */,
@@ -688,14 +656,12 @@
 				A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */,
 				3D0B8189F97DC9CEAD26CCBE /* MeetingCalendarView.swift */,
 				8B804F0E376CE6B89B8E6699 /* PlacesView.swift */,
-				C5F42A8E0C58FFBD68D37782 /* RealtimePairingScanner.swift */,
 				976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */,
 				67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */,
 				B81F7307DD7F72D8760C28A1 /* RecordingLibraryView.swift */,
 				6BF08F571BBECD7CDB5A1624 /* RecordingOrganization.swift */,
 				7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */,
 				69A872A2ADA906883325D430 /* SettingsView.swift */,
-				A28FF209BB7C0895284F5470 /* VoiceEnrollmentView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -705,7 +671,6 @@
 			children = (
 				B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */,
 				716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */,
-				9A4C3015C29CCA3E8108BFF5 /* RealtimeServicePairingTests.swift */,
 				FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */,
 				925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */,
 				B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */,
@@ -1058,10 +1023,6 @@
 				77D9A9DA2BB8B7A0E507A3EE /* PhoneWatchBridge.swift in Sources */,
 				D6CDA81B0D16B7D9BAFD4C57 /* PlaceAutomation.swift in Sources */,
 				F7D351A58E04C9EC6DA4901B /* PlacesView.swift in Sources */,
-				03F32A464D9F57116A9320C3 /* RealtimeGatewayDiscovery.swift in Sources */,
-				9053AA1361C0B9523EBF48E4 /* RealtimePairingScanner.swift in Sources */,
-				F1C2A96BFA1E3FDC3D3CB1E6 /* RealtimeProcessingClient.swift in Sources */,
-				F5CA7695214615D8EC520C2E /* RealtimeServicePairing.swift in Sources */,
 				FE9AB9FEA87CF11CD104CF6E /* RecordingActivityAttributes.swift in Sources */,
 				0B06350E90B3DDB84D6F2BD3 /* RecordingAnnotations.swift in Sources */,
 				D4D41C76311F4AA5900B1D1B /* RecordingAudioAssembler.swift in Sources */,
@@ -1086,8 +1047,6 @@
 				77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */,
 				B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */,
 				96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */,
-				A8B9CC2CECA4FC59F8B76254 /* VoiceEnrollmentRecorder.swift in Sources */,
-				6D69FB68B6C022840F15C058 /* VoiceEnrollmentView.swift in Sources */,
 				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
 				50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */,
 				1FF63B926E0930F806E1ED7E /* WatchRecordingImporter.swift in Sources */,
@@ -1101,7 +1060,6 @@
 			files = (
 				1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */,
 				1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */,
-				49AD10C178774912B9BBF042 /* RealtimeServicePairingTests.swift in Sources */,
 				8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */,
 				0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */,
 				BE9A905CC49C9DCE3B734AF3 /* RecordingFileLayoutTests.swift in Sources */,
@@ -1125,8 +1083,6 @@
 				3DD22E6C84FA5BA69FE68A0C /* MeetingRecorder.swift in Sources */,
 				BC0F528B13A6EE6A6B044819 /* MenuBarView.swift in Sources */,
 				DE3634B1B53F43A2B4FBF787 /* MicrophoneCapture.swift in Sources */,
-				306C98F3DF305D7BDDF91B28 /* PairingCode.swift in Sources */,
-				BE70F94592C0DBAD15D6F145 /* PairingView.swift in Sources */,
 				18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */,
 				A2F5FC830416568E1FE30DB5 /* RealtimeChannelStream.swift in Sources */,
 				6FA971851ECD7F66B49FC27F /* ServerCheckout.swift in Sources */,

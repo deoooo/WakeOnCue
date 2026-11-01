@@ -1,10 +1,9 @@
 import Foundation
 import Observation
 import OSLog
-import SystemConfiguration
 
 /// Starts and stops the Python Gateway and Mac Processor the same way
-/// `server/scripts/run_local_mac_stack.sh` does, and advertises the Gateway with Bonjour.
+/// `server/scripts/run_local_mac_stack.sh` does, reachable only from this Mac.
 @MainActor
 @Observable
 final class ProcessorHost {
@@ -31,7 +30,6 @@ final class ProcessorHost {
 
   private var gateway: Process?
   private var processor: Process?
-  private var bonjour: Process?
   private var healthTask: Task<Void, Never>?
   private var stopping = false
   private var stoppedAt = Date.distantPast
@@ -74,12 +72,6 @@ final class ProcessorHost {
 
   var logDirectory: URL? { checkout?.runtimeDirectory }
 
-  /// The Gateway URL an iPhone on the same network uses.
-  var lanGatewayURL: URL {
-    let name = SCDynamicStoreCopyLocalHostName(nil) as String? ?? "localhost"
-    return URL(string: "http://\(name).local:\(Self.port)")!
-  }
-
   func chooseCheckout(_ url: URL) {
     UserDefaults.standard.set(url.path, forKey: "checkoutPath")
     reloadCheckout()
@@ -117,7 +109,7 @@ final class ProcessorHost {
         arguments: ["-m", "recording_service.realtime_main"],
         checkout: checkout,
         environment: [
-          "WAKEONCUE_REALTIME_HOST": "0.0.0.0",
+          "WAKEONCUE_REALTIME_HOST": "127.0.0.1",
           "WAKEONCUE_REALTIME_PORT": String(Self.port),
           "WAKEONCUE_REALTIME_API_TOKEN": token,
         ],
@@ -146,16 +138,6 @@ final class ProcessorHost {
         ],
         log: "processor.log"
       )
-      bonjour = try? launch(
-        URL(fileURLWithPath: "/usr/bin/dns-sd"),
-        arguments: [
-          "-R", "WakeOnCue Gateway", "_wakeoncue._tcp", "local.", String(Self.port),
-          "protocol=1", "host=\(lanGatewayURL.host() ?? "")", "port=\(Self.port)", "scheme=http",
-        ],
-        checkout: checkout,
-        environment: [:],
-        log: "bonjour.log"
-      )
       state = .running(ownedByApp: true)
       // Loading a model can take a while; health polling shows when the processor registers.
     } catch {
@@ -167,10 +149,9 @@ final class ProcessorHost {
 
   func stop() {
     stopping = true
-    for process in [bonjour, processor, gateway].compactMap({ $0 }) where process.isRunning {
+    for process in [processor, gateway].compactMap({ $0 }) where process.isRunning {
       process.terminate()
     }
-    bonjour = nil
     processor = nil
     gateway = nil
     processorsAvailable = 0
@@ -181,7 +162,7 @@ final class ProcessorHost {
   /// Synchronous variant for app termination, so no Python process outlives the app.
   nonisolated func terminateChildren() {
     MainActor.assumeIsolated {
-      for process in [bonjour, processor, gateway].compactMap({ $0 }) where process.isRunning {
+      for process in [processor, gateway].compactMap({ $0 }) where process.isRunning {
         process.terminate()
         process.waitUntilExit()
       }

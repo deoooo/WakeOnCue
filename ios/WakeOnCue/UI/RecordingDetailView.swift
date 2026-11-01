@@ -140,11 +140,11 @@ struct RecordingDetailView: View {
           Task { await model.retranscribe(recording: displayedRecording) }
         } label: {
           Label(
-            model.settings.useRealtimeProcessing ? "Retranscribe and identify speakers" : "Retranscribe",
+            "Retranscribe",
             systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
           )
         }
-        .disabled(model.retranscribingRecordingID != nil)
+        .disabled(model.retranscribingRecordingID != nil || !model.canTranscribeRecordings)
         .accessibilityIdentifier("retranscribe-recording")
       } label: {
         Image(systemName: "ellipsis.circle")
@@ -319,20 +319,22 @@ struct RecordingDetailView: View {
                   .frame(minWidth: 42, alignment: .leading)
                   .fixedSize(horizontal: true, vertical: false)
                 VStack(alignment: .leading, spacing: 4) {
-                  Text(
-                    effectiveSpeakerName(
-                      segment.speaker,
-                      aliases: RecordingAnnotationsService.shared
-                        .annotations(for: recording.id).speakerAliases,
-                      personNames: model.settings.personNames,
-                      unknownSpeakerName: localizedSpeakerName(
-                        nil,
-                        language: model.settings.language
+                  if segment.speaker != nil {
+                    Text(
+                      effectiveSpeakerName(
+                        segment.speaker,
+                        aliases: RecordingAnnotationsService.shared
+                          .annotations(for: recording.id).speakerAliases,
+                        personNames: model.settings.personNames,
+                        unknownSpeakerName: localizedSpeakerName(
+                          nil,
+                          language: model.settings.language
+                        )
                       )
                     )
-                  )
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.cyan)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                  }
                   Text(segment.text)
                     .font(.body)
                     .textSelection(.enabled)

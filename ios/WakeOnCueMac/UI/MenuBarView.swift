@@ -128,11 +128,6 @@ struct MenuBarView: View {
       Text(issue).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
     }
     HStack {
-      Button("Pair iPhone…") {
-        openWindow(id: WindowID.pairing)
-        NSApp.activate()
-      }
-      .disabled(!host.isGatewayUp)
       Spacer()
       if let logs = host.logDirectory {
         Button("Logs") { model.reveal(logs) }.buttonStyle(.borderless)

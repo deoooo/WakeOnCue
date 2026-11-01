@@ -4,6 +4,8 @@
 
 ## 1. 产品边界
 
+> **iPhone 已不再接入 Realtime Gateway**，下文的实时分析部分只适用于 Mac App。
+>
 > **iPhone 已不再上传到 S3。** 下文关于 UploadTask、Background URLSession 和 S3 模式的章节描述的是旧版本的设计。现在录音一律在本机完成；`RecordingStore` 保留上传相关的表，只为兼容已有数据库；App 启动时会取消残留的后台传输，并把卡在 UPLOADING 的录音转为本地完成。已备份的录音仍可只读下载。转写和摘要见[第三方服务说明](ai-providers.md)。
 
 WakeOnCue iOS 负责可靠采集和持久化，不依赖 Recording API。

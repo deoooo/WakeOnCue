@@ -316,8 +316,6 @@ struct SpeakerAliasEditor: View {
 
   @State private var drafts: [String: String]
   @State private var pickingContactFor: String?
-  @State private var rememberingClusterID: String?
-  @State private var rememberedClusterIDs: Set<String> = []
   @State private var errorMessage: String?
 
   init(
@@ -349,14 +347,6 @@ struct SpeakerAliasEditor: View {
         Text(
           "Names apply to this recording and are used when copying or exporting. The original transcript stays unchanged."
         )
-      }
-      if model.settings.rememberVoicesEnabled {
-        Section {
-        } footer: {
-          Text(
-            "Remember voice saves a voiceprint of that person on this iPhone so later recordings name them automatically. Only do this with their permission."
-          )
-        }
       }
     }
     .navigationTitle("Speaker names")
@@ -412,39 +402,8 @@ struct SpeakerAliasEditor: View {
           .buttonStyle(.borderless)
           .disabled(normalized(drafts[clusterID]) == savedName)
       }
-      if model.settings.rememberVoicesEnabled, let name = savedName,
-        speaker.personID != RealtimeSpeaker.selfPersonID
-      {
-        rememberButton(clusterID: clusterID, name: name, personID: speaker.personID)
-      }
     }
     .padding(.vertical, 3)
-  }
-
-  @ViewBuilder
-  private func rememberButton(clusterID: String, name: String, personID: String?) -> some View {
-    if rememberingClusterID == clusterID {
-      HStack(spacing: 8) {
-        ProgressView().controlSize(.small)
-        Text("Learning this voice…")
-      }
-      .font(.footnote)
-    } else if rememberedClusterIDs.contains(clusterID) {
-      Label("Voice remembered", systemImage: "checkmark.circle.fill")
-        .font(.footnote)
-        .foregroundStyle(.green)
-    } else {
-      Button {
-        remember(clusterID: clusterID, name: name, personID: personID)
-      } label: {
-        Label(
-          personID == nil ? "Remember voice" : "Update remembered voice",
-          systemImage: "person.wave.2")
-      }
-      .font(.footnote)
-      .buttonStyle(.borderless)
-      .disabled(rememberingClusterID != nil)
-    }
   }
 
   private var contactPickerBinding: Binding<Bool> {
@@ -483,28 +442,6 @@ struct SpeakerAliasEditor: View {
       )
     } catch {
       errorMessage = error.localizedDescription
-    }
-  }
-
-  private func remember(clusterID: String, name: String, personID: String?) {
-    rememberingClusterID = clusterID
-    Task {
-      defer { rememberingClusterID = nil }
-      do {
-        let savedPersonID = personID.flatMap { id in
-          model.settings.savedVoices.contains { $0.id == id } ? id : nil
-        }
-        try await model.rememberVoice(
-          recording: recording,
-          clusterID: clusterID,
-          name: name,
-          transcript: transcript,
-          replacing: savedPersonID
-        )
-        rememberedClusterIDs.insert(clusterID)
-      } catch {
-        errorMessage = error.localizedDescription
-      }
     }
   }
 }

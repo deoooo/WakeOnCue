@@ -1,5 +1,7 @@
 # Local Development and Device Validation
 
+> **iPhone 已不再接入 Gateway。** 下文启动 Gateway、Processor 和配对真机的步骤只适用于 Mac App 开发；iPhone App 不需要启动任何服务。
+
 ## 1. Prerequisites
 
 - macOS；
