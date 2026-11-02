@@ -531,9 +531,15 @@ struct ContentView: View {
           VStack(alignment: .leading, spacing: 3) {
             Text(recording.libraryDisplayTitle(language: model.settings.language))
               .font(.subheadline.weight(.semibold))
-            Text("\(duration(recording.duration)) · \(recordingStateLabel(presentation))")
+            Text("\(duration(recording.duration)) · \(recordingRowStatus(recording, presentation))")
               .font(.caption)
               .foregroundStyle(.secondary)
+            if let overview = recording.overview {
+              Text(overview)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
           }
           Spacer(minLength: 6)
           if presentation.cloudBackup == .pending && progress.pendingDuration > 0.5 {
@@ -552,7 +558,7 @@ struct ContentView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(
-        "\(formattedStartDate(recording.startedAt, language: model.settings.language)), \(recordingStateLabel(presentation))"
+        "\(recording.libraryDisplayTitle(language: model.settings.language)), \(recordingRowStatus(recording, presentation))"
       )
       .accessibilityIdentifier("recording-details-\(recording.id)")
 
@@ -590,6 +596,23 @@ struct ContentView: View {
     .padding(14)
     .background(panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(border))
+    .contextMenu {
+      if recording.canBeDeleted {
+        Button(role: .destructive) {
+          Task { await model.moveToTrash(recording) }
+        } label: {
+          Label("Delete recording", systemImage: "trash")
+        }
+      }
+    }
+  }
+
+  private func recordingRowStatus(
+    _ recording: RecordingRecord, _ presentation: RecordingStatusPresentation
+  ) -> String {
+    model.onDeviceProcessingRecordingIDs.contains(recording.id)
+      ? model.settings.language.localized("Transcribing and summarizing…")
+      : recordingStateLabel(presentation)
   }
 
   private var localStorageIndicator: some View {

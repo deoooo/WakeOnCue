@@ -16,6 +16,9 @@ public enum RecordingStoreError: Error, LocalizedError, Sendable {
 
 public actor RecordingStore {
   public static let cloudSyncAbandonedMetadataKey = "cloud_sync_abandoned"
+  /// How long a deleted recording can still be recovered.
+  public static let trashRetention: TimeInterval = 30 * 24 * 60 * 60
+  private static let notDeleted = "json_extract(metadata_json, '$.deleted_at') IS NULL"
 
   private let connection: SQLiteConnection
   private var database: OpaquePointer { connection.pointer }
@@ -105,13 +108,67 @@ public actor RecordingStore {
 
   public func recordings(limit: Int = 100, offset: Int = 0) throws -> [RecordingRecord] {
     try queryRecordings(
-      "SELECT * FROM recordings ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+      """
+      SELECT * FROM recordings WHERE \(Self.notDeleted)
+      ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+      """,
       [.int(Int64(max(1, limit))), .int(Int64(max(0, offset)))]
     )
   }
 
   public func recordingCount() throws -> Int {
-    Int(try scalarInt("SELECT COUNT(*) FROM recordings", []))
+    Int(try scalarInt("SELECT COUNT(*) FROM recordings WHERE \(Self.notDeleted)", []))
+  }
+
+  /// Moves a recording to Recently Deleted without touching its files. A recording still
+  /// being captured or finished cannot be deleted.
+  @discardableResult
+  public func moveRecordingToTrash(
+    recordingID: String,
+    now: Date = Date()
+  ) throws -> RecordingRecord {
+    let current = try recording(id: recordingID)
+    guard ![.recording, .paused, .finishing].contains(current.status) else {
+      throw RecordingStoreError.invalidData(
+        "Recording cannot be deleted from \(current.status.rawValue)"
+      )
+    }
+    try run(
+      "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.deleted_at', ?), updated_at = ? WHERE id = ?",
+      [
+        .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
+        .text(recordingID),
+      ]
+    )
+    return try recording(id: recordingID)
+  }
+
+  @discardableResult
+  public func restoreRecording(
+    recordingID: String,
+    now: Date = Date()
+  ) throws -> RecordingRecord {
+    _ = try recording(id: recordingID)
+    try run(
+      "UPDATE recordings SET metadata_json = json_remove(metadata_json, '$.deleted_at'), updated_at = ? WHERE id = ?",
+      [.double(now.timeIntervalSince1970), .text(recordingID)]
+    )
+    return try recording(id: recordingID)
+  }
+
+  /// Recordings in Recently Deleted, most recently deleted first.
+  public func deletedRecordings() throws -> [RecordingRecord] {
+    try queryRecordings(
+      "SELECT * FROM recordings WHERE NOT (\(Self.notDeleted))", []
+    ).sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
+  }
+
+  /// Removes a recording's rows. Only a recording already in Recently Deleted can be removed.
+  public func removeDeletedRecording(recordingID: String) throws {
+    guard try recording(id: recordingID).deletedAt != nil else {
+      throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
+    }
+    try run("DELETE FROM recordings WHERE id = ?", [.text(recordingID)])
   }
 
   /// Persists a normalized user title inside the recording's durable metadata.
@@ -162,7 +219,7 @@ public actor RecordingStore {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalized.isEmpty else { return try recordings(limit: max(1, recordingCount())) }
     return try recordings(limit: max(1, recordingCount())).filter {
-      $0.title?.localizedCaseInsensitiveContains(normalized) == true
+      $0.resolvedTitle?.localizedCaseInsensitiveContains(normalized) == true
     }
   }
 
@@ -171,7 +228,7 @@ public actor RecordingStore {
     try queryRecordings(
       """
       SELECT recordings.* FROM recordings
-      WHERE status = 'COMPLETED'
+      WHERE status = 'COMPLETED' AND \(Self.notDeleted)
         AND EXISTS (
           SELECT 1 FROM upload_tasks
           WHERE upload_tasks.recording_id = recordings.id

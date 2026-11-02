@@ -5,6 +5,7 @@ import WakeOnCueCore
 struct RecordingLibraryView: View {
   @Environment(AppModel.self) private var model
   @State private var isImporting = false
+  @State private var showsRecentlyDeleted = false
 
   @State private var recordings: [RecordingRecord] = []
   @State private var totalCount = 0
@@ -89,13 +90,27 @@ struct RecordingLibraryView: View {
         .accessibilityIdentifier("ask-recordings-link")
       }
       ToolbarItem(placement: .primaryAction) {
-        Button {
-          isImporting = true
+        Menu {
+          Button {
+            isImporting = true
+          } label: {
+            Label("Import audio", systemImage: "square.and.arrow.down")
+          }
+          .accessibilityIdentifier("import-audio")
+          Button {
+            showsRecentlyDeleted = true
+          } label: {
+            Label("Recently deleted", systemImage: "trash")
+          }
+          .accessibilityIdentifier("recently-deleted")
         } label: {
-          Label("Import audio", systemImage: "square.and.arrow.down")
+          Label("More library actions", systemImage: "ellipsis")
         }
-        .accessibilityIdentifier("import-audio")
+        .accessibilityIdentifier("library-more")
       }
+    }
+    .navigationDestination(isPresented: $showsRecentlyDeleted) {
+      RecentlyDeletedView().environment(model)
     }
     .fileImporter(
       isPresented: $isImporting,
@@ -110,7 +125,7 @@ struct RecordingLibraryView: View {
     }
     .searchable(text: $query, prompt: "Search titles and local transcripts")
     .accessibilityIdentifier("recording-library")
-    .task(id: query) {
+    .task(id: "\(query)-\(model.libraryVersion)") {
       do {
         try await Task.sleep(for: .milliseconds(300))
         try Task.checkCancellation()
@@ -142,9 +157,15 @@ struct RecordingLibraryView: View {
           Text(recording.libraryDisplayTitle(language: model.settings.language))
             .font(.headline)
             .foregroundStyle(.primary)
-          Text("\(libraryDuration(recording.duration)) · \(recording.libraryStatusLabel(language: model.settings.language))")
+          Text("\(libraryDuration(recording.duration)) · \(rowStatus(recording))")
             .font(.caption)
             .foregroundStyle(.secondary)
+          if let overview = recording.overview {
+            Text(overview)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
         }
       }
       .accessibilityIdentifier("library-recording-\(recording.id)")
@@ -157,6 +178,29 @@ struct RecordingLibraryView: View {
       }
       .buttonStyle(.borderless)
       .accessibilityLabel("Edit recording title")
+    }
+    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+      if recording.canBeDeleted {
+        Button(role: .destructive) {
+          moveToTrash(recording)
+        } label: {
+          Label("Delete", systemImage: "trash")
+        }
+        .accessibilityIdentifier("delete-recording-\(recording.id)")
+      }
+    }
+  }
+
+  private func rowStatus(_ recording: RecordingRecord) -> String {
+    model.onDeviceProcessingRecordingIDs.contains(recording.id)
+      ? model.settings.language.localized("Transcribing and summarizing…")
+      : recording.libraryStatusLabel(language: model.settings.language)
+  }
+
+  private func moveToTrash(_ recording: RecordingRecord) {
+    recordings.removeAll { $0.id == recording.id }
+    Task {
+      if await !model.moveToTrash(recording) { await reload() }
     }
   }
 
@@ -173,7 +217,8 @@ struct RecordingLibraryView: View {
       let normalized = requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
       if normalized.isEmpty {
         async let count = service.count()
-        async let firstPage = service.page(limit: pageSize, offset: 0)
+        // Keeps what is already loaded, so a change does not jump back to the first page.
+        async let firstPage = service.page(limit: max(pageSize, recordings.count), offset: 0)
         let (loadedCount, loadedPage) = try await (count, firstPage)
         try Task.checkCancellation()
         guard generation == requestGeneration, requestedQuery == query else { return }
@@ -235,6 +280,143 @@ struct RecordingLibraryView: View {
   }
 }
 
+struct RecentlyDeletedView: View {
+  @Environment(AppModel.self) private var model
+
+  @State private var recordings: [RecordingRecord] = []
+  @State private var isLoading = true
+  @State private var errorMessage: String?
+  @State private var selectedRecording: RecordingRecord?
+  @State private var isDeleteAllPresented = false
+
+  var body: some View {
+    Group {
+      if recordings.isEmpty, isLoading {
+        ProgressView()
+      } else if let errorMessage, recordings.isEmpty {
+        ContentUnavailableView {
+          Label("Could not load recordings", systemImage: "exclamationmark.triangle")
+        } description: {
+          Text(errorMessage)
+        } actions: {
+          Button("Try again") { Task { await reload() } }
+        }
+      } else if recordings.isEmpty {
+        ContentUnavailableView("No recently deleted recordings", systemImage: "trash")
+      } else {
+        List {
+          Section {
+            ForEach(recordings) { recording in
+              row(recording)
+            }
+          } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+              Text("Recordings stay here for 30 days, then are permanently deleted.")
+              if model.settings.hasLegacyS3Credentials {
+                Text("Copies backed up to S3 earlier stay in your bucket.")
+              }
+            }
+          }
+        }
+      }
+    }
+    .navigationTitle("Recently deleted")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar(.visible, for: .navigationBar)
+    .toolbar {
+      if !recordings.isEmpty {
+        ToolbarItem(placement: .primaryAction) {
+          Button("Delete all", role: .destructive) { isDeleteAllPresented = true }
+            .accessibilityIdentifier("delete-all-permanently")
+        }
+      }
+    }
+    .accessibilityIdentifier("recently-deleted-list")
+    .task(id: model.libraryVersion) { await reload() }
+    .confirmationDialog(
+      selectedRecording?.libraryDisplayTitle(language: model.settings.language) ?? "",
+      isPresented: selectedBinding,
+      titleVisibility: .visible,
+      presenting: selectedRecording
+    ) { recording in
+      Button("Recover") { Task { await model.restore(recording) } }
+        .accessibilityIdentifier("recover-recording")
+      Button("Delete permanently", role: .destructive) {
+        Task { await model.deletePermanently([recording]) }
+      }
+      .accessibilityIdentifier("delete-recording-permanently")
+      Button("Cancel", role: .cancel) {}
+    } message: { _ in
+      Text("Permanently deleting a recording cannot be undone.")
+    }
+    .confirmationDialog(
+      "Delete all recordings permanently?",
+      isPresented: $isDeleteAllPresented,
+      titleVisibility: .visible
+    ) {
+      Button("Delete all", role: .destructive) {
+        Task { await model.deletePermanently(recordings) }
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Permanently deleting a recording cannot be undone.")
+    }
+  }
+
+  private func row(_ recording: RecordingRecord) -> some View {
+    Button {
+      selectedRecording = recording
+    } label: {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(recording.libraryDisplayTitle(language: model.settings.language))
+          .font(.headline)
+          .foregroundStyle(.primary)
+        Text("\(libraryDuration(recording.duration)) · \(daysLeft(recording))")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("deleted-recording-\(recording.id)")
+    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+      Button {
+        Task { await model.restore(recording) }
+      } label: {
+        Label("Recover", systemImage: "arrow.uturn.backward")
+      }
+      .tint(.blue)
+    }
+  }
+
+  private func daysLeft(_ recording: RecordingRecord) -> String {
+    String(
+      format: model.settings.language.localized("Days left: %d"),
+      recording.daysUntilPermanentDeletion()
+    )
+  }
+
+  private var selectedBinding: Binding<Bool> {
+    Binding(
+      get: { selectedRecording != nil },
+      set: { if !$0 { selectedRecording = nil } }
+    )
+  }
+
+  @MainActor
+  private func reload() async {
+    isLoading = true
+    defer { isLoading = false }
+    do {
+      recordings = try await model.deletedRecordings()
+      errorMessage = nil
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+}
+
 struct RecordingTitleEditor: View {
   @Environment(\.dismiss) private var dismiss
   let recording: RecordingRecord
@@ -247,7 +429,7 @@ struct RecordingTitleEditor: View {
   init(recording: RecordingRecord, onSaved: @escaping (RecordingRecord) -> Void) {
     self.recording = recording
     self.onSaved = onSaved
-    _title = State(initialValue: recording.title ?? "")
+    _title = State(initialValue: recording.resolvedTitle ?? "")
   }
 
   var body: some View {
@@ -292,7 +474,20 @@ struct RecordingTitleEditor: View {
 
 extension RecordingRecord {
   func libraryDisplayTitle(language: AppLanguage) -> String {
-    title ?? formattedStartDate(startedAt, language: language)
+    resolvedTitle ?? formattedStartDate(startedAt, language: language)
+  }
+
+  /// A recording still being captured or finished cannot be deleted.
+  var canBeDeleted: Bool {
+    ![.recording, .paused, .finishing].contains(status)
+  }
+
+  /// Whole days left in Recently Deleted, counting a partial day as one.
+  func daysUntilPermanentDeletion(now: Date = Date()) -> Int {
+    guard let deletedAt else { return 0 }
+    let remaining = deletedAt.addingTimeInterval(RecordingStore.trashRetention)
+      .timeIntervalSince(now)
+    return max(0, Int((remaining / (24 * 60 * 60)).rounded(.up)))
   }
 
   func libraryStatusLabel(language: AppLanguage) -> String {

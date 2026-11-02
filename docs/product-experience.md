@@ -107,6 +107,22 @@ scanning or real remote service connectivity. Those physical-device and remote-s
 checks remain unrun; generated tones and an unavailable loopback service do not substitute
 for them.
 
+## Library upkeep (2026-11-02)
+
+- Deleting moves a recording to Recently Deleted for 30 days; its files stay until it is
+  permanently deleted, by the user or on the first launch after the period ends. Copies
+  already in a legacy S3 bucket are not removed, and the screen says so. Recordings still
+  being captured or finished cannot be deleted, and a recording being transcribed or
+  summarized cannot be permanently deleted until that ends.
+- Very short recordings (under 10 s) offer Discard on the completion card.
+- A summary's title and overview are stored as separate metadata. A user or calendar title
+  always wins; clearing a user title falls back to the summary's. Earlier summaries are
+  picked up at launch.
+- When transcription or summaries cannot run, the detail page says why and opens Settings.
+  Lists and the completion card show when a recording is being processed.
+
+Not done: storage usage, low-storage warnings, and a notification when processing ends.
+
 ## Competitive roadmap (2026-10-29)
 
 Compared against Auday (Watch-first life journal: health signals, daily AI reflection,

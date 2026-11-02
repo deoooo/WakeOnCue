@@ -31,6 +31,8 @@ final class AppModel {
   private(set) var transcriptVersion = 0
   /// Recordings being transcribed or summarized on this iPhone.
   private(set) var onDeviceProcessingRecordingIDs: Set<String> = []
+  /// Changes when recordings leave or return to the library, or their titles change.
+  private(set) var libraryVersion = 0
   var errorMessage: String?
   var settingsPresented = false
   var shareItem: RecordingShareItem?
@@ -41,6 +43,7 @@ final class AppModel {
 
   @ObservationIgnored private let fileLayout: RecordingFileLayout
   @ObservationIgnored private let store: RecordingStore
+  @ObservationIgnored private let library: RecordingLibraryService
   @ObservationIgnored private let liveActivity = RecordingLiveActivityController()
   @ObservationIgnored private var capture: AudioCaptureService?
   @ObservationIgnored private var chunkConsumer: Task<Void, Never>?
@@ -64,7 +67,9 @@ final class AppModel {
     let settings = AppSettings()
     self.fileLayout = fileLayout
     self.settings = settings
-    store = try RecordingStore(databaseURL: fileLayout.databaseURL)
+    let store = try RecordingStore(databaseURL: fileLayout.databaseURL)
+    self.store = store
+    library = RecordingLibraryService(layout: fileLayout, store: store)
     RecordingIntentDispatcher.shared.install { [weak self] command in
       guard let self else { return }
       await self.start()
@@ -152,6 +157,9 @@ final class AppModel {
         errorMessage = String(format: AppLanguage.localized("Recovery failed: %@"), failure)
       }
       await importWatchRecordings()
+      // Both run again on the next launch, so a failure here need not interrupt opening the app.
+      try? await library.purgeExpiredRecordings()
+      try? await library.backfillSummaryDetails()
       await refresh()
       await liveActivity.removeStaleActivities(activeRecordingID: currentRecording?.id)
     } catch {
@@ -658,6 +666,64 @@ final class AppModel {
     UIApplication.shared.open(url)
   }
 
+  /// Moves a recording to Recently Deleted. Returns whether it moved.
+  @discardableResult
+  func moveToTrash(_ recording: RecordingRecord) async -> Bool {
+    do {
+      try await library.moveToTrash(recordingID: recording.id)
+    } catch {
+      errorMessage = String(
+        format: AppLanguage.localized("Could not delete this recording: %@"),
+        error.localizedDescription
+      )
+      return false
+    }
+    if playingRecordingID == recording.id { stopPlayback() }
+    if lastFinishedRecording?.id == recording.id { lastFinishedRecording = nil }
+    await refresh()
+    libraryVersion += 1
+    return true
+  }
+
+  func restore(_ recording: RecordingRecord) async {
+    do {
+      try await library.restore(recordingID: recording.id)
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+    await refresh()
+    libraryVersion += 1
+  }
+
+  func deletedRecordings() async throws -> [RecordingRecord] {
+    try await library.deletedRecordings()
+  }
+
+  func deletePermanently(_ recordings: [RecordingRecord]) async {
+    var failure: String?
+    for recording in recordings {
+      // Processing writes into the recording's folder, which would bring it back.
+      guard !onDeviceProcessingRecordingIDs.contains(recording.id),
+        retranscribingRecordingID != recording.id
+      else {
+        failure = AppLanguage.localized(
+          "This recording is still being processed. Try again when it finishes.")
+        continue
+      }
+      do {
+        try await library.deletePermanently(recordingID: recording.id)
+        RecordingAnnotationsService.shared.removeCachedAnnotations(recordingID: recording.id)
+      } catch {
+        failure = String(
+          format: AppLanguage.localized("Could not delete this recording: %@"),
+          error.localizedDescription
+        )
+      }
+    }
+    if let failure { errorMessage = failure }
+    libraryVersion += 1
+  }
+
   func refresh() async {
     do {
       if let currentID = currentRecording?.id,
@@ -879,6 +945,9 @@ final class AppModel {
       let summaryURL = try fileLayout.summaryURL(recordingID: recording.id)
       try JSONEncoder().encode(summary).write(to: summaryURL, options: [.atomic])
       try RecordingFileLayout.protect(summaryURL)
+      try await library.saveSummaryDetails(summary, recordingID: recording.id)
+      await refresh()
+      libraryVersion += 1
       transcriptVersion += 1
     } catch {
       errorMessage = String(

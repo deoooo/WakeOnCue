@@ -4,6 +4,7 @@ import WakeOnCueCore
 struct RecordingDetailView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.dismiss) private var dismiss
   let recording: RecordingRecord
   /// Where playback starts when opened from a cited source, in seconds.
   let initialSeek: TimeInterval?
@@ -153,6 +154,18 @@ struct RecordingDetailView: View {
           !transcriptLoaded || model.retranscribingRecordingID != nil
             || !model.canTranscribeRecordings)
         .accessibilityIdentifier("retranscribe-recording")
+
+        Divider()
+
+        Button(role: .destructive) {
+          Task {
+            if await model.moveToTrash(displayedRecording) { dismiss() }
+          }
+        } label: {
+          Label("Delete recording", systemImage: "trash")
+        }
+        .disabled(!displayedRecording.canBeDeleted)
+        .accessibilityIdentifier("delete-recording")
       } label: {
         Image(systemName: "ellipsis.circle")
           .frame(minWidth: 44, minHeight: 44)
@@ -337,12 +350,28 @@ struct RecordingDetailView: View {
         }
         .buttonStyle(.bordered)
       } else if transcript.isEmpty {
-        Text("No transcript was produced for this recording.")
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        if isProcessingOnDevice || model.retranscribingRecordingID == recording.id {
+          HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(model.settings.language.localized("Transcribing…"))
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          }
           .padding(.vertical, 8)
-        transcribeButton
+        } else if model.canTranscribeRecordings {
+          Text("No transcript was produced for this recording.")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+          transcribeButton
+        } else {
+          serviceSetupHint(
+            OnDeviceIntelligence.transcriptionUnavailableMessage,
+            action: "Set up transcription",
+            identifier: "set-up-transcription"
+          )
+        }
       } else {
         VStack(alignment: .leading, spacing: 10) {
           LazyVStack(alignment: .leading, spacing: 8) {
@@ -409,7 +438,22 @@ struct RecordingDetailView: View {
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("recording-transcript")
+  }
+
+  private func serviceSetupHint(
+    _ message: String, action: LocalizedStringKey, identifier: String
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(message)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      Button(action) { model.settingsPresented = true }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier(identifier)
+    }
   }
 
   private var meetingLink: MeetingLink? {
@@ -438,9 +482,7 @@ struct RecordingDetailView: View {
   @ViewBuilder
   private var summarySection: some View {
     let summary = model.summary(for: recording.id)
-    if summary != nil || isProcessingOnDevice
-      || (model.canSummarizeRecordings && !transcript.isEmpty)
-    {
+    if summary != nil || isProcessingOnDevice || !transcript.isEmpty {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
           Label("Summary", systemImage: "sparkles")
@@ -460,7 +502,11 @@ struct RecordingDetailView: View {
           }
         }
         if let summary {
-          Text(summary.title).font(.subheadline.weight(.semibold))
+          if summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            != displayedRecording.libraryDisplayTitle(language: model.settings.language)
+          {
+            Text(summary.title).font(.subheadline.weight(.semibold))
+          }
           Text(summary.overview).font(.subheadline)
           if !summary.keyPoints.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
@@ -506,11 +552,18 @@ struct RecordingDetailView: View {
           )
             .font(.subheadline)
             .foregroundStyle(.secondary)
+        } else if !model.canSummarizeRecordings {
+          serviceSetupHint(
+            OnDeviceIntelligence.summaryUnavailableMessage,
+            action: "Set up summaries",
+            identifier: "set-up-summaries"
+          )
         }
       }
       .padding(16)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+      .accessibilityElement(children: .contain)
       .accessibilityIdentifier("recording-summary")
     }
   }
