@@ -110,6 +110,8 @@ struct WatchRecordingImporter {
   private func importSession(_ item: WatchSessionInbox.Item) async throws -> String? {
     let summary = item.summary
     let recordingID = summary.recordingID
+    // The Watch re-sends anything it has no acknowledgement for, even after the user deleted it.
+    guard try await !store.wasPermanentlyDeleted(recordingID: recordingID) else { return nil }
     guard !item.segments.isEmpty else { return nil }
     if let existing = try? await store.recording(id: recordingID), existing.status == .completed {
       return recordingID

@@ -156,8 +156,11 @@ private func makeLibraryRecording(
   }
   #expect(try await store.recordingCount() == 1)
 
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording") == false)
   try await store.moveRecordingToTrash(recordingID: "recording")
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording") == false)
   try await store.removeDeletedRecording(recordingID: "recording")
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording"))
   #expect(try await store.deletedRecordings().isEmpty)
   await #expect(throws: RecordingStoreError.self) {
     try await store.recording(id: "recording")

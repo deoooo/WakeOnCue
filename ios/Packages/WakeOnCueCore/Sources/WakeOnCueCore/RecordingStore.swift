@@ -164,11 +164,25 @@ public actor RecordingStore {
   }
 
   /// Removes a recording's rows. Only a recording already in Recently Deleted can be removed.
-  public func removeDeletedRecording(recordingID: String) throws {
+  /// Keeps its identifier so a source that sends it again, such as the Watch, cannot bring it back.
+  public func removeDeletedRecording(recordingID: String, now: Date = Date()) throws {
     guard try recording(id: recordingID).deletedAt != nil else {
       throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
     }
-    try run("DELETE FROM recordings WHERE id = ?", [.text(recordingID)])
+    try transaction {
+      try run(
+        "INSERT OR REPLACE INTO permanently_deleted_recordings (recording_id, deleted_at) VALUES (?, ?)",
+        [.text(recordingID), .double(now.timeIntervalSince1970)]
+      )
+      try run("DELETE FROM recordings WHERE id = ?", [.text(recordingID)])
+    }
+  }
+
+  public func wasPermanentlyDeleted(recordingID: String) throws -> Bool {
+    try scalarInt(
+      "SELECT COUNT(*) FROM permanently_deleted_recordings WHERE recording_id = ?",
+      [.text(recordingID)]
+    ) > 0
   }
 
   /// Persists a normalized user title inside the recording's durable metadata.
@@ -1057,6 +1071,11 @@ public actor RecordingStore {
           updated_at REAL NOT NULL,
           FOREIGN KEY(recording_id) REFERENCES recordings(id) ON DELETE CASCADE,
           FOREIGN KEY(chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS permanently_deleted_recordings (
+          recording_id TEXT PRIMARY KEY,
+          deleted_at REAL NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS upload_tasks_queue_idx
