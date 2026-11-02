@@ -218,6 +218,23 @@ final class RecordingLibrarySearchTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: otherAudio.path))
   }
 
+  func testUpkeepKeepsFilesOfARecordingUsingADeletedIdentifierAgain() async throws {
+    let (layout, store, service) = try await makeLibrary(ids: ["target"])
+    try await service.moveToTrash(recordingID: "target")
+    try await service.deletePermanently(recordingID: "target")
+    let audio = try layout.sourceAudioURL(recordingID: "target")
+    try Data("audio".utf8).write(to: audio)
+    try await store.createRecording(
+      RecordingRecord(
+        id: "target", createdAt: Date(), startedAt: Date(), status: .recording,
+        localAudioPath: audio.path, deviceModel: "test", appVersion: "test"),
+      createPayloadPath: "", enqueueUpload: false)
+
+    try await service.removeFilesOfDeletedRecordings()
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: audio.path))
+  }
+
   func testPermanentDeletionRemovesTranscriptExports() async throws {
     let id = "export-\(UUID())"
     let (layout, _, service) = try await makeLibrary(ids: [id])

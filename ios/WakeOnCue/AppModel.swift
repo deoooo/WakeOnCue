@@ -224,11 +224,12 @@ final class AppModel {
     }
     startTimer()
     await processPendingCommand()
-    await runLibraryUpkeep()
+    // Callers of `start` often have a command of their own, such as a shortcut starting a recording.
+    Task { [weak self] in await self?.runLibraryUpkeep() }
   }
 
-  /// Runs after any pending command, because starting a recording comes first. All of it runs
-  /// again on the next launch, so a failure here need not interrupt opening the app.
+  /// Never holds up a command, because starting a recording comes first. All of it runs again
+  /// on the next launch, so a failure here need not interrupt opening the app.
   private func runLibraryUpkeep() async {
     try? await library.removeFilesOfDeletedRecordings()
     for recordingID in (try? await library.purgeExpiredRecordings()) ?? [] {

@@ -145,7 +145,7 @@ public actor RecordingStore {
       }
       guard !current.isDeleted else { return }
       try run(
-        "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.deleted_at', ?), updated_at = ? WHERE id = ?",
+        "UPDATE recordings SET metadata_json = json_remove(json_set(metadata_json, '$.deleted_at', ?), '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ?",
         [
           .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
           .text(recordingID),
@@ -169,9 +169,10 @@ public actor RecordingStore {
   }
 
   /// Starts the retention period again, for a date that is unreadable or in the future.
+  /// Like `setTrashExpirySeen`, does nothing if the recording was recovered in the meantime.
   public func restartTrashRetention(recordingID: String, now: Date = Date()) throws {
     try run(
-      "UPDATE recordings SET metadata_json = json_remove(json_set(metadata_json, '$.deleted_at', ?), '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ?",
+      "UPDATE recordings SET metadata_json = json_remove(json_set(metadata_json, '$.deleted_at', ?), '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ? AND NOT (\(Self.notDeleted))",
       [
         .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
         .text(recordingID),
@@ -183,7 +184,7 @@ public actor RecordingStore {
   public func setTrashExpirySeen(recordingID: String, at date: Date?, now: Date = Date()) throws {
     if let date {
       try run(
-        "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.trash_expiry_seen_at', ?), updated_at = ? WHERE id = ?",
+        "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.trash_expiry_seen_at', ?), updated_at = ? WHERE id = ? AND NOT (\(Self.notDeleted))",
         [
           .text(String(date.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
           .text(recordingID),
@@ -219,10 +220,12 @@ public actor RecordingStore {
     }
   }
 
+  /// Permanently deleted recordings whose identifier is not in use again.
   public func permanentlyDeletedRecordingIDs() throws -> [String] {
-    try query("SELECT recording_id FROM permanently_deleted_recordings", []) {
-      Self.text($0, 0) ?? ""
-    }
+    try query(
+      "SELECT recording_id FROM permanently_deleted_recordings WHERE recording_id NOT IN (SELECT id FROM recordings)",
+      []
+    ) { Self.text($0, 0) ?? "" }
   }
 
   public func wasPermanentlyDeleted(recordingID: String) throws -> Bool {

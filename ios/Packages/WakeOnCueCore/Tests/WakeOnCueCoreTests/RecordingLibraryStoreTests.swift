@@ -301,3 +301,59 @@ func unreadableDeletionDateStaysInRecentlyDeletedAndCanBeRemoved(value: String) 
   #expect(restored.trashExpirySeenAt == nil)
   #expect(!restored.isDeleted)
 }
+
+@Test func purgeWritesLeaveARecoveredRecordingAlone() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  try await store.createRecording(
+    makeLibraryRecording(id: "recording", at: anchor, in: root),
+    createPayloadPath: "", enqueueUpload: false, now: anchor)
+  try await store.moveRecordingToTrash(recordingID: "recording", now: anchor)
+  try await store.restoreRecording(recordingID: "recording")
+
+  // What a purge still working from its earlier list would do.
+  try await store.restartTrashRetention(recordingID: "recording", now: anchor)
+  try await store.setTrashExpirySeen(recordingID: "recording", at: anchor)
+
+  let stored = try await store.recording(id: "recording")
+  #expect(!stored.isDeleted)
+  #expect(stored.trashExpirySeenAt == nil)
+}
+
+@Test func deletingAgainAfterRecoveryStartsWithoutAPendingPurge() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  let recording = RecordingRecord(
+    id: "recording", createdAt: anchor, startedAt: anchor, status: .completed,
+    localAudioPath: root.appending(path: "recording.m4a").path, deviceModel: "test",
+    appVersion: "test",
+    metadata: [RecordingRecord.trashExpirySeenAtMetadataKey: String(anchor.timeIntervalSince1970)])
+  try await store.createRecording(
+    recording, createPayloadPath: "", enqueueUpload: false, now: anchor)
+
+  let deleted = try await store.moveRecordingToTrash(recordingID: "recording", now: anchor)
+
+  #expect(deleted.trashExpirySeenAt == nil)
+}
+
+@Test func identifierUsedAgainIsNotListedAsPermanentlyDeleted() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  let recording = makeLibraryRecording(id: "recording", at: anchor, in: root)
+  try await store.createRecording(
+    recording, createPayloadPath: "", enqueueUpload: false, now: anchor)
+  try await store.moveRecordingToTrash(recordingID: "recording", now: anchor)
+  try await store.removeDeletedRecording(recordingID: "recording")
+  #expect(try await store.permanentlyDeletedRecordingIDs() == ["recording"])
+
+  try await store.createRecording(
+    recording, createPayloadPath: "", enqueueUpload: false, now: anchor)
+
+  #expect(try await store.permanentlyDeletedRecordingIDs().isEmpty)
+}

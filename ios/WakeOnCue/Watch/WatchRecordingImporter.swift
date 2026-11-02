@@ -74,6 +74,21 @@ enum WatchSessionInbox {
     }.sorted { $0.summary.startedAt < $1.summary.startedAt }
   }
 
+  /// The segments in a folder, or nil if it can't be read or holds anything else.
+  static func segmentIndexes(in folder: URL) -> Set<Int>? {
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else {
+      return nil
+    }
+    var indexes: Set<Int> = []
+    for name in names where name != "summary.json" {
+      guard name.hasPrefix("segment-"), name.hasSuffix(".m4a"),
+        let index = Int(name.dropFirst("segment-".count).dropLast(".m4a".count))
+      else { return nil }
+      indexes.insert(index)
+    }
+    return indexes
+  }
+
   /// Folders holding segments but no summary, with the session each belongs to.
   static func foldersWithoutSummary(root: URL? = nil) throws -> [(sessionID: UUID, folder: URL)] {
     let root = try root ?? Self.root()
@@ -112,7 +127,12 @@ struct WatchRecordingImporter {
     for item in items {
       do {
         if let recordingID = try await importSession(item) { imported.append(recordingID) }
-        try? FileManager.default.removeItem(at: item.directory)
+        if await canRemoveFolder(item.directory, recordingID: item.summary.recordingID) {
+          try? FileManager.default.removeItem(at: item.directory)
+        } else {
+          // Without its summary the folder is not imported again each time the inbox changes.
+          try? FileManager.default.removeItem(at: item.directory.appending(path: "summary.json"))
+        }
       } catch {
         print("WakeOnCue could not import Watch recording \(item.summary.sessionID): \(error)")
       }
@@ -120,16 +140,30 @@ struct WatchRecordingImporter {
     return imported
   }
 
-  /// A segment that arrives after its recording was imported or deleted has no summary coming,
-  /// so nothing else would remove it. Other folders wait: their summary may still be on its way.
+  /// A segment delivered again after its recording was imported or deleted has no summary
+  /// coming, so nothing else would remove it. Other folders wait.
   private func removeLateSegments(root: URL?) async {
     guard let folders = try? WatchSessionInbox.foldersWithoutSummary(root: root) else { return }
     for (sessionID, folder) in folders {
       let recordingID = WatchSessionSummary.recordingID(for: sessionID)
-      let wasDeleted = (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true
-      let isComplete = (try? await store.recording(id: recordingID))?.status == .completed
-      if wasDeleted || isComplete { try? FileManager.default.removeItem(at: folder) }
+      if await canRemoveFolder(folder, recordingID: recordingID) {
+        try? FileManager.default.removeItem(at: folder)
+      }
     }
+  }
+
+  /// The Watch drops its copy once a segment is delivered, so this folder may hold the only one.
+  /// A completed recording can still lack segments, because an import may go ahead without them,
+  /// so only segments that became chunks, or that belong to a deleted recording, can go.
+  private func canRemoveFolder(_ folder: URL, recordingID: String) async -> Bool {
+    if (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true { return true }
+    guard let segments = WatchSessionInbox.segmentIndexes(in: folder) else { return false }
+    guard !segments.isEmpty else { return true }
+    guard let recording = try? await store.recording(id: recordingID),
+      recording.status == .completed,
+      let chunks = try? await store.chunks(recordingID: recordingID)
+    else { return false }
+    return segments.isSubset(of: Set(chunks.map(\.index)))
   }
 
   private func importSession(_ item: WatchSessionInbox.Item) async throws -> String? {
