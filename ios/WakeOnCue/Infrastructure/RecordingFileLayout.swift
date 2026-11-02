@@ -45,6 +45,21 @@ struct RecordingFileLayout: Sendable {
     return directory
   }
 
+  /// Removes everything stored for a recording. Removing files that are already gone succeeds.
+  func removeFiles(recordingID: String) throws {
+    guard !recordingID.isEmpty, recordingID != ".", recordingID != "..",
+      !recordingID.contains("/")
+    else {
+      throw RecordingStoreError.invalidData("Invalid recording identifier")
+    }
+    let directory =
+      root
+      .appending(path: "recordings", directoryHint: .isDirectory)
+      .appending(path: recordingID, directoryHint: .isDirectory)
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+    try FileManager.default.removeItem(at: directory)
+  }
+
   func sourceAudioURL(recordingID: String) throws -> URL {
     try directory(for: recordingID).appending(path: "source.caf")
   }

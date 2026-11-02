@@ -60,6 +60,9 @@ public struct RecordingSyncProgress: Equatable, Sendable {
 
 public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
   public static let titleMetadataKey = "title"
+  public static let automaticTitleMetadataKey = "automatic_title"
+  public static let overviewMetadataKey = "summary_overview"
+  public static let deletedAtMetadataKey = "deleted_at"
 
   public let id: String
   public let createdAt: Date
@@ -107,7 +110,32 @@ public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
 
   /// A user-authored title stored durably with the recording metadata.
   public var title: String? {
-    guard let value = metadata[Self.titleMetadataKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+    trimmedMetadata(Self.titleMetadataKey)
+  }
+
+  /// A title taken from the recording's summary. It never replaces a title in `title`, so
+  /// removing a user's title falls back to it and regenerating a summary can update it.
+  public var automaticTitle: String? {
+    trimmedMetadata(Self.automaticTitleMetadataKey)
+  }
+
+  /// The title to show and search, when the recording has one.
+  public var resolvedTitle: String? {
+    title ?? automaticTitle
+  }
+
+  /// A short description taken from the recording's summary.
+  public var overview: String? {
+    trimmedMetadata(Self.overviewMetadataKey)
+  }
+
+  /// When the recording moved to Recently Deleted; nil while it is in the library.
+  public var deletedAt: Date? {
+    metadata[Self.deletedAtMetadataKey].flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
+  }
+
+  private func trimmedMetadata(_ key: String) -> String? {
+    guard let value = metadata[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
       !value.isEmpty
     else { return nil }
     return value

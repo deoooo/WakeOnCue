@@ -13,7 +13,10 @@ enum ExperienceFixtures {
     let anchor = Date(timeIntervalSince1970: 1_789_200_000)
     for index in 1...12 {
       let id = String(format: "experience-%02d", index)
-      if (try? await store.recording(id: id)) != nil { continue }
+      if let existing = try? await store.recording(id: id) {
+        if existing.deletedAt != nil { try await store.restoreRecording(recordingID: id) }
+        continue
+      }
       let audio = try layout.downloadedAudioURL(recordingID: id)
       try writeTone(to: audio)
       let start = anchor.addingTimeInterval(-Double(index) * 3_600)

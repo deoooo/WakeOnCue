@@ -4,6 +4,8 @@ import WakeOnCueCore
 struct RecordingCompletionCard: View {
   @Environment(AppModel.self) private var model
 
+  private static let shortRecordingThreshold: TimeInterval = 10
+
   let recording: RecordingRecord
   let onDismiss: () -> Void
 
@@ -47,6 +49,10 @@ struct RecordingCompletionCard: View {
       }
 
       storageStatus
+      processingStatus
+      if displayedRecording.duration < Self.shortRecordingThreshold {
+        shortRecordingPrompt
+      }
       actions
     }
     .padding(16)
@@ -97,6 +103,46 @@ struct RecordingCompletionCard: View {
         systemImage: localFileSymbol(presentation.localFile),
         color: localFileColor(presentation.localFile)
       )
+    }
+  }
+
+  @ViewBuilder
+  private var processingStatus: some View {
+    if model.onDeviceProcessingRecordingIDs.contains(displayedRecording.id) {
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text(language.localized("Transcribing and summarizing…"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    } else if !model.canTranscribeRecordings {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(OnDeviceIntelligence.transcriptionUnavailableMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Button(language.localized("Set up transcription")) {
+          model.settingsPresented = true
+        }
+        .font(.caption.weight(.semibold))
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("recording-completion-set-up-transcription")
+      }
+    }
+  }
+
+  private var shortRecordingPrompt: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(language.localized("This recording is very short. Discard it if you started it by accident."))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Button(role: .destructive) {
+        Task { await model.moveToTrash(displayedRecording) }
+      } label: {
+        Label(language.localized("Discard"), systemImage: "trash")
+          .font(.caption.weight(.semibold))
+      }
+      .frame(minHeight: 44)
+      .accessibilityIdentifier("recording-completion-discard")
     }
   }
 

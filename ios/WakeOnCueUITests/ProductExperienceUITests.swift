@@ -220,4 +220,56 @@ final class ProductExperienceUITests: XCTestCase {
     XCTAssertFalse(app.descendants(matching: .any)["retranscription-progress"].exists)
   }
 
+  @MainActor
+  func testDeletedRecordingCanBeRecoveredFromRecentlyDeleted() throws {
+    let app = launch()
+    let library = app.buttons["all-recordings"]
+    XCTAssertTrue(library.waitForExistence(timeout: 25))
+    library.tap()
+    // The newest row stays clear of the search bar however many recordings the simulator holds.
+    let newest = app.buttons
+      .matching(NSPredicate(format: "identifier BEGINSWITH %@", "library-recording-")).firstMatch
+    XCTAssertTrue(newest.waitForExistence(timeout: 15))
+    let recordingID = String(newest.identifier.dropFirst("library-recording-".count))
+    let row = app.buttons["library-recording-\(recordingID)"]
+    row.swipeLeft()
+    let delete = app.buttons["delete-recording-\(recordingID)"]
+    XCTAssertTrue(delete.waitForExistence(timeout: 5))
+    delete.tap()
+    XCTAssertTrue(row.waitForNonExistence(timeout: 10))
+
+    app.buttons["library-more"].tap()
+    let recentlyDeleted = app.buttons["recently-deleted"]
+    XCTAssertTrue(recentlyDeleted.waitForExistence(timeout: 5))
+    recentlyDeleted.tap()
+    let deleted = app.buttons["deleted-recording-\(recordingID)"]
+    XCTAssertTrue(deleted.waitForExistence(timeout: 10))
+    deleted.tap()
+    let recover = app.buttons["recover-recording"].firstMatch
+    XCTAssertTrue(recover.waitForExistence(timeout: 5))
+    recover.tap()
+    XCTAssertTrue(deleted.waitForNonExistence(timeout: 10))
+
+    app.navigationBars.buttons.element(boundBy: 0).tap()
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  func testDetailExplainsWhyNoSummaryIsAvailableAndOpensSettings() throws {
+    let app = launch()
+    let library = app.buttons["all-recordings"]
+    XCTAssertTrue(library.waitForExistence(timeout: 25))
+    library.tap()
+    let search = app.searchFields.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    search.tap()
+    search.typeText("Meeting 2,")
+    let row = app.buttons["library-recording-experience-02"]
+    XCTAssertTrue(row.waitForExistence(timeout: 15))
+    row.tap()
+    let setUp = app.buttons["set-up-summaries"]
+    XCTAssertTrue(setUp.waitForExistence(timeout: 10))
+    setUp.tap()
+    XCTAssertTrue(app.buttons["settings.save"].waitForExistence(timeout: 10))
+  }
 }

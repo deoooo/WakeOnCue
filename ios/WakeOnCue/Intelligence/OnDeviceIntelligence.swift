@@ -51,6 +51,47 @@ enum OnDeviceIntelligence {
     return false
   }
 
+  /// Why on-device transcription cannot run, and what the user can do instead.
+  static var transcriptionUnavailableMessage: String {
+    if #available(iOS 26.0, *) {
+      return AppLanguage.localized(
+        "On-device transcription is not available on this device. To transcribe recordings, add a transcription service in Settings."
+      )
+    }
+    return AppLanguage.localized(
+      "On-device transcription needs iOS 26 or later. To transcribe recordings on this iPhone, add a transcription service in Settings."
+    )
+  }
+
+  /// Why on-device summaries cannot run, and what the user can do instead.
+  static var summaryUnavailableMessage: String {
+    #if canImport(FoundationModels)
+      if #available(iOS 26.0, *),
+        case .unavailable(let reason) = SystemLanguageModel.default.availability
+      {
+        switch reason {
+        case .deviceNotEligible:
+          return AppLanguage.localized(
+            "This device does not support Apple Intelligence. To get summaries, add a service in Settings."
+          )
+        case .appleIntelligenceNotEnabled:
+          return AppLanguage.localized(
+            "Apple Intelligence is turned off. Turn it on in iPhone Settings, or add a service in Settings."
+          )
+        case .modelNotReady:
+          return AppLanguage.localized(
+            "Apple Intelligence is still getting ready. Summaries can start once it finishes downloading."
+          )
+        @unknown default:
+          break
+        }
+      }
+    #endif
+    return AppLanguage.localized(
+      "On-device summaries need iOS 26 or later with Apple Intelligence. To get summaries, add a service in Settings."
+    )
+  }
+
   static func transcribe(
     audioURL: URL,
     recordingID: String,

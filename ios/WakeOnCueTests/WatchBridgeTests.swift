@@ -164,6 +164,72 @@ final class WatchBridgeTests: XCTestCase {
     XCTAssertEqual(count, 1)
   }
 
+  @MainActor
+  func testRedeliveredWatchRecordingStaysDeleted() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "watch-deleted-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let inbox = root.appending(path: "sessions", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+    let layout = try RecordingFileLayout(root: root.appending(path: "data"))
+    let store = try RecordingStore(databaseURL: layout.databaseURL)
+    let importer = WatchRecordingImporter(
+      store: store, fileLayout: layout, annotations: RecordingAnnotationsService(fileLayout: layout))
+    let service = RecordingLibraryService(layout: layout, store: store)
+
+    let sessionID = UUID()
+    let startedAt = Date(timeIntervalSince1970: 10_000)
+    let summary = WatchSessionSummary(
+      sessionID: sessionID, startedAt: startedAt, endedAt: startedAt.addingTimeInterval(1),
+      segmentCount: 1)
+    func deliverSession() throws {
+      let audio = root.appending(path: "delivered-\(UUID()).m4a")
+      let file = try AVAudioFile(
+        forWriting: audio,
+        settings: [
+          AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 24_000,
+          AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 64_000,
+        ])
+      let buffer = try XCTUnwrap(
+        AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 24_000))
+      buffer.frameLength = 24_000
+      try file.write(from: buffer)
+      try WatchSessionInbox.stage(
+        segmentURL: audio,
+        metadata: WatchSegmentMetadata(
+          sessionID: sessionID, index: 1, startedAt: startedAt, duration: 1),
+        root: inbox)
+      try WatchSessionInbox.stage(summary: summary, root: inbox)
+    }
+
+    try deliverSession()
+    let imported = await importer.importPendingSessions(root: inbox)
+    XCTAssertEqual(imported, [summary.recordingID])
+
+    // While it can still be recovered, a redelivery leaves the deleted recording as it is.
+    try await service.moveToTrash(recordingID: summary.recordingID)
+    try deliverSession()
+    _ = await importer.importPendingSessions(root: inbox)
+    let inTrash = try await store.deletedRecordings().map(\.id)
+    XCTAssertEqual(inTrash, [summary.recordingID])
+
+    try await service.deletePermanently(recordingID: summary.recordingID)
+    try deliverSession()
+    let reimported = await importer.importPendingSessions(root: inbox)
+
+    XCTAssertTrue(reimported.isEmpty)
+    let count = try await store.recordingCount()
+    XCTAssertEqual(count, 0)
+    let deleted = try await store.deletedRecordings()
+    XCTAssertTrue(deleted.isEmpty)
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: layout.root.appending(path: "recordings/\(summary.recordingID)").path),
+      "Redelivery must not bring back the deleted recording's files")
+    XCTAssertTrue(
+      try FileManager.default.contentsOfDirectory(atPath: inbox.path).isEmpty,
+      "The redelivered session is cleared from the inbox")
+  }
+
   func testAssemblerReplacesAnEmptyOutputLeftByAnInterruptedExport() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: "assembler-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

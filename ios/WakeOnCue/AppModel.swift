@@ -5,6 +5,56 @@ import UIKit
 import WakeOnCueCore
 import WidgetKit
 
+/// The transcription and summary services that recordings are sent to.
+@MainActor
+struct RecordingProcessingServices {
+  var canTranscribe: () -> Bool
+  var transcribe: (_ audioURL: URL, _ recordingID: String) async throws -> [RealtimeTranscriptEvent]
+  var canSummarize: () -> Bool
+  var summarize: (_ transcript: [RealtimeTranscriptEvent], _ title: String?) async throws
+    -> RecordingSummary
+
+  /// Uses the services the user configured in Settings, otherwise Apple's on-device frameworks.
+  static func configured(by settings: AppSettings) -> RecordingProcessingServices {
+    RecordingProcessingServices(
+      canTranscribe: { settings.activeSpeechEndpoint != nil || OnDeviceIntelligence.canTranscribe },
+      transcribe: { audioURL, recordingID in
+        if let endpoint = settings.activeSpeechEndpoint {
+          return try await ThirdPartyTranscriber.transcribe(
+            audioURL: audioURL,
+            recordingID: recordingID,
+            language: settings.spokenLanguage.recognitionCode,
+            endpoint: endpoint
+          )
+        }
+        return try await OnDeviceIntelligence.transcribe(
+          audioURL: audioURL,
+          recordingID: recordingID,
+          spokenLanguage: settings.spokenLanguage
+        )
+      },
+      canSummarize: {
+        settings.activeLanguageModelProvider != nil || OnDeviceIntelligence.canSummarize
+      },
+      summarize: { transcript, title in
+        if let provider = settings.activeLanguageModelProvider {
+          return try await ThirdPartyIntelligence.summarize(
+            transcript,
+            title: title,
+            language: AppLanguage.current,
+            provider: provider
+          )
+        }
+        return try await OnDeviceIntelligence.summarize(
+          transcript,
+          title: title,
+          language: AppLanguage.current
+        )
+      }
+    )
+  }
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -31,6 +81,8 @@ final class AppModel {
   private(set) var transcriptVersion = 0
   /// Recordings being transcribed or summarized on this iPhone.
   private(set) var onDeviceProcessingRecordingIDs: Set<String> = []
+  /// Changes when recordings leave or return to the library, or their titles change.
+  private(set) var libraryVersion = 0
   var errorMessage: String?
   var settingsPresented = false
   var shareItem: RecordingShareItem?
@@ -38,9 +90,11 @@ final class AppModel {
   let settings: AppSettings
   let places = PlaceAutomation()
   let meetings = CalendarAutomation()
+  @ObservationIgnored var processingServices: RecordingProcessingServices
 
   @ObservationIgnored private let fileLayout: RecordingFileLayout
   @ObservationIgnored private let store: RecordingStore
+  @ObservationIgnored private let library: RecordingLibraryService
   @ObservationIgnored private let liveActivity = RecordingLiveActivityController()
   @ObservationIgnored private var capture: AudioCaptureService?
   @ObservationIgnored private var chunkConsumer: Task<Void, Never>?
@@ -50,13 +104,15 @@ final class AppModel {
   @ObservationIgnored private var tickCount = 0
   @ObservationIgnored private var audioPlayer: AVAudioPlayer?
   @ObservationIgnored private var playbackMonitor: Task<Void, Never>?
+  /// Work that sends or writes a recording's content, so deleting the recording can stop it.
+  @ObservationIgnored private var processingTasks: [String: Set<Task<Void, Error>>] = [:]
 
   var canTranscribeRecordings: Bool {
-    settings.activeSpeechEndpoint != nil || OnDeviceIntelligence.canTranscribe
+    processingServices.canTranscribe()
   }
 
   var canSummarizeRecordings: Bool {
-    settings.activeLanguageModelProvider != nil || OnDeviceIntelligence.canSummarize
+    processingServices.canSummarize()
   }
 
   init() throws {
@@ -64,7 +120,10 @@ final class AppModel {
     let settings = AppSettings()
     self.fileLayout = fileLayout
     self.settings = settings
-    store = try RecordingStore(databaseURL: fileLayout.databaseURL)
+    processingServices = .configured(by: settings)
+    let store = try RecordingStore(databaseURL: fileLayout.databaseURL)
+    self.store = store
+    library = RecordingLibraryService(layout: fileLayout, store: store)
     RecordingIntentDispatcher.shared.install { [weak self] command in
       guard let self else { return }
       await self.start()
@@ -152,6 +211,9 @@ final class AppModel {
         errorMessage = String(format: AppLanguage.localized("Recovery failed: %@"), failure)
       }
       await importWatchRecordings()
+      // Both run again on the next launch, so a failure here need not interrupt opening the app.
+      try? await library.purgeExpiredRecordings()
+      try? await library.backfillSummaryDetails()
       await refresh()
       await liveActivity.removeStaleActivities(activeRecordingID: currentRecording?.id)
     } catch {
@@ -596,17 +658,23 @@ final class AppModel {
       audioBusyRecordingID = nil
     }
     do {
-      let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-        for: recording,
-        chunks: try await store.chunks(recordingID: recording.id),
-        s3Configuration: await s3Configuration(for: recording)
-      )
-      let segments = try await transcribe(audioURL: file, recordingID: recording.id)
-      guard !segments.isEmpty else { return }
-      try writeTranscript(segments, recordingID: recording.id)
-      retranscriptionProgress = 1
-      transcriptVersion += 1
+      try await runStoppableByDeletion(recordingID: recording.id) { [self] in
+        try await stopIfDeleted(recordingID: recording.id)
+        let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
+          for: recording,
+          chunks: try await store.chunks(recordingID: recording.id),
+          s3Configuration: await s3Configuration(for: recording)
+        )
+        try await stopIfDeleted(recordingID: recording.id)
+        let segments = try await processingServices.transcribe(file, recording.id)
+        try await stopIfDeleted(recordingID: recording.id)
+        guard !segments.isEmpty else { return }
+        try writeTranscript(segments, recordingID: recording.id)
+        retranscriptionProgress = 1
+        transcriptVersion += 1
+      }
     } catch {
+      guard await !wasStoppedByDeletion(error, recordingID: recording.id) else { return }
       errorMessage = String(
         format: AppLanguage.localized("Could not retranscribe this recording: %@"),
         error.localizedDescription
@@ -614,23 +682,33 @@ final class AppModel {
     }
   }
 
-  /// Uses the service the user configured in Settings, otherwise Apple's on-device speech.
-  private func transcribe(
-    audioURL: URL, recordingID: String
-  ) async throws -> [RealtimeTranscriptEvent] {
-    if let endpoint = settings.activeSpeechEndpoint {
-      return try await ThirdPartyTranscriber.transcribe(
-        audioURL: audioURL,
-        recordingID: recordingID,
-        language: settings.spokenLanguage.recognitionCode,
-        endpoint: endpoint
-      )
+  private func runStoppableByDeletion(
+    recordingID: String,
+    operation: @escaping @MainActor () async throws -> Void
+  ) async throws {
+    let task = Task { @MainActor in try await operation() }
+    processingTasks[recordingID, default: []].insert(task)
+    defer {
+      processingTasks[recordingID]?.remove(task)
+      if processingTasks[recordingID]?.isEmpty == true { processingTasks[recordingID] = nil }
     }
-    return try await OnDeviceIntelligence.transcribe(
-      audioURL: audioURL,
-      recordingID: recordingID,
-      spokenLanguage: settings.spokenLanguage
-    )
+    try await task.value
+  }
+
+  /// Checked before each step, because a service may not stop as soon as it is cancelled.
+  private func stopIfDeleted(recordingID: String) async throws {
+    try Task.checkCancellation()
+    if await isRecordingDeleted(recordingID) { throw CancellationError() }
+  }
+
+  private func isRecordingDeleted(_ recordingID: String) async -> Bool {
+    (try? await store.recording(id: recordingID))?.deletedAt != nil
+  }
+
+  /// A cancelled service can report its own error, which the user should not see as a failure.
+  private func wasStoppedByDeletion(_ error: Error, recordingID: String) async -> Bool {
+    if error is CancellationError { return true }
+    return await isRecordingDeleted(recordingID)
   }
 
   private func writeTranscript(_ segments: [RealtimeTranscriptEvent], recordingID: String) throws {
@@ -656,6 +734,65 @@ final class AppModel {
   func openSystemSettings() {
     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
     UIApplication.shared.open(url)
+  }
+
+  /// Moves a recording to Recently Deleted. Returns whether it moved.
+  @discardableResult
+  func moveToTrash(_ recording: RecordingRecord) async -> Bool {
+    do {
+      try await library.moveToTrash(recordingID: recording.id)
+    } catch {
+      errorMessage = String(
+        format: AppLanguage.localized("Could not delete this recording: %@"),
+        error.localizedDescription
+      )
+      return false
+    }
+    for task in processingTasks[recording.id] ?? [] { task.cancel() }
+    if playingRecordingID == recording.id { stopPlayback() }
+    if lastFinishedRecording?.id == recording.id { lastFinishedRecording = nil }
+    await refresh()
+    libraryVersion += 1
+    return true
+  }
+
+  func restore(_ recording: RecordingRecord) async {
+    do {
+      try await library.restore(recordingID: recording.id)
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+    await refresh()
+    libraryVersion += 1
+  }
+
+  func deletedRecordings() async throws -> [RecordingRecord] {
+    try await library.deletedRecordings()
+  }
+
+  func deletePermanently(_ recordings: [RecordingRecord]) async {
+    var failure: String?
+    for recording in recordings {
+      // Processing writes into the recording's folder, which would bring it back.
+      guard !onDeviceProcessingRecordingIDs.contains(recording.id),
+        retranscribingRecordingID != recording.id
+      else {
+        failure = AppLanguage.localized(
+          "This recording is still being processed. Try again when it finishes.")
+        continue
+      }
+      do {
+        try await library.deletePermanently(recordingID: recording.id)
+        RecordingAnnotationsService.shared.removeCachedAnnotations(recordingID: recording.id)
+      } catch {
+        failure = String(
+          format: AppLanguage.localized("Could not delete this recording: %@"),
+          error.localizedDescription
+        )
+      }
+    }
+    if let failure { errorMessage = failure }
+    libraryVersion += 1
   }
 
   func refresh() async {
@@ -840,47 +977,44 @@ final class AppModel {
     onDeviceProcessingRecordingIDs.insert(recording.id)
     defer { onDeviceProcessingRecordingIDs.remove(recording.id) }
     do {
-      // A transcript that exists but cannot be read now must not be replaced.
-      var segments = try await transcript(for: recording.id)
-      if segments.isEmpty, canTranscribeRecordings {
-        let file: URL
-        if let audioURL {
-          file = audioURL
-        } else {
-          file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-            for: recording,
-            chunks: try await store.chunks(recordingID: recording.id),
-            s3Configuration: await s3Configuration(for: recording)
-          )
+      try await runStoppableByDeletion(recordingID: recording.id) { [self] in
+        try await stopIfDeleted(recordingID: recording.id)
+        // A transcript that exists but cannot be read now must not be replaced.
+        var segments = try await transcript(for: recording.id)
+        if segments.isEmpty, canTranscribeRecordings {
+          let file: URL
+          if let audioURL {
+            file = audioURL
+          } else {
+            file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
+              for: recording,
+              chunks: try await store.chunks(recordingID: recording.id),
+              s3Configuration: await s3Configuration(for: recording)
+            )
+          }
+          try await stopIfDeleted(recordingID: recording.id)
+          segments = try await processingServices.transcribe(file, recording.id)
+          try await stopIfDeleted(recordingID: recording.id)
+          guard !segments.isEmpty else { return }
+          try writeTranscript(segments, recordingID: recording.id)
+          transcriptVersion += 1
         }
-        segments = try await transcribe(audioURL: file, recordingID: recording.id)
-        guard !segments.isEmpty else { return }
-        try writeTranscript(segments, recordingID: recording.id)
+        guard !segments.isEmpty, canSummarizeRecordings,
+          regenerateSummary || summary(for: recording.id) == nil
+        else { return }
+        try await stopIfDeleted(recordingID: recording.id)
+        let summary = try await processingServices.summarize(segments, recording.title)
+        try await stopIfDeleted(recordingID: recording.id)
+        let summaryURL = try fileLayout.summaryURL(recordingID: recording.id)
+        try JSONEncoder().encode(summary).write(to: summaryURL, options: [.atomic])
+        try RecordingFileLayout.protect(summaryURL)
+        try await library.saveSummaryDetails(summary, recordingID: recording.id)
+        await refresh()
+        libraryVersion += 1
         transcriptVersion += 1
       }
-      guard !segments.isEmpty, canSummarizeRecordings,
-        regenerateSummary || summary(for: recording.id) == nil
-      else { return }
-      let summary: RecordingSummary
-      if let provider = settings.activeLanguageModelProvider {
-        summary = try await ThirdPartyIntelligence.summarize(
-          segments,
-          title: recording.title,
-          language: AppLanguage.current,
-          provider: provider
-        )
-      } else {
-        summary = try await OnDeviceIntelligence.summarize(
-          segments,
-          title: recording.title,
-          language: AppLanguage.current
-        )
-      }
-      let summaryURL = try fileLayout.summaryURL(recordingID: recording.id)
-      try JSONEncoder().encode(summary).write(to: summaryURL, options: [.atomic])
-      try RecordingFileLayout.protect(summaryURL)
-      transcriptVersion += 1
     } catch {
+      guard await !wasStoppedByDeletion(error, recordingID: recording.id) else { return }
       errorMessage = String(
         format: AppLanguage.localized("Could not process this recording: %@"),
         error.localizedDescription

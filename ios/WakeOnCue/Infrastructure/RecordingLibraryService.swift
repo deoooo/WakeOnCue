@@ -17,6 +17,11 @@ actor RecordingLibraryService {
     store = try RecordingStore(databaseURL: layout.databaseURL)
   }
 
+  init(layout: RecordingFileLayout, store: RecordingStore) {
+    self.layout = layout
+    self.store = store
+  }
+
   func page(limit: Int, offset: Int) async throws -> [RecordingRecord] {
     try await store.recordings(limit: limit, offset: offset)
   }
@@ -31,6 +36,68 @@ actor RecordingLibraryService {
 
   func saveTitle(_ title: String?, for recordingID: String) async throws -> RecordingRecord {
     try await store.updateRecordingTitle(recordingID: recordingID, title: title)
+  }
+
+  func moveToTrash(recordingID: String) async throws {
+    try await store.moveRecordingToTrash(recordingID: recordingID)
+  }
+
+  func restore(recordingID: String) async throws {
+    try await store.restoreRecording(recordingID: recordingID)
+  }
+
+  func deletedRecordings() async throws -> [RecordingRecord] {
+    try await store.deletedRecordings()
+  }
+
+  /// Files go first so a failure leaves the recording in Recently Deleted to retry, rather
+  /// than leaving audio on the iPhone that nothing in the app can reach.
+  func deletePermanently(recordingID: String) async throws {
+    guard try await store.recording(id: recordingID).deletedAt != nil else {
+      throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
+    }
+    try layout.removeFiles(recordingID: recordingID)
+    try await store.removeDeletedRecording(recordingID: recordingID)
+  }
+
+  /// Permanently deletes recordings past the retention period. One that fails is retried
+  /// the next time this runs.
+  func purgeExpiredRecordings(now: Date = Date()) async throws {
+    for recording in try await store.deletedRecordings() {
+      guard let deletedAt = recording.deletedAt,
+        now.timeIntervalSince(deletedAt) >= RecordingStore.trashRetention
+      else { continue }
+      try? await deletePermanently(recordingID: recording.id)
+    }
+  }
+
+  /// Names the recording after its summary. Metadata keeps the two values with the recording
+  /// so lists can show them without reading every summary file.
+  func saveSummaryDetails(_ summary: RecordingSummary, recordingID: String) async throws {
+    var values: [String: String] = [:]
+    let title = summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !title.isEmpty { values[RecordingRecord.automaticTitleMetadataKey] = title }
+    let overview = summary.overview.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !overview.isEmpty { values[RecordingRecord.overviewMetadataKey] = overview }
+    guard !values.isEmpty else { return }
+    try await store.updateRecordingMetadata(recordingID: recordingID, values: values)
+  }
+
+  /// Applies `saveSummaryDetails` to summaries written before recordings kept these details.
+  func backfillSummaryDetails(pageSize: Int = 100) async throws {
+    let decoder = JSONDecoder()
+    for recording in try await allRecordings(pageSize: pageSize)
+    where recording.automaticTitle == nil && recording.overview == nil {
+      let summaryURL =
+        layout.root
+        .appending(path: "recordings", directoryHint: .isDirectory)
+        .appending(path: recording.id, directoryHint: .isDirectory)
+        .appending(path: "summary.json")
+      guard let data = try? Data(contentsOf: summaryURL),
+        let summary = try? decoder.decode(RecordingSummary.self, from: data)
+      else { continue }
+      try await saveSummaryDetails(summary, recordingID: recording.id)
+    }
   }
 
   /// Searches every locally indexed recording and local transcript file. It never downloads audio
@@ -55,7 +122,7 @@ actor RecordingLibraryService {
 
     for recording in recordings {
       try Task.checkCancellation()
-      if recording.title?.localizedCaseInsensitiveContains(normalized) == true {
+      if recording.resolvedTitle?.localizedCaseInsensitiveContains(normalized) == true {
         matches.append(recording)
         continue
       }

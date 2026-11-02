@@ -84,3 +84,108 @@ import Testing
   #expect(updated.metadata["calendar_event_id"] == "evt-1")
   #expect(updated.metadata["storage_mode"] == "local")
 }
+
+private func makeLibraryRecording(
+  id: String, status: RecordingStatus = .completed, at date: Date, in root: URL
+) -> RecordingRecord {
+  RecordingRecord(
+    id: id,
+    createdAt: date,
+    startedAt: date,
+    status: status,
+    localAudioPath: root.appending(path: "\(id).m4a").path,
+    uploadStatus: .completed,
+    deviceModel: "test",
+    appVersion: "1"
+  )
+}
+
+@Test func deletedRecordingLeavesLibraryAndCanBeRestored() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  for id in ["kept", "deleted"] {
+    try await store.createRecording(
+      makeLibraryRecording(id: id, at: anchor, in: root),
+      createPayloadPath: "", enqueueUpload: false, now: anchor)
+  }
+  _ = try await store.updateRecordingTitle(recordingID: "deleted", title: "Budget review")
+
+  let deleted = try await store.moveRecordingToTrash(recordingID: "deleted", now: anchor)
+  #expect(deleted.deletedAt == anchor)
+  #expect(deleted.title == "Budget review")
+  #expect(try await store.recordings().map(\.id) == ["kept"])
+  #expect(try await store.recordingCount() == 1)
+  #expect(try await store.recordings(matchingTitle: "Budget").isEmpty)
+  #expect(try await store.deletedRecordings().map(\.id) == ["deleted"])
+
+  let restored = try await store.restoreRecording(recordingID: "deleted")
+  #expect(restored.deletedAt == nil)
+  #expect(restored.title == "Budget review")
+  #expect(try await store.recordingCount() == 2)
+  #expect(try await store.deletedRecordings().isEmpty)
+}
+
+@Test func recordingStillBeingCapturedCannotBeDeleted() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  try await store.createRecording(
+    makeLibraryRecording(id: "active", status: .recording, at: anchor, in: root),
+    createPayloadPath: "", enqueueUpload: false, now: anchor)
+
+  await #expect(throws: RecordingStoreError.self) {
+    try await store.moveRecordingToTrash(recordingID: "active")
+  }
+  #expect(try await store.activeRecording()?.id == "active")
+}
+
+@Test func onlyRecordingsInRecentlyDeletedCanBeRemoved() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  try await store.createRecording(
+    makeLibraryRecording(id: "recording", at: anchor, in: root),
+    createPayloadPath: "", enqueueUpload: false, now: anchor)
+
+  await #expect(throws: RecordingStoreError.self) {
+    try await store.removeDeletedRecording(recordingID: "recording")
+  }
+  #expect(try await store.recordingCount() == 1)
+
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording") == false)
+  try await store.moveRecordingToTrash(recordingID: "recording")
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording") == false)
+  try await store.removeDeletedRecording(recordingID: "recording")
+  #expect(try await store.wasPermanentlyDeleted(recordingID: "recording"))
+  #expect(try await store.deletedRecordings().isEmpty)
+  await #expect(throws: RecordingStoreError.self) {
+    try await store.recording(id: "recording")
+  }
+}
+
+@Test func automaticTitleYieldsToUserTitleAndIsSearchable() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  let anchor = Date(timeIntervalSince1970: 1_800_000_000)
+  try await store.createRecording(
+    makeLibraryRecording(id: "recording", at: anchor, in: root),
+    createPayloadPath: "", enqueueUpload: false, now: anchor)
+
+  let named = try await store.updateRecordingMetadata(
+    recordingID: "recording",
+    values: [RecordingRecord.automaticTitleMetadataKey: " Launch plan "])
+  #expect(named.title == nil)
+  #expect(named.resolvedTitle == "Launch plan")
+  #expect(try await store.recordings(matchingTitle: "launch").map(\.id) == ["recording"])
+
+  let renamed = try await store.updateRecordingTitle(recordingID: "recording", title: "My title")
+  #expect(renamed.resolvedTitle == "My title")
+
+  let cleared = try await store.updateRecordingTitle(recordingID: "recording", title: nil)
+  #expect(cleared.resolvedTitle == "Launch plan")
+}

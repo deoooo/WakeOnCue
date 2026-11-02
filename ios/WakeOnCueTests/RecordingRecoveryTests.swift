@@ -194,6 +194,175 @@ final class RecordingRecoveryTests: XCTestCase {
       "Stops on the read failure instead of going on to transcribe")
   }
 
+  /// Records every call to the services a recording could be sent to.
+  @MainActor
+  private final class ProcessingProbe {
+    var transcribeCalls = 0
+    var summarizeCalls = 0
+    var onTranscribe: () async throws -> Void = {}
+    var onSummarize: () async throws -> Void = {}
+
+    func services(recordingID: String) -> RecordingProcessingServices {
+      RecordingProcessingServices(
+        canTranscribe: { true },
+        transcribe: { [self] _, _ in
+          transcribeCalls += 1
+          try await onTranscribe()
+          return [
+            RealtimeTranscriptEvent(
+              recordingID: recordingID, segmentID: "segment", revision: 1,
+              startMilliseconds: 0, endMilliseconds: 1_000,
+              text: "Discarded by accident", isFinal: true, speaker: nil)
+          ]
+        },
+        canSummarize: { true },
+        summarize: { [self] _, _ in
+          summarizeCalls += 1
+          try await onSummarize()
+          return RecordingSummary(
+            title: "Launch plan", overview: "Agreed a date.", keyPoints: [], actionItems: [],
+            generatedAt: Date())
+        }
+      )
+    }
+  }
+
+  /// A finished recording in the model's own library, removed again when the test ends.
+  @MainActor
+  private func makeProcessableRecording() async throws -> (RecordingRecord, RecordingFileLayout, RecordingStore) {
+    let layout = try RecordingFileLayout()
+    let store = try RecordingStore(databaseURL: layout.databaseURL)
+    let id = "processing-\(UUID().uuidString)"
+    let audio = try layout.downloadedAudioURL(recordingID: id)
+    try writeAudio(to: audio, seconds: 1)
+    try await store.createRecording(
+      RecordingRecord(
+        id: id, createdAt: .now, startedAt: .now, status: .recording,
+        localAudioPath: audio.path, deviceModel: "test", appVersion: "1"),
+      createPayloadPath: "", enqueueUpload: false)
+    try await store.completeLocally(recordingID: id, duration: 1)
+    addTeardownBlock {
+      try? await store.moveRecordingToTrash(recordingID: id)
+      try? await store.removeDeletedRecording(recordingID: id)
+      try? layout.removeFiles(recordingID: id)
+    }
+    return (try await store.recording(id: id), layout, store)
+  }
+
+  @MainActor
+  func testDeletingDuringTranscriptionSendsNothingToTheSummaryService() async throws {
+    let model = try AppModel()
+    let (recording, layout, _) = try await makeProcessableRecording()
+    let probe = ProcessingProbe()
+    model.processingServices = probe.services(recordingID: recording.id)
+    probe.onTranscribe = { _ = await model.moveToTrash(recording) }
+
+    await model.processOnDevice(
+      recording: recording, audioURL: try layout.downloadedAudioURL(recordingID: recording.id))
+
+    XCTAssertEqual(probe.transcribeCalls, 1)
+    XCTAssertEqual(probe.summarizeCalls, 0)
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: try layout.transcriptURL(recordingID: recording.id).path))
+    XCTAssertNil(model.errorMessage)
+    XCTAssertTrue(model.onDeviceProcessingRecordingIDs.isEmpty)
+  }
+
+  @MainActor
+  func testDeletingCancelsARequestAlreadyInFlight() async throws {
+    let model = try AppModel()
+    let (recording, layout, _) = try await makeProcessableRecording()
+    let probe = ProcessingProbe()
+    model.processingServices = probe.services(recordingID: recording.id)
+    var requestWasCancelled = false
+    let requestStarted = expectation(description: "request started")
+    probe.onTranscribe = {
+      requestStarted.fulfill()
+      do {
+        try await Task.sleep(for: .seconds(60))
+      } catch {
+        requestWasCancelled = true
+        throw URLError(.cancelled)
+      }
+    }
+    let audioURL = try layout.downloadedAudioURL(recordingID: recording.id)
+    let processing = Task { await model.processOnDevice(recording: recording, audioURL: audioURL) }
+    await fulfillment(of: [requestStarted], timeout: 10)
+
+    let moved = await model.moveToTrash(recording)
+    await processing.value
+
+    XCTAssertTrue(moved)
+    XCTAssertTrue(requestWasCancelled)
+    XCTAssertEqual(probe.summarizeCalls, 0)
+    XCTAssertNil(model.errorMessage, "Stopping because of a deletion is not a failure to report")
+  }
+
+  @MainActor
+  func testDeletedRecordingIsNotSentWhenProcessingStartsLater() async throws {
+    let model = try AppModel()
+    let (recording, layout, _) = try await makeProcessableRecording()
+    let probe = ProcessingProbe()
+    model.processingServices = probe.services(recordingID: recording.id)
+    _ = await model.moveToTrash(recording)
+
+    await model.processOnDevice(
+      recording: recording, audioURL: try layout.downloadedAudioURL(recordingID: recording.id))
+    await model.retranscribe(recording: recording)
+
+    XCTAssertEqual(probe.transcribeCalls, 0)
+    XCTAssertEqual(probe.summarizeCalls, 0)
+    XCTAssertNil(model.errorMessage)
+  }
+
+  @MainActor
+  func testDeletingDuringRetranscriptionKeepsTheExistingTranscript() async throws {
+    let model = try AppModel()
+    let (recording, layout, _) = try await makeProcessableRecording()
+    let transcriptURL = try layout.transcriptURL(recordingID: recording.id)
+    let existing = Data("[]".utf8)
+    try existing.write(to: transcriptURL)
+    let probe = ProcessingProbe()
+    model.processingServices = probe.services(recordingID: recording.id)
+    probe.onTranscribe = { _ = await model.moveToTrash(recording) }
+
+    await model.retranscribe(recording: recording)
+
+    XCTAssertEqual(probe.transcribeCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: transcriptURL), existing)
+    XCTAssertNil(model.errorMessage)
+    XCTAssertNil(model.retranscribingRecordingID)
+  }
+
+  @MainActor
+  func testDeletingDuringSummaryWritesNoSummaryAndRecoveredRecordingCanBeProcessedAgain()
+    async throws
+  {
+    let model = try AppModel()
+    let (recording, layout, store) = try await makeProcessableRecording()
+    let probe = ProcessingProbe()
+    model.processingServices = probe.services(recordingID: recording.id)
+    probe.onSummarize = { _ = await model.moveToTrash(recording) }
+    let audioURL = try layout.downloadedAudioURL(recordingID: recording.id)
+
+    await model.processOnDevice(recording: recording, audioURL: audioURL)
+
+    XCTAssertEqual(probe.summarizeCalls, 1)
+    XCTAssertNil(model.summary(for: recording.id))
+    let deleted = try await store.recording(id: recording.id)
+    XCTAssertNil(deleted.automaticTitle)
+
+    probe.onSummarize = {}
+    await model.restore(recording)
+    await model.processOnDevice(recording: recording, audioURL: audioURL)
+
+    XCTAssertEqual(probe.summarizeCalls, 2)
+    XCTAssertEqual(model.summary(for: recording.id)?.title, "Launch plan")
+    let restored = try await store.recording(id: recording.id)
+    XCTAssertEqual(restored.resolvedTitle, "Launch plan")
+    XCTAssertNil(model.errorMessage)
+  }
+
   @MainActor
   func testImportedFileBecomesACompletedRecording() async throws {
     let source = directory.appending(path: "Voice memo.m4a")
