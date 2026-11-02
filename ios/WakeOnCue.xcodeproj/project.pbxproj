@@ -27,6 +27,7 @@
 		269B7E6A0B56D4FE1DD779A4 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 364E97881D72FF49F2C4F063 /* WakeOnCueCore */; };
 		28F3DC9E72616B532F5FF623 /* WatchSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */; };
 		2A8610AB1AF7A3586F04A4A6 /* RecordingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81F7307DD7F72D8760C28A1 /* RecordingLibraryView.swift */; };
+		2AE7D6378A08180572073569 /* WatchSilenceGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54D3E9C70CEF0A87656690D /* WatchSilenceGate.swift */; };
 		2DBD994F5A1A4F58D14958D0 /* WatchSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */; };
 		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
 		31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */; };
@@ -78,6 +79,7 @@
 		9C88985EF3A6F5B0A47C57CC /* WakeOnCueWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */; };
 		9D9FE1273731021262DAF3D9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
 		A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */; };
+		A13155E04EB5024215B5925E /* WatchSilenceGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FFF50CC2AE63E4615D25583 /* WatchSilenceGateTests.swift */; };
 		A2F5FC830416568E1FE30DB5 /* RealtimeChannelStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1367632068864972664C459 /* RealtimeChannelStream.swift */; };
 		A4A153D12ABFD2BBFAE72367 /* ChannelRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */; };
 		A58C99A13BF887A827FDEF83 /* WatchSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C158855675A574042A201393 /* WatchSessionClient.swift */; };
@@ -114,10 +116,12 @@
 		E10895DDCDD3F71090339392 /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */; };
 		E11207234680367BA55DE186 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 53209C740FCB8627BF279F63 /* InfoPlist.strings */; };
 		E2A2EE9447304283057E7345 /* WakeOnCueMacTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */; };
+		E3E06849B717F9CF923D4237 /* WatchSilenceGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54D3E9C70CEF0A87656690D /* WatchSilenceGate.swift */; };
 		E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */; };
 		EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */; };
 		EBD66C251B633A70DE738E31 /* RecordingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */; };
 		ED080307416FFB108965D5FA /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
+		F475522C7574BBB272D4AF07 /* WatchSilenceGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54D3E9C70CEF0A87656690D /* WatchSilenceGate.swift */; };
 		F7D351A58E04C9EC6DA4901B /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B804F0E376CE6B89B8E6699 /* PlacesView.swift */; };
 		FAAE677CFF2A227CC45E0B4E /* WatchCompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB40A4A34EDA59047776592D /* WatchCompanionUITests.swift */; };
 		FE9AB9FEA87CF11CD104CF6E /* RecordingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */; };
@@ -219,6 +223,7 @@
 		0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioFileProvider.swift; sourceTree = "<group>"; };
 		0D617E1495504C52549F0C12 /* PlaceAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceAutomation.swift; sourceTree = "<group>"; };
 		0FB107982BDA9DC3F38164F4 /* WakeOnCueWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatch.entitlements; sourceTree = "<group>"; };
+		0FFF50CC2AE63E4615D25583 /* WatchSilenceGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSilenceGateTests.swift; sourceTree = "<group>"; };
 		1707596316FD6E39E0CAF37E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		17B96E27AA3E894679484BCE /* PhoneWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWatchBridge.swift; sourceTree = "<group>"; };
 		18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshotStore.swift; sourceTree = "<group>"; };
@@ -327,6 +332,7 @@
 		EDE36A0BFE6304551A90D527 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WakeOnCueWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F54D3E9C70CEF0A87656690D /* WatchSilenceGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSilenceGate.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F94E0BAC6540587DC81151E7 /* OnDeviceIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceIntelligence.swift; sourceTree = "<group>"; };
 		FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAnnotationsTests.swift; sourceTree = "<group>"; };
@@ -538,6 +544,7 @@
 			isa = PBXGroup;
 			children = (
 				FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */,
+				F54D3E9C70CEF0A87656690D /* WatchSilenceGate.swift */,
 				18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */,
 			);
 			path = WatchShared;
@@ -686,6 +693,7 @@
 				0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */,
 				990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */,
 				B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */,
+				0FFF50CC2AE63E4615D25583 /* WatchSilenceGateTests.swift */,
 			);
 			path = WakeOnCueTests;
 			sourceTree = "<group>";
@@ -1056,6 +1064,7 @@
 				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
 				50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */,
 				1FF63B926E0930F806E1ED7E /* WatchRecordingImporter.swift in Sources */,
+				2AE7D6378A08180572073569 /* WatchSilenceGate.swift in Sources */,
 				D2DA7278118AB4545D1ED81A /* WatchSnapshotStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1077,6 +1086,7 @@
 				057DC271DC7A756AA99C8953 /* ThirdPartyAITests.swift in Sources */,
 				1F95FD0B7CEA6494AA98C2D2 /* TranscriptFollowPolicyTests.swift in Sources */,
 				3AE9B935CA1890C7062EF162 /* WatchBridgeTests.swift in Sources */,
+				A13155E04EB5024215B5925E /* WatchSilenceGateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1130,6 +1140,7 @@
 			files = (
 				82DA70B021C4832D52CA783A /* WakeOnCueWatchWidgets.swift in Sources */,
 				B3FB2266F07CF65229D54BF0 /* WatchBridgeProtocol.swift in Sources */,
+				E3E06849B717F9CF923D4237 /* WatchSilenceGate.swift in Sources */,
 				2DBD994F5A1A4F58D14958D0 /* WatchSnapshotStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1154,6 +1165,7 @@
 				7F7C1E04DF8AC52625F955D0 /* WatchModel.swift in Sources */,
 				838A6BE9D3C7A9E2C1D064C2 /* WatchRecordingStore.swift in Sources */,
 				A58C99A13BF887A827FDEF83 /* WatchSessionClient.swift in Sources */,
+				F475522C7574BBB272D4AF07 /* WatchSilenceGate.swift in Sources */,
 				28F3DC9E72616B532F5FF623 /* WatchSnapshotStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

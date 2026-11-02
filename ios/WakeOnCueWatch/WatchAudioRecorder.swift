@@ -51,6 +51,9 @@ final class WatchAudioRecorder: @unchecked Sendable {
   private var level: Float = 0
   private var lastHeartbeat = Date.distantPast
   private var recording: SegmentWriter?
+  /// Nil means the recording is written unchanged.
+  private var silenceGate: WatchSilenceGate?
+  private var gatedOutput: AVAudioPCMBuffer?
   private(set) var isRunning = false
 
   /// Called on the main actor when the system stops capture (for example a phone call).
@@ -78,21 +81,36 @@ final class WatchAudioRecorder: @unchecked Sendable {
       var writer = SegmentWriter(sessionID: sessionID, directory: directory)
       try writer.openNext(format: outputFormat)
       recording = writer
+      // Allocated up front so a failure here means a full recording, not dropped audio later.
+      gatedOutput = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: 4_096)
+      silenceGate = gatedOutput == nil ? nil : WatchSilenceGate()
     }
-    WatchDiagnostics.log("recording started session=\(sessionID.uuidString.prefix(8))")
+    let gated = lock.withLock { silenceGate != nil }
+    WatchDiagnostics.log(
+      "recording started session=\(sessionID.uuidString.prefix(8)) silenceGate=\(gated)")
   }
 
   /// Closes the open segment and returns how many segments the recording has.
   @discardableResult
   func stopRecording(reason: String = "user") -> Int {
-    let (finished, count) = lock.withLock { () -> ((WatchSegmentMetadata, URL)?, Int) in
-      guard var writer = recording else { return (nil, 0) }
-      let finished = writer.close()
+    let (finished, count, zeroed) = lock.withLock {
+      () -> ([(WatchSegmentMetadata, URL)], Int, TimeInterval) in
+      guard var writer = recording else { return ([], 0, 0) }
+      var finished: [(WatchSegmentMetadata, URL)] = []
+      var zeroed: TimeInterval = 0
+      if var gate = silenceGate {
+        finished += write(gate.flush(), to: &writer)
+        zeroed = Double(gate.zeroedSamples) / Self.sampleRate
+      }
+      if let last = writer.close() { finished.append(last) }
       recording = nil
-      return (finished, writer.completedCount)
+      silenceGate = nil
+      gatedOutput = nil
+      return (finished, writer.completedCount, zeroed)
     }
-    if let finished { deliver(finished) }
-    WatchDiagnostics.log("recording stopped reason=\(reason) segments=\(count)")
+    finished.forEach(deliver)
+    WatchDiagnostics.log(
+      "recording stopped reason=\(reason) segments=\(count) silenceZeroed=\(Int(zeroed))s")
     stopEngine(reason: reason)
     return count
   }
@@ -169,22 +187,50 @@ final class WatchAudioRecorder: @unchecked Sendable {
     var peak: Int16 = 0
     for sample in samples where sample.magnitude > peak.magnitude { peak = sample }
     let instant = Float(peak.magnitude) / Float(Int16.max)
-    let (heartbeat, finished) = lock.withLock { () -> (String?, (WatchSegmentMetadata, URL)?) in
+    let (heartbeat, finished) = lock.withLock { () -> (String?, [(WatchSegmentMetadata, URL)]) in
       level = max(instant, level * 0.8)
-      var finished: (WatchSegmentMetadata, URL)?
+      var finished: [(WatchSegmentMetadata, URL)] = []
       if var writer = recording {
-        finished = writer.write(output, format: outputFormat)
+        if var gate = silenceGate {
+          let ready = gate.process(samples)
+          silenceGate = gate
+          finished = write(ready, to: &writer)
+        } else if let segment = writer.write(output, format: outputFormat) {
+          finished = [segment]
+        }
         recording = writer
       }
       guard Date().timeIntervalSince(lastHeartbeat) >= 15 else { return (nil, finished) }
       lastHeartbeat = Date()
-      let recorded = recording.map { "recording=\(Int($0.recordedDuration))s" } ?? "idle"
+      var recorded = recording.map { "recording=\(Int($0.recordedDuration))s" } ?? "idle"
+      if let silenceGate {
+        recorded += " silenceZeroed=\(Int(Double(silenceGate.zeroedSamples) / Self.sampleRate))s"
+      }
       return (recorded, finished)
     }
-    if let finished { deliver(finished) }
+    finished.forEach(deliver)
     if let heartbeat {
       WatchDiagnostics.log("audio heartbeat \(heartbeat) peak=\(peak.magnitude)")
     }
+  }
+
+  /// Writes samples released by the silence gate. Call with `lock` held.
+  private func write(
+    _ samples: [Int16], to writer: inout SegmentWriter
+  ) -> [(WatchSegmentMetadata, URL)] {
+    guard let gatedOutput, let channel = gatedOutput.int16ChannelData?[0] else { return [] }
+    var finished: [(WatchSegmentMetadata, URL)] = []
+    var next = 0
+    while next < samples.count {
+      let count = min(Int(gatedOutput.frameCapacity), samples.count - next)
+      samples.withUnsafeBufferPointer { source in
+        channel.update(from: source.baseAddress! + next, count: count)
+      }
+      gatedOutput.frameLength = AVAudioFrameCount(count)
+      if let segment = writer.write(gatedOutput, format: outputFormat) { finished.append(segment) }
+      next += count
+    }
+    return finished
   }
 
   private func deliver(_ finished: (WatchSegmentMetadata, URL)) {

@@ -26,6 +26,7 @@ Watch 点「开始录音」
 
 手表录音
   → 16 kHz 单声道 32 kbps AAC，每 60 秒一个 segment-NNNN.m4a（Documents/Recordings/<session>/）
+  → 写入前经过静音门：只把长静音的中段置为数字零，帧数不变（见下文「静音置零」）
   → 每段写完即 transferFile 给 iPhone；送达确认后删除手表上的文件
   → 「结束」后 transferUserInfo 发送会话摘要（起止时间、段数、书签与标签、结束原因）
   → iPhone 暂存于 Application Support/WatchInbox/sessions/<session>/，段齐后合成一条本地录音
@@ -38,9 +39,49 @@ Watch 点「开始录音」
 - 「记下刚才」：iPhone 录音中 → `markRecent` 在 iPhone 录音里加区间书签；手表录音中 → 书签写进会话摘要，合成时带入。没有在录音时按钮置灰。
 - 状态通过 `updateApplicationContext` 下发，只在阶段、录音 ID 或计时基准变化时发送；Watch 本地用 `capturedAt + elapsed` 走表。
 
+## 静音置零（手表录音的 VAD）
+
+`WatchSilenceGate` 是基于能量的保守检测，只有手表自己录音时生效，iPhone 录音不受影响。
+
+为什么是置零，而不是只做标记或剪掉静音：32 kbps AAC 对任何底噪都接近用满码率，只有数字零才明显变小（见下表），所以只做标记不会减少写入和传输。剪掉静音会缩短时间线，书签和转写时间戳都要重新映射。置零不改变帧数，分段、合成、时长、书签和转写时间戳的逻辑都不用改，协议和 `WatchRecordingImporter` 也没有改动。
+
+判定规则（每 20 ms 一帧，参数在 `WatchSilenceGate.Configuration`）：
+
+- **静音帧：** RMS 不超过底噪 +6 dB，且阈值限制在 -66 到 -45 dBFS 之间。超过 -45 dBFS 的声音永远不算静音，所以吵闹环境会完整录音。
+- **底噪：** 遇到更安静的帧立即下降，上升最快 0.3 dB/秒，跟随安静时刻而不是说话声。
+- **置零条件：** 该帧之前连续静音满 10 秒，之后还有 1 秒静音。任何一帧超过阈值都会让计数归零，所以 11 秒以内的停顿完全不变。
+- **延迟：** 写入比采集晚 1 秒，这样才能看到前方的声音。音频只是晚写，不改变时间位置；结束录音时余下的部分原样写入。
+
+回退：门初始化或缓冲区分配失败时，这条录音不经过门、完整写入（Debug 日志 `silenceGate=false`）。
+
+已知代价：
+
+- 被判为静音的内容**不可恢复**，包括整段都低于阈值的极轻声音和接近底噪的持续声音，「记下刚才」也救不回来。
+- 置零段听起来是纯静音，没有环境声。
+- App 崩溃时可能多丢约 1 秒（尚在延迟中的音频）。
+
+合成信号实测（Mac `AVAudioFile`，与手表相同的设置，60 秒，不代表 watchOS 编码器和真实环境）：
+
+| 内容 | 大小 |
+| --- | --- |
+| 数字零 | 28 KB |
+| 白噪声 -70 到 -20 dBFS | 262–264 KB |
+| 30% 时间 -30 dBFS 噪声，其余数字零 | 138 KB |
+
+预期收益集中在传输量和 iPhone 存储，幅度取决于真实静音占比。麦克风和采样转换照跑，且录音的额外耗电本来就不明显，省电预计不多。时间线长度不变，端上转写不会因此明显变快。
+
+**以下只有真机才能验证（均未进行）：**
+
+- 手表麦克风在真实会议中的底噪水平，-45 dBFS 上限和 +6 dB 余量是否合适，隔桌说话等轻声是否被保留。
+- 系统自动增益和手腕动作对判定的影响。
+- 实际减少的存储和传输量（对比 Debug 日志 `silenceZeroed` 与每小时分段大小），watchOS 编码器对数字零的压缩效果。
+- 耗电变化（需要同强度对照）。
+- 含长段数字零的录音在真实 `SpeechTranscriber` 和第三方转写服务上的效果。
+- `WatchAudioRecorder` 接入后的完整录音链路：只做过 watchOS Simulator 构建，单元测试直接覆盖判定逻辑，并用该逻辑的输出生成分段走 iPhone 导入，没有经过录音器本身。
+
 ## 代码位置
 
-- `ios/WatchShared/`：iPhone 与 Watch 共用的协议（`WatchBridgeProtocol.swift`）与复杂功能状态存储（`WatchSnapshotStore.swift`）。
+- `ios/WatchShared/`：iPhone 与 Watch 共用的协议（`WatchBridgeProtocol.swift`）、静音判定（`WatchSilenceGate.swift`）与复杂功能状态存储（`WatchSnapshotStore.swift`）。
 - `ios/WakeOnCue/Watch/`：`PhoneWatchBridge`（WCSession）与 `WatchRecordingImporter`（分段合成）。
 - `ios/WakeOnCueWatch/`：独立 watchOS App（SwiftUI）。`WatchAudioRecorder` 分段录音，`WatchRecordingStore` 负责持久化、补发与崩溃恢复，`WatchDiagnostics` 是 Debug 诊断日志。
 - `ios/WakeOnCueWatchWidgets/`：WidgetKit 复杂功能 / Smart Stack。
