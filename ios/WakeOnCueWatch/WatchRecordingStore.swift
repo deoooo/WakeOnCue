@@ -38,10 +38,15 @@ enum WatchRecordingStore {
     try? WatchBridgeCoding.encode(state).write(to: url, options: [.atomic])
   }
 
-  static func update(_ sessionID: UUID, _ change: (inout WatchRecordingState) -> Void) {
-    guard var state = load(sessionID) else { return }
+  /// Returns the changed state, which is right even when a full disk kept it from being saved.
+  @discardableResult
+  static func update(
+    _ sessionID: UUID, _ change: (inout WatchRecordingState) -> Void
+  ) -> WatchRecordingState? {
+    guard var state = load(sessionID) else { return nil }
     change(&state)
     save(state)
+    return state
   }
 
   static func allStates() -> [WatchRecordingState] {

@@ -38,3 +38,5 @@
 "Marked in the Watch recording" = "已标记在手表录音中";
 "Start recording first." = "请先开始录音。";
 "Marks the last 2 minutes" = "标记最近 2 分钟";
+"The Watch couldn't keep saving audio, so recording stopped. Saved audio syncs to iPhone." = "手表无法继续保存音频，录音已停止。已保存的部分会同步到 iPhone。";
+"The Watch couldn't save audio, so recording stopped. Nothing was saved." = "手表无法保存音频，录音已停止，这条录音没有保存下来。";

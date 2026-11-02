@@ -32,11 +32,19 @@ private final class OneShotInput: @unchecked Sendable {
   }
 }
 
+/// Why capture ended without the user asking. `rawValue` becomes the summary's `endReason`.
+enum WatchCaptureStopReason: String, Sendable {
+  /// The system took the audio session (for example a phone call).
+  case interruption
+  /// Segments can no longer be opened or written (for example the Watch is out of storage).
+  case writeFailure = "write_failure"
+}
+
 /// The Watch microphone pipeline. Audio is written as fixed-length AAC segments so a long
 /// recording reaches the iPhone piece by piece and a crash loses at most the open segment.
 final class WatchAudioRecorder: @unchecked Sendable {
-  static let sampleRate = 16_000.0
-  static let segmentDuration: TimeInterval = 60
+  static let sampleRate = SegmentWriter.sampleRate
+  static let segmentDuration = SegmentWriter.segmentDuration
 
   private let engine = AVAudioEngine()
   private let lock = NSLock()
@@ -52,9 +60,11 @@ final class WatchAudioRecorder: @unchecked Sendable {
   private var lastHeartbeat = Date.distantPast
   private var recording: SegmentWriter?
   private(set) var isRunning = false
+  private var isEndingAfterWriteFailure = false
 
-  /// Called on the main actor when the system stops capture (for example a phone call).
-  var onStopped: (@MainActor @Sendable () -> Void)?
+  /// Called on the main actor when capture has to end, while the recording is still open, so the
+  /// handler's `stopRecording` returns a segment count that includes the last segment.
+  var onStopped: (@MainActor @Sendable (WatchCaptureStopReason) -> Void)?
   /// Called on the main actor each time a recording segment is complete on disk.
   var onSegmentFinished: (@MainActor @Sendable (WatchSegmentMetadata, URL) -> Void)?
 
@@ -75,7 +85,9 @@ final class WatchAudioRecorder: @unchecked Sendable {
     try await startEngineIfNeeded()
     try lock.withLock {
       guard recording == nil else { return }
-      var writer = SegmentWriter(sessionID: sessionID, directory: directory)
+      isEndingAfterWriteFailure = false
+      var writer = SegmentWriter(
+        sessionID: sessionID, directory: directory, log: { WatchDiagnostics.log($0) })
       try writer.openNext(format: outputFormat)
       recording = writer
     }
@@ -96,13 +108,6 @@ final class WatchAudioRecorder: @unchecked Sendable {
     stopEngine(reason: reason)
     return count
   }
-
-  static var aacSettings: [String: Any] { [
-    AVFormatIDKey: kAudioFormatMPEG4AAC,
-    AVSampleRateKey: sampleRate,
-    AVNumberOfChannelsKey: 1,
-    AVEncoderBitRateKey: 32_000,
-  ] }
 
   // MARK: - Engine
 
@@ -185,6 +190,30 @@ final class WatchAudioRecorder: @unchecked Sendable {
     if let heartbeat {
       WatchDiagnostics.log("audio heartbeat \(heartbeat) peak=\(peak.magnitude)")
     }
+    endIfWritingFailed()
+  }
+
+  /// Runs on the audio thread, so it hops to the main actor once, and only ends the recording
+  /// that failed: the user may have stopped it and started another by the time the hop lands.
+  private func endIfWritingFailed() {
+    let failedSession = lock.withLock { () -> UUID? in
+      guard let recording, recording.hasFailed, !isEndingAfterWriteFailure else { return nil }
+      isEndingAfterWriteFailure = true
+      return recording.sessionID
+    }
+    guard let failedSession else { return }
+    Task { @MainActor [weak self] in
+      guard let self, self.lock.withLock({ self.recording?.sessionID == failedSession }) else {
+        return
+      }
+      self.end(because: .writeFailure)
+    }
+  }
+
+  @MainActor
+  private func end(because reason: WatchCaptureStopReason) {
+    onStopped?(reason)
+    if isRunning { stopRecording(reason: reason.rawValue) }
   }
 
   private func deliver(_ finished: (WatchSegmentMetadata, URL)) {
@@ -205,84 +234,9 @@ final class WatchAudioRecorder: @unchecked Sendable {
       WatchDiagnostics.log("audio interruption \(type == .began ? "began" : "ended")")
       guard type == .began else { return }
       MainActor.assumeIsolated {
-        guard let self else { return }
         // watchOS cannot restart capture from the background, so end the recording cleanly.
-        self.stopRecording(reason: "interruption")
-        self.onStopped?()
+        self?.end(because: .interruption)
       }
     }
   }
 }
-
-/// Writes consecutive fixed-length AAC files. Owned by `WatchAudioRecorder` under its lock.
-private struct SegmentWriter {
-  let sessionID: UUID
-  let directory: URL
-  private var file: AVAudioFile?
-  private var url: URL?
-  private var index = 0
-  private var startedAt = Date()
-  private var frames: AVAudioFramePosition = 0
-  private(set) var completedCount = 0
-  private(set) var recordedDuration: TimeInterval = 0
-
-  init(sessionID: UUID, directory: URL) {
-    self.sessionID = sessionID
-    self.directory = directory
-  }
-
-  mutating func openNext(format: AVAudioFormat) throws {
-    index += 1
-    let metadata = WatchSegmentMetadata(sessionID: sessionID, index: index, startedAt: Date(), duration: 0)
-    let url = directory.appending(path: metadata.fileName)
-    file = try AVAudioFile(
-      forWriting: url,
-      settings: WatchAudioRecorder.aacSettings,
-      commonFormat: format.commonFormat,
-      interleaved: format.isInterleaved
-    )
-    self.url = url
-    startedAt = metadata.startedAt
-    frames = 0
-  }
-
-  /// Appends audio and returns the segment that just filled up, if any.
-  mutating func write(_ pcm: AVAudioPCMBuffer, format: AVAudioFormat) -> (WatchSegmentMetadata, URL)? {
-    guard let file else { return nil }
-    do {
-      try file.write(from: pcm)
-    } catch {
-      WatchDiagnostics.log("segment write failed: \(error.localizedDescription)")
-      return nil
-    }
-    frames += AVAudioFramePosition(pcm.frameLength)
-    recordedDuration += Double(pcm.frameLength) / WatchAudioRecorder.sampleRate
-    guard Double(frames) / WatchAudioRecorder.sampleRate >= WatchAudioRecorder.segmentDuration
-    else { return nil }
-    let finished = close()
-    try? openNext(format: format)
-    return finished
-  }
-
-  mutating func close() -> (WatchSegmentMetadata, URL)? {
-    defer {
-      file = nil
-      url = nil
-      frames = 0
-    }
-    guard let file, let url, frames > 0 else {
-      if let url { try? FileManager.default.removeItem(at: url) }
-      return nil
-    }
-    file.close()
-    completedCount = index
-    let metadata = WatchSegmentMetadata(
-      sessionID: sessionID,
-      index: index,
-      startedAt: startedAt,
-      duration: Double(frames) / WatchAudioRecorder.sampleRate
-    )
-    return (metadata, url)
-  }
-}
-

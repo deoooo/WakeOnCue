@@ -35,6 +35,7 @@ Watch 点「开始录音」
 - 摘要到达 24 小时后仍缺段时，用已到的段合成，避免永远挂起。
 - 手表 App 意外退出（没电、被系统回收）：下次启动时把已写完的段结束成一条录音（`endReason=recovered`），最多丢失最后一段（≤60 秒）。
 - 来电、Siri 打断：结束这条录音（`endReason=interruption`），watchOS 不允许后台恢复录音，需回到 App 重新开始。
+- 分段打开或写入持续失败（例如存储已满）：结束这条录音（`endReason=write_failure`），保存已完成的分段，手表震动并显示提示。详见下文「写入失败」。
 - 「记下刚才」：iPhone 录音中 → `markRecent` 在 iPhone 录音里加区间书签；手表录音中 → 书签写进会话摘要，合成时带入。没有在录音时按钮置灰。
 - 状态通过 `updateApplicationContext` 下发，只在阶段、录音 ID 或计时基准变化时发送；Watch 本地用 `capturedAt + elapsed` 走表。
 
@@ -45,6 +46,28 @@ Watch 点「开始录音」
 - `ios/WakeOnCueWatch/`：独立 watchOS App（SwiftUI）。`WatchAudioRecorder` 分段录音，`WatchRecordingStore` 负责持久化、补发与崩溃恢复，`WatchDiagnostics` 是 Debug 诊断日志。
 - `ios/WakeOnCueWatchWidgets/`：WidgetKit 复杂功能 / Smart Stack。
 - `ios/WatchResources/`：Watch 端中英文文案。
+- `ios/WatchShared/SegmentWriter.swift`：分段写入与失败判定。只有手表录音用到，放在共用目录是为了能被 `WakeOnCueTests` 测试。
+
+## 写入失败
+
+以前下一段打开失败后，音频会被静默丢弃，界面仍显示在录音；单次写入失败也只记日志。现在 `SegmentWriter` 的规则是：
+
+- **先开下一段，再关当前段。** 下一段打不开时，音频继续写进当前段（这一段会超过 60 秒），不丢音频，并在之后每批音频到达时重试。序号只在打开成功后才增加，段号不会出现空缺。
+- **写入失败：** 这批音频无法保留，时间线相应变短。短暂失败不结束录音，因为手表无法在后台重新开始录音。
+- **失败额度（`SegmentFailureBudget`）：** 按音频时长计算，失败累计到 5 秒就结束录音。成功写入只按 0.1 倍抵扣，所以失败和成功交替时也会结束。5 秒和 0.1 是估计值，没有真机数据支持。
+- **合上后读回校验：** 打不开或长度为 0 的段会被删除且不计入段数，因为 iPhone 读不了时长就会导致整条录音一直导入失败。整段写满时校验失败会立即结束录音；用户手动结束时只丢这一段，Debug 日志有记录，但提示仍是「已保存」。
+
+结束时走与中断相同的路径：`WatchAudioRecorder` 先调用 `onStopped`，由 `WatchModel` 结束录音并发送摘要。此时录音尚未关闭，所以摘要的段数包含最后一段。修改前的中断路径先关闭录音，摘要发出时最后一段还没计入，iPhone 合成时会漏掉这一段（≤60 秒）；这次一并修复。
+
+用户看到的提示：手表震动（`.failure`），主界面从录音状态退出并显示说明文字；一段也没保存下来时会明确说明没有保存。文字会保留到被下一条提示替换。
+
+已知局限：
+
+- 总失败比例低于约 9% 时不会结束录音，这些丢失不提示用户，只在 Debug 日志记录每轮失败的第一条（额度归零后再次失败才会再记）。
+- 存储全满时 `state.json` 也可能写不进去。摘要会用内存中的正确状态发送，但如果 App 随后被杀，下次启动的恢复流程读到的仍是旧状态，可能删除实际已完成的最后几段。
+- 没有使用本地通知（需要新增权限申请），抬腕前只有一次震动。
+
+**验证情况：** `SegmentWriterTests` 在 iOS Simulator 上用真实 AAC 文件加注入的故障，覆盖了判定和分段逻辑。`WatchAudioRecorder` 和 `WatchModel` 的接入部分只做过 watchOS Simulator 构建，没有运行。**以下只有真机才能验证（均未进行）：** 真实存储已满时 `AVAudioFile` 的报错方式与合上后的文件状态；App 在后台时 `.failure` 震动能否送达；提示文字的实际显示效果。
 
 ## 构建与验证
 
@@ -107,7 +130,7 @@ iPhone 端两条都合成为 `COMPLETED`，分段连续（1–163、1–834）�
 - 真机实测（2026-10-25，旧版缓冲，同一采集管线）：前台开启后转入后台，心跳每 15 秒不间断，后台录到的音频全程有真实环境声；日常使用中连续运行 170.8 分钟直到手表没电。
 - Apple 文档没有给出时长上限：音频等后台会话「until the current session ends」，且须在前台启动（[Background execution](https://developer.apple.com/documentation/watchkit/background-execution)）。
 - Apple 工程师在论坛确认：录音可在前台开始后继续到后台，但被来电、Siri 打断后无法在后台恢复，必须由用户回到前台重新开启（[forums/750432](https://developer.apple.com/forums/thread/750432)）。当前实现在中断时结束这条录音并保存已录部分。
-- 因此停止只来自两类：音频中断（日志有 `audio interruption` / `recording stopped reason=interruption`），或进程被回收（心跳中断后出现 `process launched` 与 `recovered session`）。
+- 因此系统侧的停止只来自两类：音频中断（日志有 `audio interruption` / `recording stopped reason=interruption`），或进程被回收（心跳中断后出现 `process launched` 与 `recovered session`）。App 自身还会因写入失败而结束录音（`recording stopped reason=write_failure`）。
 
 ### 诊断日志（仅 Debug 构建）
 

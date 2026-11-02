@@ -48,7 +48,7 @@ final class WatchModel {
         Task { @MainActor in self?.isReachable = reachable }
       }
     )
-    recorder.onStopped = { [weak self] in self?.captureStoppedBySystem() }
+    recorder.onStopped = { [weak self] reason in self?.captureStoppedBySystem(reason) }
     recorder.onSegmentFinished = { [weak self] segment, url in
       self?.segmentFinished(segment, url: url)
     }
@@ -201,23 +201,32 @@ final class WatchModel {
 
   private func stopWatchRecording(reason: String) {
     guard let sessionID = watchRecordingSessionID else { return }
+    let writeFailed = reason == WatchCaptureStopReason.writeFailure.rawValue
+    // Before capture stops: without the audio session a background app may not get to play it.
+    if writeFailed { WKInterfaceDevice.current().play(.failure) }
     let segmentCount = recorder.isRecording ? recorder.stopRecording(reason: reason) : nil
     watchRecordingSessionID = nil
     watchRecordingStartedAt = nil
     WatchSnapshotStore.watchRecordingStartedAt = nil
     session.setActiveSession(nil)
-    WatchRecordingStore.update(sessionID) { state in
+    let state = WatchRecordingStore.update(sessionID) { state in
       if let segmentCount { state.summary.segmentCount = segmentCount }
       state.summary.endedAt = Date()
       state.summary.endReason = reason
       state.isEnded = true
     }
-    if let state = WatchRecordingStore.load(sessionID) { session.queue(summary: state.summary) }
+    if let state { session.queue(summary: state.summary) }
     stopMeter()
     WidgetCenter.shared.reloadAllTimelines()
     WatchDiagnostics.logBattery("watch recording off reason=\(reason)")
-    message = String(localized: "Watch recording saved. It syncs to iPhone when nearby.")
-    WKInterfaceDevice.current().play(.stop)
+    if writeFailed {
+      message = (state?.summary.segmentCount ?? 0) > 0
+        ? String(localized: "The Watch couldn't keep saving audio, so recording stopped. Saved audio syncs to iPhone.")
+        : String(localized: "The Watch couldn't save audio, so recording stopped. Nothing was saved.")
+    } else {
+      message = String(localized: "Watch recording saved. It syncs to iPhone when nearby.")
+      WKInterfaceDevice.current().play(.stop)
+    }
   }
 
   private func segmentFinished(_ segment: WatchSegmentMetadata, url: URL) {
@@ -244,8 +253,8 @@ final class WatchModel {
         savedSeconds: end - start))
   }
 
-  private func captureStoppedBySystem() {
-    if isWatchRecording { stopWatchRecording(reason: "interruption") }
+  private func captureStoppedBySystem(_ reason: WatchCaptureStopReason) {
+    if isWatchRecording { stopWatchRecording(reason: reason.rawValue) }
   }
 
   // MARK: - Private

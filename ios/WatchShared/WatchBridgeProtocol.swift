@@ -170,7 +170,8 @@ public struct WatchSessionSummary: Codable, Equatable, Sendable {
   public var endedAt: Date
   public var segmentCount: Int
   public var bookmarks: [WatchSessionBookmark]
-  /// Why the recording ended: "user", "interruption", or "recovered" after the app was stopped.
+  /// Why the recording ended: "user", "interruption", "write_failure", or "recovered" after the
+  /// app was stopped.
   public var endReason: String
 
   public init(
