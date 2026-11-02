@@ -38,3 +38,5 @@
 "Marked in the Watch recording" = "Marked in the Watch recording";
 "Start recording first." = "Start recording first.";
 "Marks the last 2 minutes" = "Marks the last 2 minutes";
+"The Watch couldn't keep saving audio, so recording stopped. Saved audio syncs to iPhone." = "The Watch couldn't keep saving audio, so recording stopped. Saved audio syncs to iPhone.";
+"The Watch couldn't save audio, so recording stopped. Nothing was saved." = "The Watch couldn't save audio, so recording stopped. Nothing was saved.";
