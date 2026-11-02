@@ -143,5 +143,92 @@ final class RecordingStartupUITests: XCTestCase {
     let finish = app.buttons["finish-recording"]
     XCTAssertTrue(finish.waitForExistence(timeout: 3), "Finish control is missing")
     finish.tap()
+
+    XCTAssertTrue(
+      start.waitForExistence(timeout: 15),
+      "The app did not return to Ready after finishing"
+    )
+    XCTAssertFalse(app.alerts.firstMatch.exists, "Finishing a recording showed an error")
+  }
+
+  @MainActor
+  func testFinishingImmediatelyDoesNotGetStuck() throws {
+    let app = launchForRecording()
+    let start = app.buttons["start-recording"]
+    XCTAssertTrue(start.waitForExistence(timeout: 10), "Start recording control is missing")
+    start.tap()
+    app.tap()
+
+    let finish = app.buttons["finish-recording"]
+    XCTAssertTrue(finish.waitForExistence(timeout: 10), "Finish control is missing")
+    finish.tap()
+
+    // Either a very short recording was saved, or it was too short and was discarded.
+    let alert = app.alerts.firstMatch
+    if alert.waitForExistence(timeout: 3) {
+      XCTAssertTrue(
+        alert.staticTexts["The recording was too short to save."].exists,
+        "Unexpected alert: \(alert.label)"
+      )
+      alert.buttons.firstMatch.tap()
+    }
+    XCTAssertTrue(
+      start.waitForExistence(timeout: 15),
+      "The app stayed on the Finishing screen"
+    )
+  }
+
+  @MainActor
+  func testPlaybackDoesNotInterruptRecording() throws {
+    let app = launchForRecording()
+    let start = app.buttons["start-recording"]
+    XCTAssertTrue(start.waitForExistence(timeout: 10), "Start recording control is missing")
+    start.tap()
+    app.tap()
+
+    let library = app.buttons["all-recordings"]
+    XCTAssertTrue(library.waitForExistence(timeout: 10))
+    library.tap()
+    // The first row is the recording in progress, so the second is one that can be played.
+    let recording = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH 'library-recording-'")
+    ).element(boundBy: 1)
+    XCTAssertTrue(recording.waitForExistence(timeout: 10))
+    recording.tap()
+    let slider = app.sliders["recording-playback-slider"]
+    XCTAssertTrue(slider.waitForExistence(timeout: 5))
+    let play = app.buttons["Play recording"]
+    XCTAssertTrue(play.waitForExistence(timeout: 5))
+    play.tap()
+
+    let alert = app.alerts.firstMatch
+    XCTAssertTrue(alert.waitForExistence(timeout: 5), "Playback was not refused while recording")
+    XCTAssertTrue(
+      alert.staticTexts["Finish the current recording before playing another one."].exists)
+    alert.buttons.firstMatch.tap()
+
+    app.navigationBars.buttons.firstMatch.tap()
+    app.navigationBars.buttons.firstMatch.tap()
+    let finish = app.buttons["finish-recording"]
+    XCTAssertTrue(finish.waitForExistence(timeout: 5))
+    finish.tap()
+    XCTAssertTrue(start.waitForExistence(timeout: 15))
+  }
+
+  @MainActor
+  private func launchForRecording() -> XCUIApplication {
+    let app = XCUIApplication()
+    app.launchEnvironment["WAKEONCUE_UI_TEST_LANGUAGE"] = "en"
+    app.launchEnvironment["WAKEONCUE_EXPERIENCE_FIXTURES"] = "1"
+    app.launchEnvironment["WAKEONCUE_TEST_AUDIO_FIXTURE_FILENAME"] = "experience-input.m4a"
+    addUIInterruptionMonitor(withDescription: "Recording permissions") { alert in
+      for title in ["Allow", "Allow While Using App"] where alert.buttons[title].exists {
+        alert.buttons[title].tap()
+        return true
+      }
+      return false
+    }
+    app.launch()
+    return app
   }
 }

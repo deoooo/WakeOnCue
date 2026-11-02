@@ -24,11 +24,15 @@ struct RecordingAudioAssembler: Sendable {
     else { throw RecordingAudioAssemblerError.cannotCreateTrack }
     var cursor = CMTime.zero
     for chunk in chunks.sorted(by: { $0.index < $1.index }) {
+      // One damaged chunk must not cost the rest of the recording; source.caf still holds its audio.
       let asset = AVURLAsset(url: URL(filePath: chunk.localPath))
-      guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
-        throw RecordingAudioAssemblerError.invalidChunk(chunk.index)
+      guard let track = try? await asset.loadTracks(withMediaType: .audio).first,
+        let duration = try? await asset.load(.duration),
+        duration.seconds.isFinite, duration.seconds > 0
+      else {
+        print("WakeOnCue skipped unplayable chunk \(chunk.index) of \(recordingID)")
+        continue
       }
-      let duration = try await asset.load(.duration)
       try compositionTrack.insertTimeRange(
         CMTimeRange(start: .zero, duration: duration),
         of: track,
@@ -36,6 +40,7 @@ struct RecordingAudioAssembler: Sendable {
       )
       cursor = cursor + duration
     }
+    guard cursor > .zero else { throw RecordingAudioAssemblerError.noAudio }
 
     guard let exporter = AVAssetExportSession(
       asset: composition,
@@ -64,7 +69,7 @@ struct RecordingAudioAssembler: Sendable {
 /// Extra execution time for work that must not stop halfway when the app leaves the foreground.
 /// The token ends itself if the system's allowance runs out, which UIKit requires.
 @MainActor
-private final class BackgroundTime {
+final class BackgroundTime {
   private var identifier = UIBackgroundTaskIdentifier.invalid
 
   static func begin(name: String) -> BackgroundTime {
@@ -85,7 +90,6 @@ private final class BackgroundTime {
 enum RecordingAudioAssemblerError: LocalizedError {
   case noAudio
   case cannotCreateTrack
-  case invalidChunk(Int)
   case exportUnavailable
 
   var errorDescription: String? {
@@ -93,12 +97,6 @@ enum RecordingAudioAssemblerError: LocalizedError {
     case .noAudio: AppLanguage.localized("No playable audio chunks were found.")
     case .cannotCreateTrack:
       AppLanguage.localized("Could not create the combined audio track.")
-    case .invalidChunk(let index):
-      String(
-        format: AppLanguage.localized("Audio chunk %d is not playable."),
-        locale: AppLanguage.current.locale,
-        index
-      )
     case .exportUnavailable: AppLanguage.localized("M4A export is unavailable.")
     }
   }
