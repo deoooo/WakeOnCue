@@ -459,6 +459,10 @@
 "Transcribing and summarizing…" = "Transcribing and summarizing…";
 "This recording is still being processed. Try again when it finishes." = "This recording is still being processed. Try again when it finishes.";
 "Could not delete this recording: %@" = "Could not delete this recording: %@";
+"This recording is still being recorded or finished." = "This recording is still being recorded or finished.";
+"This recording is no longer in Recently Deleted." = "This recording is no longer in Recently Deleted.";
+"This recording no longer exists." = "This recording no longer exists.";
+"This iPhone cannot transcribe the selected spoken language. Choose another language or add a transcription service in Settings." = "This iPhone cannot transcribe the selected spoken language. Choose another language or add a transcription service in Settings.";
 "Set up transcription" = "Set up transcription";
 "Set up summaries" = "Set up summaries";
 "On-device transcription needs iOS 26 or later. To transcribe recordings on this iPhone, add a transcription service in Settings." = "On-device transcription needs iOS 26 or later. To transcribe recordings on this iPhone, add a transcription service in Settings.";

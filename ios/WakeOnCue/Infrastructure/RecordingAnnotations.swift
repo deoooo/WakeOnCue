@@ -207,7 +207,9 @@ final class RecordingAnnotationsService {
   ) throws {
     // A failed read must not turn into a successful write of an empty replacement.
     var value = try read(recordingID: recordingID)
+    let original = value
     change(&value)
+    guard value != original else { return }
     value.updatedAt = Date()
     try write(value, recordingID: recordingID)
     annotationsByRecordingID[recordingID] = value

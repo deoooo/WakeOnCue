@@ -73,6 +73,18 @@ enum WatchSessionInbox {
       return Item(summary: summary, directory: folder, segments: segments)
     }.sorted { $0.summary.startedAt < $1.summary.startedAt }
   }
+
+  /// Folders holding segments but no summary, with the session each belongs to.
+  static func foldersWithoutSummary(root: URL? = nil) throws -> [(sessionID: UUID, folder: URL)] {
+    let root = try root ?? Self.root()
+    return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+      .compactMap { folder in
+        guard let sessionID = UUID(uuidString: folder.lastPathComponent),
+          !FileManager.default.fileExists(atPath: folder.appending(path: "summary.json").path)
+        else { return nil }
+        return (sessionID, folder)
+      }
+  }
 }
 
 /// Turns a Watch recording whose pieces have all arrived into an ordinary, locally completed
@@ -88,6 +100,7 @@ struct WatchRecordingImporter {
 
   /// Assembles every Watch recording whose pieces have all arrived. Returns new recording IDs.
   func importPendingSessions(root: URL? = nil) async -> [String] {
+    await removeLateSegments(root: root)
     let items: [WatchSessionInbox.Item]
     do {
       items = try WatchSessionInbox.readyItems(root: root)
@@ -105,6 +118,18 @@ struct WatchRecordingImporter {
       }
     }
     return imported
+  }
+
+  /// A segment that arrives after its recording was imported or deleted has no summary coming,
+  /// so nothing else would remove it. Other folders wait: their summary may still be on its way.
+  private func removeLateSegments(root: URL?) async {
+    guard let folders = try? WatchSessionInbox.foldersWithoutSummary(root: root) else { return }
+    for (sessionID, folder) in folders {
+      let recordingID = WatchSessionSummary.recordingID(for: sessionID)
+      let wasDeleted = (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true
+      let isComplete = (try? await store.recording(id: recordingID))?.status == .completed
+      if wasDeleted || isComplete { try? FileManager.default.removeItem(at: folder) }
+    }
   }
 
   private func importSession(_ item: WatchSessionInbox.Item) async throws -> String? {

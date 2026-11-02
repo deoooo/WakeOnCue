@@ -470,6 +470,10 @@
 "Transcribing and summarizing…" = "正在转写和摘要…";
 "This recording is still being processed. Try again when it finishes." = "这条录音还在处理中，完成后再试。";
 "Could not delete this recording: %@" = "无法删除这条录音：%@";
+"This recording is still being recorded or finished." = "这条录音还在录制或收尾。";
+"This recording is no longer in Recently Deleted." = "这条录音已不在“最近删除”中。";
+"This recording no longer exists." = "这条录音已不存在。";
+"This iPhone cannot transcribe the selected spoken language. Choose another language or add a transcription service in Settings." = "这台 iPhone 无法转写所选的语言。请在设置中换一种语言，或添加转写服务。";
 "Set up transcription" = "设置转写服务";
 "Set up summaries" = "设置摘要服务";
 "On-device transcription needs iOS 26 or later. To transcribe recordings on this iPhone, add a transcription service in Settings." = "本机转写需要 iOS 26 或更高版本。如需在这台 iPhone 上转写录音，请在设置中添加转写服务。";

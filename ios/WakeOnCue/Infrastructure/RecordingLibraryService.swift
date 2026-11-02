@@ -50,25 +50,49 @@ actor RecordingLibraryService {
     try await store.deletedRecordings()
   }
 
-  /// Files go first so a failure leaves the recording in Recently Deleted to retry, rather
-  /// than leaving audio on the iPhone that nothing in the app can reach.
+  /// Rows go first, in one transaction, so Recover can never return a recording with some of
+  /// its files gone. Files that fail to go here are removed by `removeFilesOfDeletedRecordings`.
   func deletePermanently(recordingID: String) async throws {
-    guard try await store.recording(id: recordingID).deletedAt != nil else {
-      throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
-    }
-    try layout.removeFiles(recordingID: recordingID)
     try await store.removeDeletedRecording(recordingID: recordingID)
+    try? layout.removeFiles(recordingID: recordingID)
   }
 
-  /// Permanently deletes recordings past the retention period. One that fails is retried
-  /// the next time this runs.
-  func purgeExpiredRecordings(now: Date = Date()) async throws {
-    for recording in try await store.deletedRecordings() {
-      guard let deletedAt = recording.deletedAt,
-        now.timeIntervalSince(deletedAt) >= RecordingStore.trashRetention
-      else { continue }
-      try? await deletePermanently(recordingID: recording.id)
+  /// Removes what remains of permanently deleted recordings: files that failed to go, and
+  /// folders that late writes, such as a bookmark tag from the Watch, created again.
+  func removeFilesOfDeletedRecordings() async throws {
+    for recordingID in try await store.permanentlyDeletedRecordingIDs() {
+      try? layout.removeFiles(recordingID: recordingID)
     }
+  }
+
+  /// Permanently deletes recordings past the retention period and returns their identifiers.
+  /// Deleting needs two runs a day apart, because the only clock here is one the user can set:
+  /// a date moved forward and back again deletes nothing. One that fails is retried next time.
+  @discardableResult
+  func purgeExpiredRecordings(now: Date = Date()) async throws -> [String] {
+    var purged: [String] = []
+    for recording in try await store.deletedRecordings() {
+      guard let deletedAt = recording.deletedAt, deletedAt <= now else {
+        try? await store.restartTrashRetention(recordingID: recording.id, now: now)
+        continue
+      }
+      guard now.timeIntervalSince(deletedAt) >= RecordingStore.trashRetention else {
+        if recording.trashExpirySeenAt != nil {
+          try? await store.setTrashExpirySeen(recordingID: recording.id, at: nil, now: now)
+        }
+        continue
+      }
+      guard let seenAt = recording.trashExpirySeenAt, seenAt <= now else {
+        try? await store.setTrashExpirySeen(recordingID: recording.id, at: now, now: now)
+        continue
+      }
+      guard now.timeIntervalSince(seenAt) >= RecordingStore.trashPurgeConfirmationDelay else {
+        continue
+      }
+      guard (try? await deletePermanently(recordingID: recording.id)) != nil else { continue }
+      purged.append(recording.id)
+    }
+    return purged
   }
 
   /// Names the recording after its summary. Metadata keeps the two values with the recording

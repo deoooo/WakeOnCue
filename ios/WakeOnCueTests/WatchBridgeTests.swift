@@ -230,6 +230,62 @@ final class WatchBridgeTests: XCTestCase {
       "The redelivered session is cleared from the inbox")
   }
 
+  @MainActor
+  func testLateSegmentsAreRemovedOnlyWhenNoSummaryIsComing() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "watch-late-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let inbox = root.appending(path: "sessions", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+    let layout = try RecordingFileLayout(root: root.appending(path: "data"))
+    let store = try RecordingStore(databaseURL: layout.databaseURL)
+    let importer = WatchRecordingImporter(
+      store: store, fileLayout: layout, annotations: RecordingAnnotationsService(fileLayout: layout))
+    let service = RecordingLibraryService(layout: layout, store: store)
+
+    func addRecording(sessionID: UUID) async throws -> String {
+      let id = WatchSessionSummary.recordingID(for: sessionID)
+      let date = Date(timeIntervalSince1970: 10_000)
+      try await store.createRecording(
+        RecordingRecord(
+          id: id, createdAt: date, startedAt: date, status: .recording,
+          localAudioPath: try layout.sourceAudioURL(recordingID: id).path,
+          deviceModel: "test", appVersion: "test"),
+        createPayloadPath: "", enqueueUpload: false)
+      try await store.completeLocally(recordingID: id, duration: 1)
+      return id
+    }
+    func stageSegment(sessionID: UUID) throws -> URL {
+      let source = root.appending(path: "segment-\(UUID()).m4a")
+      try Data("audio".utf8).write(to: source)
+      try WatchSessionInbox.stage(
+        segmentURL: source,
+        metadata: WatchSegmentMetadata(
+          sessionID: sessionID, index: 2, startedAt: Date(), duration: 1),
+        root: inbox)
+      return inbox.appending(path: sessionID.uuidString.lowercased())
+    }
+
+    let importedSession = UUID()
+    _ = try await addRecording(sessionID: importedSession)
+    let deletedSession = UUID()
+    let deletedID = try await addRecording(sessionID: deletedSession)
+    try await service.moveToTrash(recordingID: deletedID)
+    try await service.deletePermanently(recordingID: deletedID)
+    let waitingSession = UUID()
+
+    let importedFolder = try stageSegment(sessionID: importedSession)
+    let deletedFolder = try stageSegment(sessionID: deletedSession)
+    let waitingFolder = try stageSegment(sessionID: waitingSession)
+
+    _ = await importer.importPendingSessions(root: inbox)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: importedFolder.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: deletedFolder.path))
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: waitingFolder.path),
+      "Audio whose summary has not arrived yet must be kept")
+  }
+
   func testAssemblerReplacesAnEmptyOutputLeftByAnInterruptedExport() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: "assembler-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
