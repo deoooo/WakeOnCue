@@ -12,11 +12,17 @@ xcodegen generate
 xcodebuild -project WakeOnCue.xcodeproj -scheme WakeOnCue -configuration Debug -derivedDataPath build/DerivedData build
 ```
 
-不指定团队时用 ad-hoc 签名，每次重新编译后系统都会再问一次麦克风权限。日常开发建议用自己的开发证书签名，权限就能一直保留：
+### 签名和权限
+
+macOS 按 App 的代码签名记住麦克风、系统声音和日历权限。ad-hoc 签名每次编译都会变，系统就会每次重新询问。首次构建前运行一次：
 
 ```bash
-xcodebuild -project WakeOnCue.xcodeproj -scheme WakeOnCue -configuration Debug -derivedDataPath build/DerivedData build DEVELOPMENT_TEAM=<团队 ID> CODE_SIGN_IDENTITY="Apple Development"
+scripts/setup-signing.sh
 ```
+
+它会从钥匙串里找到 Apple Development 证书（免费 Apple ID 在 Xcode › 设置 › 账户 里就能创建），把团队写进不提交的 `Local.xcconfig`。之后无论用命令行还是 Xcode 构建，签名都保持不变，权限只需授权一次。也可以手动指定团队：`scripts/setup-signing.sh TEAMID`。
+
+没有 `Local.xcconfig` 时仍能构建，只是用 ad-hoc 签名，构建时会给出警告。正式分发的版本用 Developer ID 签名，用户那边不会遇到反复授权。
 
 ## 结构
 

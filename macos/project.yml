@@ -6,16 +6,17 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# Signing lives in Signing.xcconfig, which includes the untracked Local.xcconfig written by
+# scripts/setup-signing.sh. A stable identity keeps macOS privacy permissions across rebuilds.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: 6.0
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    CODE_SIGN_STYLE: Automatic
-    # Signing team comes from the environment so xcodegen never discards it; without one the
-    # app is signed to run locally.
-    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
-    CODE_SIGN_IDENTITY: "-"
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 0.1.0
     ENABLE_USER_SCRIPT_SANDBOXING: true
@@ -29,6 +30,13 @@ targets:
     platform: macOS
     sources:
       - path: WakeOnCue
+    preBuildScripts:
+      - name: Check signing identity
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CODE_SIGN_IDENTITY" = "-" ]; then
+            echo "warning: 正在用 ad-hoc 签名，每次重新编译后 macOS 都会再次询问麦克风等权限。运行 macos/scripts/setup-signing.sh 改用稳定的签名。"
+          fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos
