@@ -1,0 +1,12 @@
+// Code signing for local builds.
+//
+// macOS remembers privacy permissions (microphone, system audio, calendar) by the app's code
+// signature. An ad-hoc signature changes with every build, so the system asks again each time.
+// Run `scripts/setup-signing.sh` once to write Local.xcconfig with a stable identity from this
+// Mac's keychain; without it the build still works, signed ad hoc.
+
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"

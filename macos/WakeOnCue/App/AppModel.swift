@@ -1,0 +1,146 @@
+import AppKit
+import Foundation
+import Observation
+
+/// Owns the long-lived services and wires them together.
+@Observable
+final class AppModel {
+  let preferences = Preferences()
+  let store: Store
+  let recorder: Recorder
+  let transcription: Transcription
+  let player: Player
+  let summaries: Summaries
+  let meetings: Meetings
+  let ui = MainState()
+  /// SwiftUI's settings opener, handed over by the main window.
+  @ObservationIgnored var openSettings: (() -> Void)?
+
+  init() {
+    do {
+      store = try Store()
+    } catch {
+      fatalError("无法打开资料库：\(error.localizedDescription)")
+    }
+    recorder = Recorder(store: store, preferences: preferences)
+    transcription = Transcription(store: store, recorder: recorder)
+    player = Player(store: store)
+    summaries = Summaries(store: store)
+    meetings = Meetings(store: store, summaries: summaries)
+    recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
+  }
+
+  func launch() async {
+    await recorder.startIfAllowed()
+    await transcription.start()
+    summaries.start()
+    meetings.start()
+    startHousekeeping()
+  }
+
+  // MARK: Looking and playing
+
+  /// A citation only finds and highlights the sentence; it never plays.
+  func cite(_ id: Int64) {
+    guard let sentence = store.sentences(ids: [id]).first else { return }
+    let calendar = Calendar.current
+    if !calendar.isDate(sentence.start, inSameDayAs: ui.day) { ui.show(day: sentence.start) }
+    ui.page = .day
+    let hour = calendar.hourStart(sentence.start)
+    ui.expandedHours.insert(hour)
+    let keys = store.hourSummaries(in: DateInterval(start: hour, duration: 3_600))[hour]?.keySentenceIDs ?? []
+    if !keys.isEmpty, !keys.contains(id) { ui.fullHours.insert(hour) }
+    ui.highlighted = id
+    ui.scroll(to: MainState.sentenceAnchor(id))
+  }
+
+  func play(_ sentence: Sentence) {
+    ui.highlighted = sentence.id
+    ui.showTracks = true
+    player.play(from: sentence.start)
+  }
+
+  func play(from date: Date) {
+    ui.showTracks = true
+    player.play(from: date)
+  }
+
+  func revealPlaying(at date: Date) {
+    let calendar = Calendar.current
+    if !calendar.isDate(date, inSameDayAs: ui.day) { ui.show(day: date) }
+    let hour = calendar.hourStart(date)
+    let sentences = store.sentences(in: DateInterval(start: hour, duration: 3_600))
+    if let sentence = sentences.last(where: { $0.start <= date }) ?? sentences.first {
+      ui.expandedHours.insert(hour)
+      ui.fullHours.insert(hour)
+      ui.highlighted = sentence.id
+      ui.scroll(to: MainState.sentenceAnchor(sentence.id))
+    } else {
+      reveal(hour: hour)
+    }
+  }
+
+  func openMeeting(_ id: Int64) {
+    ui.meetingID = id
+    ui.draftingMinutes = false
+  }
+
+  func closeMeeting() {
+    ui.meetingID = nil
+    ui.draftingMinutes = false
+  }
+
+  func markMeeting(in hour: DateInterval) {
+    if let id = meetings.markMeeting(in: hour) { openMeeting(id) }
+  }
+
+  func reveal(hour: Date) {
+    ui.page = .day
+    ui.scroll(to: MainState.hourAnchor(hour))
+  }
+
+  // MARK: Private and deleted hours
+
+  func setPrivate(_ hour: DateInterval, _ isPrivate: Bool) {
+    if isPrivate {
+      store.addMark(.privateRange, start: hour.start, end: hour.end)
+      ui.expandedHours.remove(hour.start)
+      if let position = player.position, hour.contains(position) { player.stop() }
+    } else {
+      store.removeMarks(.privateRange, overlapping: hour)
+    }
+    summaries.invalidate(hour)
+  }
+
+  /// Asks with the standard macOS alert, Cancel as the default button and Esc to cancel.
+  func confirmDelete(_ interval: DateInterval, spokenMinutes: Int, title: String) {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = "删除 \(title) 的录音？"
+    alert.informativeText = "这段 \(spokenMinutes) 分钟的录音、转录和总结都会删除。删除后放进最近删除，30 天内可以恢复。"
+    alert.addButton(withTitle: "取消")
+    let delete = alert.addButton(withTitle: "删除")
+    delete.hasDestructiveAction = true
+    let handle = { [weak self] (response: NSApplication.ModalResponse) in
+      guard response == .alertSecondButtonReturn else { return }
+      self?.delete(interval)
+    }
+    if let window = NSApp.keyWindow {
+      alert.beginSheetModal(for: window, completionHandler: handle)
+    } else {
+      handle(alert.runModal())
+    }
+  }
+
+  func delete(_ interval: DateInterval) {
+    store.addMark(.deleted, start: interval.start, end: interval.end)
+    ui.expandedHours.remove(interval.start)
+    if let position = player.position, interval.contains(position) { player.stop() }
+    summaries.invalidate(interval)
+  }
+
+  func undoDelete(_ interval: DateInterval) {
+    store.removeMarks(.deleted, overlapping: interval)
+    summaries.invalidate(interval)
+  }
+}
