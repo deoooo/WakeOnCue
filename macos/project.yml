@@ -1,0 +1,77 @@
+name: WakeOnCue
+options:
+  bundleIdPrefix: com.deoooo
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+# Signing lives in Signing.xcconfig, which includes the untracked Local.xcconfig written by
+# scripts/setup-signing.sh. A stable identity keeps macOS privacy permissions across rebuilds.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    # Apple silicon only: SpeechAnalyzer and Apple Intelligence need it.
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+
+targets:
+  WakeOnCue:
+    type: application
+    platform: macOS
+    sources:
+      - path: WakeOnCue
+    preBuildScripts:
+      - name: Check signing identity
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CODE_SIGN_IDENTITY" = "-" ]; then
+            echo "warning: 正在用 ad-hoc 签名，每次重新编译后 macOS 都会再次询问麦克风等权限。运行 macos/scripts/setup-signing.sh 改用稳定的签名。"
+          fi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos
+        PRODUCT_NAME: WakeOnCue
+        # Process taps on other apps' audio and an all-day recorder; not sandboxed in phase 1.
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        DEVELOPMENT_LANGUAGE: zh-Hans
+        SWIFT_EMIT_LOC_STRINGS: NO
+        OTHER_LDFLAGS: -lsqlite3
+    info:
+      path: WakeOnCue/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "26.0"
+        LSApplicationCategoryType: public.app-category.productivity
+        LSRequiresNativeExecution: true
+        NSMicrophoneUsageDescription: WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。
+        NSAudioCaptureUsageDescription: WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。
+        NSCalendarsFullAccessUsageDescription: WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。
+        NSSpeechRecognitionUsageDescription: WakeOnCue 用系统的语音识别在这台 Mac 上转录录音。
+    entitlements:
+      path: WakeOnCue/WakeOnCue.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.calendars: true
+
+schemes:
+  WakeOnCue:
+    build:
+      targets:
+        WakeOnCue: all
+    run:
+      config: Debug
