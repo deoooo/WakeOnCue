@@ -69,7 +69,11 @@ extension AppModel {
   var macStatus: (text: String, dot: Color) {
     switch recorder.state {
     case .recording:
-      return (transcription.issue == nil ? "录音中，转录已跟上" : "录音中，没有转录", .recording)
+      switch transcription.status {
+      case .ready: return ("录音中，转录已跟上", .recording)
+      case .preparing, .downloading: return ("录音中，转录正在准备", .recording)
+      case .failed: return ("录音中，没有转录", .recording)
+      }
     case .paused: return ("已暂停", .secondary)
     case .unavailable(let reason): return ("没有在录音，\(reason)", .orange)
     case .off: return ("没有在录音", .secondary)

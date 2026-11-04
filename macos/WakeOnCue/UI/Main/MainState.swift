@@ -26,6 +26,7 @@ final class MainState {
   var scrollRequest = 0
   var scrollTarget: String?
   var focusSearch = 0
+  var settingsSection: SettingsView.Section = .recording
 
   var isToday: Bool { Calendar.current.isDateInToday(day) }
 

@@ -31,6 +31,8 @@ nonisolated struct Sentence: Identifiable, Hashable, Sendable {
   /// What the user sees as the source: "Mac 麦克风" or the meeting app's name.
   var source: String
   var text: String
+  /// The model that re-transcribed this sentence, or nil for Apple speech's live result.
+  var refinedBy: String? = nil
 }
 
 nonisolated struct AudioSegment: Identifiable, Hashable, Sendable {
@@ -79,6 +81,8 @@ nonisolated struct HourSummary: Hashable, Sendable {
   var generatedAt: Date
   /// False while the hour is still running or its summary could not be generated.
   var isFinal: Bool
+  /// Which engine wrote it, e.g. "本机 Apple 智能" or "网关 gpt-4o-mini".
+  var engine: String?
 }
 
 nonisolated struct DaySummary: Hashable, Sendable {
@@ -86,6 +90,7 @@ nonisolated struct DaySummary: Hashable, Sendable {
   var headline: CitedLine
   var details: [CitedLine]
   var generatedAt: Date
+  var engine: String?
 }
 
 nonisolated struct Attendee: Codable, Hashable, Sendable {
@@ -115,4 +120,6 @@ nonisolated struct Meeting: Identifiable, Hashable, Sendable {
   var pointsGeneratedAt: Date?
   /// True once the user moved the start or end; detection then leaves the range alone.
   var userAdjusted: Bool
+  /// Which engine wrote the key points.
+  var pointsEngine: String? = nil
 }

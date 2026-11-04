@@ -29,14 +29,18 @@ scripts/setup-signing.sh
 | 目录 | 内容 |
 | --- | --- |
 | `Capture` | 麦克风（AVCaptureSession，固定用内建麦克风）、按 App 录声音（Core Audio process tap）、分段写入（16 kHz、32 kbps AAC，ADTS 格式，崩溃后仍可读）、暂停、休眠恢复、磁盘空间检查 |
-| `Transcription` | `SpeechAnalyzer` 实时中文转录，按标点切句；说话人分「我」「会议对方」「他人」；外放时去掉麦克风录到的会议声音 |
+| `Transcription` | `SpeechAnalyzer` 实时中文转录，按标点切句；说话人分「我」「会议对方」「他人」；外放时去掉麦克风录到的会议声音。可下载的模型（`ASRModels.swift` 里的清单，目前是 Qwen3-ASR 0.6B）通过 sherpa-onnx 按句重新转录 |
 | `Storage` | SQLite（句子、分段、私人和删除时段、录不了的原因、总结、会议） |
-| `Intelligence` | Apple 智能（Foundation Models）生成每小时总结和要点句、当天总结、会议要点，都带引用 |
+| `Intelligence` | 每小时总结和要点句、当天总结、会议要点，都带引用。引擎是本机 Apple 智能（Foundation Models），或用户配置的 OpenAI 兼容网关（API Key 存钥匙串） |
 | `Meetings` | 日历关联，按实际说话调整起止；没有日历的会议 App 通话；手动标成会议 |
 | `Playback` | 跨分段连续播放，麦克风和会议声音同时播放，跳过私人和已删除的时段 |
 | `UI` | 主窗口、会议面板和纪要、搜索、最近删除、菜单栏、首次使用、设置 |
 
-数据存放在 `~/Library/Application Support/WakeOnCue`。
+数据存放在 `~/Library/Application Support/WakeOnCue`，下载的模型在其中的 `Models/`。
+
+### 可下载的转录模型
+
+模型和 sherpa-onnx 运行库都在用户点「下载」时从 k2-fsa/sherpa-onnx 的官方 GitHub Releases 下载，按发布页的 SHA-256 校验后解压，运行时用 `dlopen` 载入（因此开启了 `com.apple.security.cs.disable-library-validation`）。仓库里只有 C 头文件，见 `Vendor/sherpa-onnx`。加一个新模型（比如以后的官方 1.7B 包）只需在 `ASRModel.catalog` 里加一条。
 
 ## 调试
 

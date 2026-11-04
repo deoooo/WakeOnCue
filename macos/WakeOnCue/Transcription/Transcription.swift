@@ -5,8 +5,20 @@ import Observation
 /// of a meeting played through the speakers, and keeps the live (still changing) lines.
 @Observable
 final class Transcription {
+  enum Status: Equatable {
+    case preparing
+    case downloading(Double)
+    case ready
+    case failed(String)
+  }
+
+  /// Whether Apple speech is ready, for first run, settings and the banner.
+  private(set) var status: Status = .preparing
   /// A setup problem, e.g. the Mandarin model could not be downloaded.
-  private(set) var issue: String?
+  var issue: String? {
+    if case .failed(let reason) = status { return reason }
+    return nil
+  }
   private(set) var live: [AudioChannel: VolatileText] = [:]
   /// The most recent finished line, for the menu bar.
   private(set) var lastSentence: Sentence?
@@ -17,6 +29,7 @@ final class Transcription {
   /// Loudness of recent sentences said by the user, to spot quieter, farther voices.
   @ObservationIgnored private var myLoudness: [Float] = []
   @ObservationIgnored private var recentMeeting: [Sentence] = []
+  @ObservationIgnored private var starting = false
   /// Called after every stored sentence, so summaries and meetings can follow along.
   @ObservationIgnored var onSentence: ((Sentence) -> Void)?
 
@@ -25,13 +38,23 @@ final class Transcription {
     self.recorder = recorder
   }
 
+  /// Gets the Mandarin model ready and connects to the recorder. A failure (e.g. offline on
+  /// first run, while the model downloads) is retried every minute.
   func start() async {
-    guard transcribers.isEmpty else { return }
-    issue = await LiveTranscriber.prepare()
-    guard issue == nil else {
-      Store.logger.error("Transcription unavailable: \(self.issue ?? "", privacy: .public)")
+    guard transcribers.isEmpty, !starting else { return }
+    starting = true
+    defer { starting = false }
+    status = .preparing
+    if let reason = await LiveTranscriber.prepare(onDownload: { [weak self] in self?.status = .downloading($0) }) {
+      status = .failed(reason)
+      Store.logger.error("Transcription unavailable: \(reason, privacy: .public)")
+      Task {
+        try? await Task.sleep(for: .seconds(60))
+        await start()
+      }
       return
     }
+    status = .ready
     for channel in AudioChannel.allCases {
       transcribers[channel] = LiveTranscriber(
         channel: channel,
@@ -116,5 +139,33 @@ final class Transcription {
     myLoudness.append(loudness)
     if myLoudness.count > 200 { myLoudness.removeFirst() }
     return .me
+  }
+}
+
+import SwiftUI
+
+/// "✓ 已就绪", "正在下载中文语音模型 42%", or why it failed.
+struct SpeechStatusText: View {
+  let status: Transcription.Status
+
+  var body: some View {
+    switch status {
+    case .preparing:
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text("正在检查中文语音模型…")
+      }
+      .foregroundStyle(.secondary)
+    case .downloading(let fraction):
+      HStack(spacing: 6) {
+        ProgressView(value: fraction).frame(width: 80)
+        Text("正在下载中文语音模型 \(Int(fraction * 100))%")
+      }
+      .foregroundStyle(.secondary)
+    case .ready:
+      Text("✓ 已就绪").foregroundStyle(.green)
+    case .failed(let reason):
+      Text("\(reason)，每分钟自动重试").foregroundStyle(Color.recording)
+    }
   }
 }

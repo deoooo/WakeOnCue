@@ -11,7 +11,6 @@ struct OnboardingView: View {
   @State private var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
   @State private var meetingAudioAsked = false
   @State private var launchAtLogin = true
-  @State private var speechReady: String?? = .none
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -114,22 +113,26 @@ struct OnboardingView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("准备转录").font(.title2.weight(.semibold))
       permissionRow("Apple 语音 · 中文", "系统自带，支持边录边转。") {
-        switch speechReady {
-        case .none: ProgressView().controlSize(.small)
-        case .some(.none): Text("✓ 已就绪").foregroundStyle(.green)
-        case .some(.some(let reason)): Text(reason).foregroundStyle(Color.recording).font(.caption)
-        }
+        SpeechStatusText(status: model.transcription.status).font(.caption)
       }
-      permissionRow("总结", "由这台 Mac 上的 Apple 智能生成。请确认已在“系统设置 › Apple 智能与 Siri”中打开。") {
-        if let reason = model.summaries.unavailableReason {
-          Text(reason).foregroundStyle(.secondary).font(.caption).multilineTextAlignment(.trailing)
+      Form { ModelRow(entry: .qwen3_0_6B) }
+        .formStyle(.columns)
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider() }
+      Text("可选。可以稍后在设置 › 转录模型里下载。").font(.caption).foregroundStyle(.secondary)
+      permissionRow("总结", "优先由这台 Mac 上的 Apple 智能生成。不支持 Apple 智能的 Mac 可以在设置 › AI 服务里配置自己的网关。") {
+        if let engine = model.summaries.engineName {
+          Text("✓ \(engine)").foregroundStyle(.green)
         } else {
-          Text("✓ 已打开").foregroundStyle(.green)
+          VStack(alignment: .trailing, spacing: 4) {
+            Text(model.summaries.unavailableReason ?? "").foregroundStyle(.secondary).font(.caption)
+            Button("设置网关…") { model.showSettings(.ai) }
+          }
         }
       }
       Text("需要 macOS 26 和 Apple 芯片的 Mac。").font(.caption).foregroundStyle(.secondary)
     }
-    .task { speechReady = .some(await LiveTranscriber.prepare()) }
+    .task { await model.transcription.start() }
   }
 
   private func permissionRow(_ title: String, _ detail: String, @ViewBuilder trailing: () -> some View) -> some View {

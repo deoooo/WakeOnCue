@@ -8,23 +8,27 @@ struct SettingsView: View {
   enum Section: String, CaseIterable, Identifiable {
     case recording = "录音"
     case transcription = "转录模型"
+    case ai = "AI 服务"
     case calendar = "日历"
     case storage = "存储"
     case permissions = "权限"
     var id: String { rawValue }
   }
 
-  @State private var section: Section = .recording
+  @Environment(AppModel.self) private var model
 
   var body: some View {
+    @Bindable var ui = model.ui
+    let section = ui.settingsSection
     NavigationSplitView {
-      List(Section.allCases, selection: $section) { Text($0.rawValue).tag($0) }
+      List(Section.allCases, selection: $ui.settingsSection) { Text($0.rawValue).tag($0) }
         .navigationSplitViewColumnWidth(170)
     } detail: {
       Group {
         switch section {
         case .recording: RecordingSettings()
         case .transcription: TranscriptionSettings()
+        case .ai: AISettings()
         case .calendar: CalendarSettings()
         case .storage: StorageSettings()
         case .permissions: PermissionSettings()
@@ -117,22 +121,25 @@ private struct TranscriptionSettings: View {
   var body: some View {
     Form {
       Section {
-        LabeledContent("实时转录用", value: "Apple 语音")
+        LabeledContent("实时转录") { SpeechStatusText(status: model.transcription.status) }
         LabeledContent("说话语言", value: "中文")
+      } footer: {
+        Text("Apple 语音一直负责边录边转。启用下载的模型后，每句话会在几秒后用它重新转录，替换 Apple 语音的结果；时间和说话人不变。")
+          .font(.caption).foregroundStyle(.secondary)
       }
       Section("可用模型") {
-        LabeledContent {
-          Text(model.transcription.issue ?? "已就绪").foregroundStyle(model.transcription.issue == nil ? .green : Color.recording)
-        } label: {
-          Text("Apple 语音")
-          Text("系统提供，支持实时。第一期的默认选择")
+        ModelList()
+      }
+      Section {
+        LabeledContent("模型存放位置") {
+          HStack {
+            Text(TimeText.bytes(model.models.bytesOnDisk())).foregroundStyle(.secondary)
+            Button("在访达中显示") { NSWorkspace.shared.activateFileViewerSelecting([ASRModels.directory]) }
+          }
         }
-        LabeledContent {
-          Text("第二期").foregroundStyle(.secondary)
-        } label: {
-          Text("下载第三方模型")
-          Text("SenseVoice、Whisper 等，中文和中英混说更准")
-        }
+      } footer: {
+        Text("下载中断后会从断点继续，完成后按官方发布的 SHA-256 校验文件。")
+          .font(.caption).foregroundStyle(.secondary)
       }
       Section("说话人") {
         Text("麦克风里是你的声音算「我」，会议 App 那一路算「会议对方」，麦克风里明显更远、更轻的声音算「他人」。具体人名和记住声音在第二期。")
@@ -274,8 +281,12 @@ private struct PermissionSettings: View {
           note: model.recorder.meetingAudioIssue ?? "开会时自动开始录")
         row("日历", ok: model.meetings.calendarAccess == .fullAccess, anchor: "Privacy_Calendars")
         LabeledContent("Apple 智能") {
-          Text(model.summaries.unavailableReason ?? "已打开")
-            .foregroundStyle(model.summaries.unavailableReason == nil ? .green : .secondary)
+          Text(AppleIntelligenceEngine.unavailableReason ?? "已打开")
+            .foregroundStyle(AppleIntelligenceEngine.unavailableReason == nil ? .green : .secondary)
+        }
+        LabeledContent("总结") {
+          Text(model.summaries.engineName.map { "使用\($0)" } ?? model.summaries.unavailableReason ?? "")
+            .foregroundStyle(model.summaries.engineName == nil ? Color.recording : .green)
         }
         Toggle("登录时启动", isOn: Binding(get: { model.launchesAtLogin }, set: { model.launchesAtLogin = $0 }))
       }

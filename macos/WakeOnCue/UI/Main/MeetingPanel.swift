@@ -75,7 +75,10 @@ struct MeetingPanel: View {
                 }
               }
             }
-            .padding(.bottom, 18)
+            .padding(.bottom, meeting.points.isEmpty && meeting.pointsGeneratedAt != nil ? 6 : 18)
+            if meeting.points.isEmpty && meeting.pointsGeneratedAt != nil {
+              Text("这段对话里没找到可以列成要点的内容。").font(.callout).foregroundStyle(.secondary).padding(.bottom, 18)
+            }
             Text("完整转录 · \(rows.count) 句")
               .font(.system(size: 13, weight: .semibold))
               .foregroundStyle(.secondary)
@@ -108,7 +111,9 @@ struct MeetingPanel: View {
   }
 
   private func pointsCaption(_ meeting: Meeting) -> String {
-    if let generated = meeting.pointsGeneratedAt { return "要点 · \(TimeText.clock(generated)) 生成" }
+    if let generated = meeting.pointsGeneratedAt {
+      return "要点 · \(meeting.pointsEngine ?? AppleIntelligenceEngine().name)\(TimeText.clock(generated)) 生成"
+    }
     if let reason = model.summaries.unavailableReason { return "要点 · \(reason)，没有生成" }
     return meeting.end > .now ? "要点 · 会议结束后几分钟内生成" : "要点 · 正在生成…"
   }

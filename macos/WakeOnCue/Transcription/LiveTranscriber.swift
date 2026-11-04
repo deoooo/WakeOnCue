@@ -54,14 +54,27 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
   }
 
   /// Makes sure the Mandarin model is on this Mac. Returns a reason when it cannot be used.
-  static func prepare() async -> String? {
+  /// `onDownload` gets the download progress when the model is not on this Mac yet.
+  static func prepare(onDownload: @escaping @MainActor (Double) -> Void = { _ in }) async -> String? {
     guard SpeechTranscriber.isAvailable else { return "这台 Mac 不支持 Apple 语音转录" }
     guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Self.locale) else {
       return "Apple 语音不支持中文转录"
     }
     let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
     do {
+      // The system keeps only a few locales per app; claim this one so it is not evicted.
+      if !(await AssetInventory.reservedLocales).contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) {
+        _ = try? await AssetInventory.reserve(locale: locale)
+      }
       if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+        let progress = request.progress
+        let watcher = Task { @MainActor in
+          while !Task.isCancelled {
+            onDownload(progress.fractionCompleted)
+            try? await Task.sleep(for: .milliseconds(500))
+          }
+        }
+        defer { watcher.cancel() }
         try await request.downloadAndInstall()
       }
     } catch {
