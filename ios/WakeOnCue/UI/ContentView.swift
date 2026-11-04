@@ -62,17 +62,18 @@ struct ContentView: View {
       .sheet(item: $model.shareItem) { item in
         RecordingShareSheet(fileURL: item.url)
       }
-      .alert(
-        "WakeOnCue",
-        isPresented: Binding(
-          get: { model.errorMessage != nil },
-          set: { if !$0 { model.errorMessage = nil } }
-        )
-      ) {
-        Button("OK") { model.errorMessage = nil }
-      } message: {
-        Text(model.errorMessage ?? "")
-      }
+    }
+    // Outside the stack, so errors also show while a recording's details are open.
+    .alert(
+      "WakeOnCue",
+      isPresented: Binding(
+        get: { model.errorMessage != nil },
+        set: { if !$0 { model.errorMessage = nil } }
+      )
+    ) {
+      Button("OK") { model.errorMessage = nil }
+    } message: {
+      Text(model.errorMessage ?? "")
     }
     .environment(\.locale, model.settings.language.locale)
   }
@@ -254,9 +255,7 @@ struct ContentView: View {
           .multilineTextAlignment(.center)
       }
 
-      CaptureFeedbackView(feedback: model.captureFeedback) {
-        Task { await model.resumeRecording() }
-      }
+      LiveCaptureFeedbackView()
 
       if let current = model.currentRecording {
         ViewThatFits(in: .horizontal) {

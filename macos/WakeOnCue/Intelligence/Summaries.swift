@@ -23,7 +23,7 @@ final class Summaries {
 
   @ObservationIgnored private let store: Store
   @ObservationIgnored private let preferences: Preferences
-  @ObservationIgnored private var engine: (any SummaryEngine)?
+  @ObservationIgnored private(set) var engine: (any SummaryEngine)?
   @ObservationIgnored private var ticker: Task<Void, Never>?
   @ObservationIgnored private var queue: [Job] = []
   @ObservationIgnored private var running = false
@@ -213,7 +213,7 @@ final class Summaries {
 
   private static func numbered(_ sentences: [Sentence]) -> String {
     sentences.enumerated().map { index, s in
-      "[\(index + 1)] \(TimeText.clock(s.start)) \(s.speaker.label)：\(s.text)"
+      "[\(index + 1)] \(TimeText.clock(s.start)) \(s.speakerLabel)：\(s.text)"
     }.joined(separator: "\n")
   }
 
@@ -278,7 +278,7 @@ final class Summaries {
       let keys = store.sentences(ids: summary.keySentenceIDs).filter { s in !hidden.contains { $0.covers(s.start) } }
       for sentence in keys.prefix(3) {
         sources.append(sentence)
-        lines.append("  [\(sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speaker.label)：\(sentence.text)")
+        lines.append("  [\(sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)")
       }
     }
     let meetingLines = meetings.map { "\(TimeText.range($0.start, $0.end)) \($0.title)" }.joined(separator: "\n")

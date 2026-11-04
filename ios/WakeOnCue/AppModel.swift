@@ -97,6 +97,9 @@ final class AppModel {
   @ObservationIgnored private let library: RecordingLibraryService
   @ObservationIgnored private let liveActivity = RecordingLiveActivityController()
   @ObservationIgnored private var capture: AudioCaptureService?
+  /// Changes when recording controls change `currentRecording`, so a refresh that read the store
+  /// before then does not put the old state back.
+  @ObservationIgnored private var recordingLifecycleRevision = 0
   @ObservationIgnored private var chunkConsumer: Task<Void, Never>?
   @ObservationIgnored private var timerTask: Task<Void, Never>?
   @ObservationIgnored private var commandObserver: RecordingCommandObserver?
@@ -262,10 +265,12 @@ final class AppModel {
         fileLayout: fileLayout,
         testFixtureURL: Self.debugAudioFixtureURL
       )
+      if playingRecordingID != nil { stopPlayback() }
+      self.capture = capture
       configure(capture)
       startupStage = "starting the iPhone audio session"
-      try capture.start()
       do {
+        try await capture.start()
         startupStage = "saving the recording session"
         try await store.createRecording(
           recording,
@@ -273,12 +278,12 @@ final class AppModel {
           enqueueUpload: false
         )
       } catch {
-        try? capture.stop()
+        try? await capture.stop()
+        self.capture = nil
         throw error
       }
       startupStage = "publishing the recording state"
-      self.capture = capture
-      currentRecording = recording
+      setCurrentRecording(recording)
       elapsed = 0
       consumeChunks(from: capture, recordingID: recordingID)
       publishSharedState(isRecording: true, isPaused: false, recordingID: recordingID)
@@ -316,9 +321,9 @@ final class AppModel {
     isBusy = true
     defer { isBusy = false }
     do {
-      try capture.pause()
+      try await capture.pause()
       try await recordPause(recordingID: recording.id, duration: capture.duration)
-      if var paused = currentRecording { paused.status = .paused; currentRecording = paused }
+      if var paused = currentRecording { paused.status = .paused; setCurrentRecording(paused) }
       PhoneWatchBridge.shared.publish(watchSnapshot())
     } catch {
       errorMessage = error.localizedDescription
@@ -332,9 +337,9 @@ final class AppModel {
     isBusy = true
     defer { isBusy = false }
     do {
-      try capture.resume()
+      try await capture.resume()
       try await recordResume(recordingID: recording.id, duration: capture.duration)
-      if var resumed = currentRecording { resumed.status = .recording; currentRecording = resumed }
+      if var resumed = currentRecording { resumed.status = .recording; setCurrentRecording(resumed) }
       PhoneWatchBridge.shared.publish(watchSnapshot())
     } catch {
       errorMessage = error.localizedDescription
@@ -347,13 +352,23 @@ final class AppModel {
       let capture, !isBusy
     else { return }
     isBusy = true
-    defer { isBusy = false }
+    // Stopping the audio session ends the app's background audio time.
+    let backgroundTime = BackgroundTime.begin(name: "Finish \(recording.id)")
+    defer {
+      backgroundTime.end()
+      isBusy = false
+    }
     do {
-      try capture.stop()
+      try await capture.stop()
       let duration = capture.duration
       await chunkConsumer?.value
       chunkConsumer = nil
       self.capture = nil
+      captureFeedback = .idle
+      if duration <= 0, try await store.chunks(recordingID: recording.id).isEmpty {
+        try await discardEmptyRecording(recordingID: recording.id)
+        return
+      }
       try await store.transition(
         recordingID: recording.id,
         to: .finishing,
@@ -361,7 +376,7 @@ final class AppModel {
       )
       var finishingRecording = try await store.recording(id: recording.id)
       finishingRecording.duration = duration
-      currentRecording = finishingRecording
+      setCurrentRecording(finishingRecording)
       elapsed = duration
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
       await refresh()
@@ -369,7 +384,7 @@ final class AppModel {
       try await store.completeLocally(recordingID: recording.id, duration: duration)
       let finishedRecording = try await store.recording(id: recording.id)
       rememberLastFinished(finishedRecording)
-      currentRecording = nil
+      setCurrentRecording(nil)
       currentSyncProgress = .init()
       elapsed = 0
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
@@ -394,7 +409,7 @@ final class AppModel {
           [.recording, .paused].contains(stranded.status)
         {
           stranded.status = .finishing
-          currentRecording = stranded
+          setCurrentRecording(stranded)
         }
         publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
       }
@@ -410,14 +425,20 @@ final class AppModel {
     isBusy = true
     defer { isBusy = false }
     do {
-      _ = try await prepareM4A(recordingID: recording.id)
+      if recording.duration <= 0, try await store.chunks(recordingID: recording.id).isEmpty {
+        try await discardEmptyRecording(recordingID: recording.id)
+        return
+      }
+      // Playing or sharing assembles the audio again, so a failure here must not trap the user
+      // on the Finishing screen.
+      _ = try? await prepareM4A(recordingID: recording.id)
       try await store.completeLocally(
         recordingID: recording.id,
         duration: recording.duration
       )
       let finishedRecording = try await store.recording(id: recording.id)
       rememberLastFinished(finishedRecording)
-      if currentRecording?.id == recording.id { currentRecording = nil }
+      if currentRecording?.id == recording.id { setCurrentRecording(nil) }
       currentSyncProgress = .init()
       elapsed = 0
       publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
@@ -432,6 +453,26 @@ final class AppModel {
         error.localizedDescription
       )
     }
+  }
+
+  /// Finished before any audio arrived, so there is nothing to keep or to play.
+  private func discardEmptyRecording(recordingID: String) async throws {
+    try await store.completeLocally(recordingID: recordingID, duration: 0)
+    try await library.moveToTrash(recordingID: recordingID)
+    try await library.deletePermanently(recordingID: recordingID)
+    setCurrentRecording(nil)
+    currentSyncProgress = .init()
+    elapsed = 0
+    publishSharedState(isRecording: false, isPaused: false, recordingID: nil)
+    await liveActivity.removeStaleActivities(activeRecordingID: nil)
+    await refresh()
+    libraryVersion += 1
+    errorMessage = AppLanguage.localized("The recording was too short to save.")
+  }
+
+  private func setCurrentRecording(_ recording: RecordingRecord?) {
+    recordingLifecycleRevision += 1
+    currentRecording = recording
   }
 
   func handle(url: URL) async {
@@ -546,6 +587,12 @@ final class AppModel {
     at requestedTime: TimeInterval,
     autoplay: Bool = true
   ) async {
+    // Playback takes over the audio session, which would silently stop the recording.
+    guard capture == nil else {
+      errorMessage = AppLanguage.localized(
+        "Finish the current recording before playing another one.")
+      return
+    }
     audioBusyRecordingID = recording.id
     defer { audioBusyRecordingID = nil }
     do {
@@ -555,6 +602,7 @@ final class AppModel {
         chunks: chunks,
         s3Configuration: await s3Configuration(for: recording)
       )
+      guard capture == nil else { return }
       stopPlayback()
       let session = AVAudioSession.sharedInstance()
       try session.setCategory(.playback, mode: .default)
@@ -796,10 +844,12 @@ final class AppModel {
   }
 
   func refresh() async {
+    let revision = recordingLifecycleRevision
     do {
       if let currentID = currentRecording?.id,
         let stored = try? await store.recording(id: currentID)
       {
+        guard revision == recordingLifecycleRevision else { return }
         var displayed = stored
         if let capture, [.recording, .paused].contains(stored.status) {
           displayed.duration = capture.duration
@@ -809,14 +859,14 @@ final class AppModel {
         }
         if stored.status == .completed {
           rememberLastFinished(stored)
+          currentRecording = nil
+          currentSyncProgress = .init()
+          elapsed = 0
           let progress = try await syncProgress(for: stored)
           await liveActivity.end(
             recording: stored,
             progress: progress
           )
-          currentRecording = nil
-          currentSyncProgress = .init()
-          elapsed = 0
         } else if [.uploading, .failed].contains(stored.status) {
           if stored.status == .uploading { rememberLastFinished(stored) }
           currentRecording = nil
@@ -825,6 +875,7 @@ final class AppModel {
         } else if [.recording, .paused, .finishing].contains(stored.status) {
           currentRecording = displayed
           let progress = try await syncProgress(for: displayed)
+          guard revision == recordingLifecycleRevision else { return }
           currentSyncProgress = progress
           await liveActivity.update(
             recording: displayed,
@@ -832,7 +883,9 @@ final class AppModel {
           )
         }
       } else if capture == nil {
-        currentRecording = try await store.activeRecording()
+        let active = try await store.activeRecording()
+        guard revision == recordingLifecycleRevision, capture == nil else { return }
+        currentRecording = active
         elapsed = currentRecording?.duration ?? 0
         if let currentRecording {
           currentSyncProgress = try await syncProgress(for: currentRecording)
@@ -897,7 +950,14 @@ final class AppModel {
     lastFinishedRecording = recording
   }
 
+  /// A command from the Watch, a widget or Shortcuts can arrive while another is still running;
+  /// waiting means Finish takes effect rather than being dropped.
+  private func waitUntilNotBusy() async {
+    while isBusy { try? await Task.sleep(for: .milliseconds(50)) }
+  }
+
   private func handle(command: RecordingCommand) async {
+    await waitUntilNotBusy()
     switch command {
     case .start: await startRecording()
     case .pause: await pauseRecording()
@@ -1067,10 +1127,13 @@ final class AppModel {
       recordingID: recordingID,
       chunks: chunks
     )
-    let playbackProbe = try AVAudioPlayer(contentsOf: url)
-    guard playbackProbe.prepareToPlay(), playbackProbe.duration > 0 else {
-      throw RecordingUIError.playbackFailed
-    }
+    // Opening the player reads the file, which is noticeable on the main thread.
+    try await Task.detached(priority: .userInitiated) {
+      let playbackProbe = try AVAudioPlayer(contentsOf: url)
+      guard playbackProbe.prepareToPlay(), playbackProbe.duration > 0 else {
+        throw RecordingUIError.playbackFailed
+      }
+    }.value
     return url
   }
 
@@ -1164,6 +1227,7 @@ extension AppModel {
 
   func handle(watchRequest request: WatchBridgeRequest) async -> WatchBridgeReply {
     await start()
+    await waitUntilNotBusy()
     var reply = WatchBridgeReply()
     switch request {
     case .snapshot:
@@ -1277,3 +1341,4 @@ enum DeviceInformation {
     }
   }
 }
+

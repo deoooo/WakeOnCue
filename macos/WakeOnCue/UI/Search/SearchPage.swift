@@ -63,7 +63,7 @@ struct SearchPage: View {
                     selected = hit.id
                   } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                      Text("\(TimeText.seconds(hit.start)) · \(hit.speaker.label) · \(hit.source)")
+                      Text("\(TimeText.seconds(hit.start)) · \(hit.speakerLabel) · \(hit.source)")
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                       Text(Self.highlight(hit.text, query)).font(.system(size: 13)).foregroundStyle(.primary)
                     }
@@ -132,7 +132,7 @@ struct SearchPage: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 10) {
             ForEach(around) { sentence in
-              (Text(sentence.speaker.label + " ").fontWeight(.semibold) + Text(Self.highlight(sentence.text, query)))
+              (Text(sentence.speakerLabel + " ").fontWeight(.semibold) + Text(Self.highlight(sentence.text, query)))
                 .font(.system(size: 13))
                 .lineSpacing(3)
                 .opacity(sentence.id == hit.id ? 1 : 0.75)
