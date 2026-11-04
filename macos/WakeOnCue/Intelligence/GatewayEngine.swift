@@ -135,6 +135,23 @@ nonisolated struct GatewayEngine: SummaryEngine {
     return reply.points.prefix(8).map(\.result)
   }
 
+  func plan(_ prompt: String) async throws -> SearchPlan {
+    struct Reply: Decodable {
+      var keywords: [String]
+      var days: Int?
+    }
+    let reply: Reply = try await json(
+      prompt, shape: #"{"keywords": ["搜索用的词，两到六个，尽量短"], "days": 往前查几天，只问今天是 1，包括昨天是 2，最近一周是 7，不限是 0}"#)
+    return SearchPlan(keywords: reply.keywords, days: reply.days ?? 0)
+  }
+
+  func answer(_ prompt: String) async throws -> [CitedResult] {
+    struct Reply: Decodable { var paragraphs: [Cited] }
+    let reply: Reply = try await json(
+      prompt, shape: #"{"paragraphs": [{"text": "回答的一段", "sources": [依据的原话编号，一到三个]}]}"#)
+    return reply.paragraphs.prefix(4).map(\.result)
+  }
+
   private struct Cited: Decodable {
     var text: String
     var sources: [Int]?
