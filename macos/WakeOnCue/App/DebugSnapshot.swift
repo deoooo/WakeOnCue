@@ -1,6 +1,7 @@
 #if DEBUG
   import AppKit
   import Darwin
+  import OSLog
 
   /// Development aid. `defaults write com.deoooo.WakeOnCue.macos debugSnapshot <path.png>` makes
   /// the app capture its own windows into PNGs every few seconds, and run the commands it
@@ -35,6 +36,15 @@
         case "meeting": model.openMeeting(Int64(argument) ?? 0)
         case "download": model.models.download(.qwen3_0_6B)
         case "pausedl": model.models.pause(.qwen3_0_6B)
+        case "ask":
+          model.asking.ask(argument)
+          Task {
+            while model.asking.isWorking { try? await Task.sleep(for: .milliseconds(500)) }
+            guard let last = model.asking.exchanges.last else { return }
+            let cites = last.answer.flatMap(\.cites).compactMap { last.sources[$0] }.map { "\(TimeText.clock($0.start)) \($0.text)" }
+            Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Debug").notice(
+              "ASK \(last.question, privacy: .public) → \(last.error ?? last.answer.map(\.text).joined(separator: " / "), privacy: .public) | cites: \(cites.joined(separator: " ; "), privacy: .public)")
+          }
         case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
         case "draft": model.ui.draftingMinutes = true
         case "close": model.closeMeeting()

@@ -13,6 +13,7 @@ final class AppModel {
   let summaries: Summaries
   let models: ASRModels
   let refiner: Refiner
+  let asking: Asking
   let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -35,6 +36,7 @@ final class AppModel {
     summaries = Summaries(store: store, preferences: preferences)
     meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
+    asking = Asking(store: store, summaries: summaries)
     models = ASRModels(preferences: preferences)
     let preferences = preferences
     models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
@@ -94,6 +96,7 @@ final class AppModel {
   }
 
   func openMeeting(_ id: Int64) {
+    ui.asking = false
     ui.meetingID = id
     ui.draftingMinutes = false
   }
