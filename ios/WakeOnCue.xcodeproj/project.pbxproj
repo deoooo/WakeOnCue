@@ -16,6 +16,7 @@
 		117C3656F605152B067ED22D /* WatchCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CFD6A5039DEA1AD2FBC079 /* WatchCaptureUITests.swift */; };
 		12A9B9EEB60F435DF65D50AB /* OnDeviceIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94E0BAC6540587DC81151E7 /* OnDeviceIntelligence.swift */; };
 		13FFD4ADDAFC7A24C5C6DA8D /* MeetingCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35F0BC2386F45353193F618 /* MeetingCalendar.swift */; };
+		15DABFCCBEA2D664D8135B84 /* MacLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A59FB09C5DA2D04DF6AAA12 /* MacLink.swift */; };
 		18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */; };
 		1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */; };
 		1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */; };
@@ -32,10 +33,12 @@
 		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
 		31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */; };
 		33438C5A1D871E0E6A4EA101 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50518C75DBA05FB9CA7481EF /* SegmentWriter.swift */; };
+		36C05D373D6D0F6000957558 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */; };
 		3AE9B935CA1890C7062EF162 /* WatchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */; };
 		3D6088080012CF83F5AF8A3F /* AudioFileImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65E1A987A93274405990977 /* AudioFileImporter.swift */; };
 		3DD22E6C84FA5BA69FE68A0C /* MeetingRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594CC2666FFD10327B58885 /* MeetingRecorder.swift */; };
 		3EBC44400AD284B01FFE86D5 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
+		412F44512C0CFB9E5F0B32AD /* MacLinkSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */; };
 		4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */; };
 		4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28875075914483902B567040 /* ContactNamePicker.swift */; };
 		49D23430125DD0262614CD4A /* AIProviderSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 376919AF2F6C0950FFD37186 /* AIProviderSettingsTests.swift */; };
@@ -271,9 +274,11 @@
 		67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailView.swift; sourceTree = "<group>"; };
 		693665B632273E1810A1B3F9 /* CalendarAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAutomation.swift; sourceTree = "<group>"; };
 		69A872A2ADA906883325D430 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		6A59FB09C5DA2D04DF6AAA12 /* MacLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLink.swift; sourceTree = "<group>"; };
 		6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueApp.swift; sourceTree = "<group>"; };
 		6BF08F571BBECD7CDB5A1624 /* RecordingOrganization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOrganization.swift; sourceTree = "<group>"; };
 		6EB419A36E5FBD434A45BDA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLinkSettingsSection.swift; sourceTree = "<group>"; };
 		716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarTests.swift; sourceTree = "<group>"; };
 		76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppModel.swift; sourceTree = "<group>"; };
 		77D935DF36510C3E4241B30D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -296,6 +301,7 @@
 		9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureFeedback.swift; sourceTree = "<group>"; };
 		A01ED94A406F296B5E9C800E /* GatewayToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayToken.swift; sourceTree = "<group>"; };
 		A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayout.swift; sourceTree = "<group>"; };
+		A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProtocol.swift; sourceTree = "<group>"; };
 		A1ADBD56EE417C63D3FCA1F5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A594CC2666FFD10327B58885 /* MeetingRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorder.swift; sourceTree = "<group>"; };
@@ -496,6 +502,14 @@
 			path = WakeOnCueUITests;
 			sourceTree = "<group>";
 		};
+		63A3A84D03ADF3BEE2E79C39 /* WakeOnCue */ = {
+			isa = PBXGroup;
+			children = (
+				B1AF4DFD2990B74726B89E66 /* Sync */,
+			);
+			path = WakeOnCue;
+			sourceTree = "<group>";
+		};
 		66FDD7F8FE6F23433EEB2485 /* WakeOnCueMacTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -514,6 +528,14 @@
 				2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */,
 			);
 			path = Recording;
+			sourceTree = "<group>";
+		};
+		7ADF0413DF75AC0A5D713E2F /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				63A3A84D03ADF3BEE2E79C39 /* WakeOnCue */,
+			);
+			path = macos;
 			sourceTree = "<group>";
 		};
 		8FBC44E08F79949555631107 /* WakeOnCueWidgets */ = {
@@ -578,6 +600,7 @@
 		B0C51E219CC93560234F89EB = {
 			isa = PBXGroup;
 			children = (
+				CC2754B581B40F983857C64F /* macos-app-phase1-982296 */,
 				F24B1B3357D9837560525D4A /* Packages */,
 				BC6C8F3D769236CE92111178 /* Shared */,
 				BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */,
@@ -595,6 +618,14 @@
 			);
 			sourceTree = "<group>";
 		};
+		B1AF4DFD2990B74726B89E66 /* Sync */ = {
+			isa = PBXGroup;
+			children = (
+				A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */,
+			);
+			path = Sync;
+			sourceTree = "<group>";
+		};
 		BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */ = {
 			isa = PBXGroup;
 			children = (
@@ -602,6 +633,7 @@
 				1C1600BD98E1C2C297C4FDF5 /* Infrastructure */,
 				D658166ED83E134030839806 /* Intelligence */,
 				DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */,
+				F46310D857E8703E354E9172 /* MacLink */,
 				762FBE8986157697A72EC117 /* Recording */,
 				EA99173F170291CF0B9F5E68 /* UI */,
 				21424503D95B6E4A2E151C5D /* Watch */,
@@ -628,6 +660,15 @@
 				D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		CC2754B581B40F983857C64F /* macos-app-phase1-982296 */ = {
+			isa = PBXGroup;
+			children = (
+				7ADF0413DF75AC0A5D713E2F /* macos */,
+			);
+			name = "macos-app-phase1-982296";
+			path = ..;
 			sourceTree = "<group>";
 		};
 		D05533EED996F08D17279212 /* Products */ = {
@@ -710,6 +751,15 @@
 				5C2C0A3BB0F7CB999F01D1E4 /* WakeOnCueCore */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		F46310D857E8703E354E9172 /* MacLink */ = {
+			isa = PBXGroup;
+			children = (
+				6A59FB09C5DA2D04DF6AAA12 /* MacLink.swift */,
+				6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */,
+			);
+			path = MacLink;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1038,6 +1088,8 @@
 				4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */,
 				A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */,
 				D1B1CC0D2F7682644B6444AD /* ExperienceFixtures.swift in Sources */,
+				15DABFCCBEA2D664D8135B84 /* MacLink.swift in Sources */,
+				412F44512C0CFB9E5F0B32AD /* MacLinkSettingsSection.swift in Sources */,
 				13FFD4ADDAFC7A24C5C6DA8D /* MeetingCalendar.swift in Sources */,
 				213370BEFE2F7DCADACB94F8 /* MeetingCalendarView.swift in Sources */,
 				4DB243F93C2B46B35F1CDACB /* NotificationRouter.swift in Sources */,
@@ -1069,6 +1121,7 @@
 				D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */,
 				77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */,
 				B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */,
+				36C05D373D6D0F6000957558 /* SyncProtocol.swift in Sources */,
 				96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */,
 				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
 				50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */,

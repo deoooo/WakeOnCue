@@ -479,3 +479,22 @@
 "This device does not support Apple Intelligence. To get summaries, add a service in Settings." = "这台设备不支持 Apple 智能。如需摘要，请在设置中添加服务。";
 "Apple Intelligence is turned off. Turn it on in iPhone Settings, or add a service in Settings." = "Apple 智能已关闭。请在 iPhone 设置中开启，或在本 App 的设置中添加服务。";
 "Apple Intelligence is still getting ready. Summaries can start once it finishes downloading." = "Apple 智能还在准备中，下载完成后即可生成摘要。";
+
+/* Mac forwarding */
+"Mac" = "Mac";
+"Waiting to send" = "等待发送";
+"%lld pieces" = "%lld 段";
+"Last sent" = "上次发送";
+"Send now" = "立即发送";
+"Unpair this Mac" = "取消与这台 Mac 配对";
+"Not connected to a Mac." = "还没有连接 Mac。";
+"On the Mac, open WakeOnCue › Settings › Devices and scan its pairing code with the Camera app. Watch and iPhone recordings then go to the Mac over your local network, encrypted with the pairing key, and are deleted here only after the Mac confirms it has them." = "在 Mac 上打开 WakeOnCue › 设置 › 设备与回传，用“相机”扫描配对二维码。之后手表和 iPhone 的录音会通过本地网络、用配对密钥加密后转给 Mac，Mac 确认收到后才会从这台 iPhone 上删除。";
+"Scan the Mac's pairing code again." = "请重新扫描 Mac 上的配对二维码。";
+"Sending %lld of %lld" = "正在发送第 %lld 段，共 %lld 段";
+"The Mac is not on this network. Waiting pieces are sent when it is." = "Mac 不在这个网络上。连上同一个网络后会自动发送。";
+"This pairing code has expired. Refresh it on the Mac." = "这个配对码已过期，请在 Mac 上刷新。";
+"Forwarding is turned off on the Mac." = "Mac 上关闭了自动回传。";
+"The Mac no longer accepts this iPhone. Scan its pairing code again." = "这台 Mac 不再接受这台 iPhone，请重新扫描配对二维码。";
+"The Mac is not on this network." = "Mac 不在这个网络上。";
+"The Mac no longer accepts this iPhone." = "这台 Mac 不再接受这台 iPhone。";
+"The Mac sent an unexpected reply." = "Mac 的回复无法识别。";

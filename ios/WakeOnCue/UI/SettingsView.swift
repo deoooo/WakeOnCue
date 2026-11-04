@@ -149,6 +149,8 @@ struct SettingsView: View {
 
         CalendarSettingsSection()
 
+        MacLinkSettingsSection()
+
         if let message = model.settingsStatusMessage {
           Section {
             Label(

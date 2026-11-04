@@ -1,5 +1,5 @@
 "NSMicrophoneUsageDescription" = "WakeOnCue 需要麦克风权限，以录制你明确开始的会议。";
-"NSLocalNetworkUsageDescription" = "WakeOnCue 会连接到你配置在局域网内的转写或 AI 服务。";
+"NSLocalNetworkUsageDescription" = "WakeOnCue 会连接你在本地网络上配置的转录或 AI 服务，并把手表和 iPhone 的录音转给已配对的 Mac。";
 "CFBundleDisplayName" = "WakeOnCue";
 
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "WakeOnCue 只检查你是否到达或离开你设置的地点，以便在那里开始或结束录音。";

@@ -59,6 +59,8 @@ struct RecordingProcessingServices {
 @Observable
 final class AppModel {
   private(set) var currentRecording: RecordingRecord?
+  /// Forwards Watch and iPhone audio to the paired Mac.
+  let macUploader = MacUploader()
   private(set) var lastFinishedRecording: RecordingRecord?
   private(set) var recentRecordings: [RecordingRecord] = []
   private(set) var currentSyncProgress = RecordingSyncProgress()
@@ -382,6 +384,7 @@ final class AppModel {
       await refresh()
       let shareableAudio = try await prepareM4A(recordingID: recording.id)
       try await store.completeLocally(recordingID: recording.id, duration: duration)
+      queueForMac(recording: finishingRecording, audio: shareableAudio, duration: duration)
       let finishedRecording = try await store.recording(id: recording.id)
       rememberLastFinished(finishedRecording)
       setCurrentRecording(nil)
@@ -455,6 +458,18 @@ final class AppModel {
     }
   }
 
+  /// A finished iPhone recording goes to the paired Mac as one piece.
+  private func queueForMac(recording: RecordingRecord, audio: URL, duration: TimeInterval) {
+    do {
+      try MacOutbox.enqueue(
+        file: audio, id: "iphone-\(recording.id)", source: "iphone", recordingID: recording.id, index: 1,
+        startedAt: recording.startedAt, duration: duration)
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+    Task { await macUploader.sync() }
+  }
+
   /// Finished before any audio arrived, so there is nothing to keep or to play.
   private func discardEmptyRecording(recordingID: String) async throws {
     try await store.completeLocally(recordingID: recordingID, duration: 0)
@@ -476,6 +491,10 @@ final class AppModel {
   }
 
   func handle(url: URL) async {
+    if url.scheme == "wakeoncue", url.host == "pair" {
+      _ = macUploader.pair(with: url)
+      return
+    }
     guard url.scheme == "wakeoncue", url.host == "recording" else { return }
     switch url.path {
     case "/start": SharedRecordingState.enqueue(.start)
@@ -1285,6 +1304,7 @@ extension AppModel {
       store: store, fileLayout: fileLayout, annotations: .shared
     ).importPendingSessions()
     if !imported.isEmpty { await refresh() }
+    await macUploader.sync()
   }
 
   /// `seconds == 0` drops a point bookmark at "now"; otherwise the span ending now is marked.
