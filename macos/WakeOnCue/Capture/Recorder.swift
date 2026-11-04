@@ -118,6 +118,8 @@ final class Recorder {
   }
 
   func pause(until: Date) {
+    store.closeMarks(.paused, at: .now)
+    store.addMark(.paused, start: .now, end: until == .distantFuture ? Date(timeIntervalSince1970: 4_102_444_800) : until)
     preferences.pausedUntil = until
     stopCapture()
     state = .paused(until: until)
@@ -125,6 +127,7 @@ final class Recorder {
   }
 
   func resume() async {
+    store.closeMarks(.paused, at: .now)
     preferences.pausedUntil = nil
     await start()
   }

@@ -4,6 +4,8 @@ import Foundation
 nonisolated enum AudioChannel: String, Codable, CaseIterable, Sendable {
   case microphone
   case meeting
+  /// Audio forwarded from the Watch or the iPhone; `source` says which.
+  case remote
 }
 
 /// Phase 1 tells speakers apart only by channel: the user, the meeting app, or someone
@@ -49,6 +51,8 @@ nonisolated struct TimeMark: Identifiable, Hashable, Sendable {
   enum Kind: String, Sendable {
     case privateRange = "private"
     case deleted
+    /// Recording was paused; audio from other devices in this time is dropped too.
+    case paused
   }
 
   var id: Int64
