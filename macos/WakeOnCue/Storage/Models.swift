@@ -33,6 +33,11 @@ nonisolated struct Sentence: Identifiable, Hashable, Sendable {
   var text: String
   /// The model that re-transcribed this sentence, or nil for Apple speech's live result.
   var refinedBy: String? = nil
+  /// A person's name, or "说话人 2" when speakers are told apart without names.
+  var speakerName: String? = nil
+
+  /// What to show as the speaker: the name when known, otherwise 我 / 会议对方 / 他人.
+  var speakerLabel: String { speakerName ?? speaker.label }
 }
 
 nonisolated struct AudioSegment: Identifiable, Hashable, Sendable {

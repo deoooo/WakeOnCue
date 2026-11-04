@@ -52,6 +52,7 @@ struct MainWindow: View {
     .background(WindowSizer())
     .onAppear { model.openSettings = { openSettings() } }
     .sheet(isPresented: .constant(!model.preferences.onboarded)) { OnboardingView() }
+    .sheet(item: $ui.namingSentence) { sentence in NameSpeakerSheet(sentence: sentence) }
     .onChange(of: ui.searchText) {
       ui.page = ui.searchText.trimmingCharacters(in: .whitespaces).isEmpty ? .day : .search
     }

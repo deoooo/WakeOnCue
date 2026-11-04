@@ -30,6 +30,7 @@ extension AppModel {
 
   func cleanUp() {
     let now = Date()
+    voices.cleanUp()
     if preferences.audioRetentionDays > 0 {
       let cutoff = now.addingTimeInterval(-Double(preferences.audioRetentionDays) * 86_400)
       for segment in store.segments(endingBefore: cutoff) {

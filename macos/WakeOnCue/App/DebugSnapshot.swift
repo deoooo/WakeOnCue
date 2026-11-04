@@ -35,6 +35,7 @@
         case "meeting": model.openMeeting(Int64(argument) ?? 0)
         case "download": model.models.download(.qwen3_0_6B)
         case "pausedl": model.models.pause(.qwen3_0_6B)
+        case "voicemodel": Task { _ = await model.voices.prepareModel() }
         case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
         case "draft": model.ui.draftingMinutes = true
         case "close": model.closeMeeting()
