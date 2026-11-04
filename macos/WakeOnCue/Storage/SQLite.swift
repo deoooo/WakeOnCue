@@ -17,9 +17,13 @@ nonisolated final class SQLiteDatabase {
 
   private var handle: OpaquePointer?
 
-  init(url: URL) throws {
-    guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK
+  /// `readOnly` opens an existing database without changing it, for the command-line tool
+  /// reading next to the running app.
+  init(url: URL, readOnly: Bool = false) throws {
+    let flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+    guard sqlite3_open_v2(url.path, &handle, flags, nil) == SQLITE_OK
     else { throw Failure(message: "无法打开数据库：\(url.path)") }
+    guard !readOnly else { return }
     try execute("PRAGMA journal_mode = WAL")
     try execute("PRAGMA foreign_keys = ON")
   }

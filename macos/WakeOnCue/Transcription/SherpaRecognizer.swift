@@ -91,7 +91,7 @@ nonisolated final class SherpaRecognizer: @unchecked Sendable {
   }
 
   /// Recognizes 16 kHz mono samples. Blocks; call off the main thread.
-  func recognize(_ samples: [Float]) -> String {
+  func transcribe(_ samples: [Float]) -> String {
     lock.withLock {
       guard !samples.isEmpty, let stream = createStream(recognizer) else { return "" }
       defer { destroyStream(stream) }

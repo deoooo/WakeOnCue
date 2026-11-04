@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		057DC271DC7A756AA99C8953 /* ThirdPartyAITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */; };
 		0613C041BE30DBB585D12CB3 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 11B4A8475A46E49F4252083D /* WakeOnCueCore */; };
+		0893E7F83FEFD4DA404A0AB0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2599C2E999A7DC633B162D22 /* Assets.xcassets */; };
 		0B06350E90B3DDB84D6F2BD3 /* RecordingAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */; };
 		0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */; };
 		116DD06F75F19AB28F0D281A /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
@@ -43,6 +44,7 @@
 		4DF281C33F88AD3E15421D24 /* WakeOnCueWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4EF21E4EDA824902AE71BBF2 /* RecordingLibrarySearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE5A4F6E1123C866C22B26B /* RecordingLibrarySearchTests.swift */; };
 		50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
+		522482754ECDB7F7EED9FB6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */; };
 		53CD5F4C453E36D552D5B823 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
 		54745C0C8A403912F0CFD139 /* CalendarAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693665B632273E1810A1B3F9 /* CalendarAutomation.swift */; };
 		5EDDBA01D724627D9BA91347 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549316D5BA7AB969C1FA358D /* WatchAudioRecorder.swift */; };
@@ -228,6 +230,7 @@
 		18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshotStore.swift; sourceTree = "<group>"; };
 		20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAnnotations.swift; sourceTree = "<group>"; };
 		2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryService.swift; sourceTree = "<group>"; };
+		2599C2E999A7DC633B162D22 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		285C45F948055C39CB834C56 /* CaptureFeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeedbackView.swift; sourceTree = "<group>"; };
 		28875075914483902B567040 /* ContactNamePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactNamePicker.swift; sourceTree = "<group>"; };
 		2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRecorder.swift; sourceTree = "<group>"; };
@@ -246,6 +249,7 @@
 		40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusPresentation.swift; sourceTree = "<group>"; };
 		430BD843F968775BC442DAE5 /* SharedRecordingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedRecordingState.swift; sourceTree = "<group>"; };
 		43164E008733A4AB386A4FC9 /* WatchRecordingImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRecordingImporter.swift; sourceTree = "<group>"; };
+		435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		43EC47D0ECE07DF72FCBF3F0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		45EC2EA3CFE00AECF7F18796 /* WakeOnCueMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueMacApp.swift; sourceTree = "<group>"; };
 		4A6F8EBA363AFC36576CBDC2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -468,6 +472,7 @@
 		4D0ABFD7CAAD9749579DA20A /* WakeOnCueWatch */ = {
 			isa = PBXGroup;
 			children = (
+				2599C2E999A7DC633B162D22 /* Assets.xcassets */,
 				C8FD08CBBCC70EF4C3942C05 /* Info.plist */,
 				0FB107982BDA9DC3F38164F4 /* WakeOnCueWatch.entitlements */,
 				3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */,
@@ -532,6 +537,7 @@
 				505E3AEA1DCF81CE57243B16 /* Localizable.strings */,
 				15C307A5BA8C662D0987195E /* Realtime */,
 				1F9B5F6E603F23C1E9A5CA21 /* UI */,
+				435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */,
 				04D9900A160821CAA581F681 /* Info.plist */,
 				76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */,
 				328322C51CF0274889CB9174 /* WakeOnCueMac.entitlements */,
@@ -897,41 +903,41 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					19562381A80A56EE9E63CF5D = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 						TestTargetID = B50B0250357195A8284C1B0D;
 					};
 					25ACFF305571091555AB43E0 = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 						TestTargetID = E37E0EEFB65AC5560E578943;
 					};
 					607E3501D532C3999CB3249E = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					7AF0B4AF86BD6DF4524967DE = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					85F277F2A36A7806BAF04573 = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					B50B0250357195A8284C1B0D = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					C2B341F3613CBC0ACB3990DE = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					E37E0EEFB65AC5560E578943 = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 					E38D67650FB0B7AA0510CCE9 = {
-						DevelopmentTeam = 28H2WL442H;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -972,6 +978,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				522482754ECDB7F7EED9FB6E /* Assets.xcassets in Resources */,
 				E11207234680367BA55DE186 /* InfoPlist.strings in Resources */,
 				99B5511CD0F0C94BEA00B69B /* Localizable.strings in Resources */,
 			);
@@ -981,6 +988,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0893E7F83FEFD4DA404A0AB0 /* Assets.xcassets in Resources */,
 				81BA88C295B28049DB527A49 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1562,7 +1570,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 28H2WL442H;
+				DEVELOPMENT_TEAM = "${DEVELOPMENT_TEAM}";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1655,7 +1663,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 28H2WL442H;
+				DEVELOPMENT_TEAM = "${DEVELOPMENT_TEAM}";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;

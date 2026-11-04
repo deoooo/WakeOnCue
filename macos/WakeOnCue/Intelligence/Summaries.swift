@@ -23,7 +23,7 @@ final class Summaries {
 
   @ObservationIgnored private let store: Store
   @ObservationIgnored private let preferences: Preferences
-  @ObservationIgnored private var engine: (any SummaryEngine)?
+  @ObservationIgnored private(set) var engine: (any SummaryEngine)?
   @ObservationIgnored private var ticker: Task<Void, Never>?
   @ObservationIgnored private var queue: [Job] = []
   @ObservationIgnored private var running = false

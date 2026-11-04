@@ -12,6 +12,12 @@ nonisolated struct CitedResult: Sendable {
   var sources: [Int]
 }
 
+/// How to look for an answer: words to search for, and how many days back (0 for all).
+nonisolated struct SearchPlan: Sendable {
+  var keywords: [String]
+  var days: Int
+}
+
 nonisolated struct DayResult: Sendable {
   var headline: CitedResult
   var details: [CitedResult]
@@ -31,6 +37,10 @@ protocol SummaryEngine: Sendable {
   func text(_ prompt: String) async throws -> String
   func day(_ prompt: String) async throws -> DayResult
   func points(_ prompt: String) async throws -> [CitedResult]
+  /// "提问": search words for a question.
+  func plan(_ prompt: String) async throws -> SearchPlan
+  /// "提问": the answer in short paragraphs, each with the sentences it rests on.
+  func answer(_ prompt: String) async throws -> [CitedResult]
 }
 
 nonisolated enum SummaryPrompts {
@@ -80,6 +90,29 @@ nonisolated struct AppleIntelligenceEngine: SummaryEngine {
   func points(_ prompt: String) async throws -> [CitedResult] {
     try await session().respond(to: prompt, generating: PointsDraft.self).content.points.map(\.result)
   }
+
+  func plan(_ prompt: String) async throws -> SearchPlan {
+    let draft = try await session().respond(to: prompt, generating: PlanDraft.self).content
+    return SearchPlan(keywords: draft.keywords, days: draft.days)
+  }
+
+  func answer(_ prompt: String) async throws -> [CitedResult] {
+    try await session().respond(to: prompt, generating: AnswerDraft.self).content.paragraphs.map(\.result)
+  }
+}
+
+@Generable
+struct PlanDraft {
+  @Guide(description: "在转录里搜索用的词，两到六个，尽量短，比如人名、产品名、关键名词", .count(1...6))
+  var keywords: [String]
+  @Guide(description: "往前查几天：只问今天是 1，包括昨天是 2，最近一周是 7，不限是 0")
+  var days: Int
+}
+
+@Generable
+struct AnswerDraft {
+  @Guide(description: "回答，分成一到四段，每段注明依据的原话编号", .count(1...4))
+  var paragraphs: [CitedDraft]
 }
 
 @Generable

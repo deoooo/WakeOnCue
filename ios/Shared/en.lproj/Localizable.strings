@@ -122,6 +122,8 @@
 "Could not play this recording: %@" = "Could not play this recording: %@";
 "Could not prepare the recording file: %@" = "Could not prepare the recording file: %@";
 "Recording error: %@" = "Recording error: %@";
+"Finish the current recording before playing another one." = "Finish the current recording before playing another one.";
+"The recording was too short to save." = "The recording was too short to save.";
 "Microphone access is required. You can enable it in iOS Settings." = "Microphone access is required. You can enable it in iOS Settings.";
 "The audio player could not start." = "The audio player could not start.";
 "The microphone returned an invalid audio format." = "The microphone returned an invalid audio format.";
@@ -171,7 +173,6 @@
 "Could not read converted audio data" = "Could not read converted audio data";
 "No playable audio chunks were found." = "No playable audio chunks were found.";
 "Could not create the combined audio track." = "Could not create the combined audio track.";
-"Audio chunk %d is not playable." = "Audio chunk %d is not playable.";
 "M4A export is unavailable." = "M4A export is unavailable.";
 "Could not download the recording: %@" = "Could not download the recording: %@";
 "Spoken language" = "Spoken language";
