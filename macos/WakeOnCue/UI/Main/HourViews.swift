@@ -227,7 +227,7 @@ struct HourRow: View {
   }
 
   private var summaryText: String {
-    if let summary = hour.summary, !summary.summary.isEmpty { return summary.summary }
+    if let summary = hour.summary, !summary.summary.isEmpty { return Summaries.tidy(summary.summary) }
     return model.summaries.hourPlaceholder(for: hour)
   }
 
@@ -324,11 +324,15 @@ struct RedoStatus: View {
   }
 
   var body: some View {
-    if model.refiner.isRetranscribing(interval) {
-      HStack(spacing: 6) {
-        ProgressView().controlSize(.mini)
-        Text("正在重新转录，还有 \(model.refiner.retranscribeRemaining) 句，完成后更新总结")
-        Button("停止") { model.refiner.cancelRetranscription() }.buttonStyle(.link)
+    if let progress = model.refiner.retranscribeProgress(in: interval) {
+      HStack(spacing: 8) {
+        ProgressView(value: progress).frame(width: 90)
+        Text(progress == 0 ? "等待重新转录" : "正在重新转录 \(Int(progress * 100))%")
+          .monospacedDigit()
+        // Stopping is offered where it was started, not on every hour of a whole day.
+        if model.refiner.retranscribing.contains(where: { $0.start >= interval.start && $0.end <= interval.end }) {
+          Button("停止") { model.refiner.cancelRetranscription() }.buttonStyle(.link)
+        }
       }
       .font(.caption)
       .foregroundStyle(.secondary)

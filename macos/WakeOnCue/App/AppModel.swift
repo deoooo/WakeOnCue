@@ -52,17 +52,19 @@ final class AppModel {
     }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
     // New words make the old summaries wrong: redo the hours and meetings they fall in.
+    // Each hour is summarized again as soon as its sentences are done; the day summary and the
+    // meetings follow once the whole stretch is.
+    summaries.holdsDays = { [weak refiner] in !(refiner?.retranscribing.isEmpty ?? true) }
+    refiner.onHourRetranscribed = { [weak self] hour in
+      self?.summaries.regenerate(hour: hour)
+    }
     refiner.onRetranscribed = { [weak self] interval, starts, all in
       guard let self else { return }
-      if all { return regenerateSummaries(in: interval) }
-      let calendar = Calendar.current
-      for hour in Set(starts.map(calendar.hourStart)) {
-        summaries.invalidate(DateInterval(start: hour, duration: 3_600))
-      }
-      for meeting in store.meetings(overlapping: DateInterval(start: starts.min()!, end: starts.max()!.addingTimeInterval(1)))
-      where starts.contains(where: { $0 >= meeting.start && $0 < max(meeting.end, meeting.start.addingTimeInterval(1)) }) {
+      for meeting in store.meetings(overlapping: interval)
+      where all || starts.contains(where: { $0 >= meeting.start && $0 < max(meeting.end, meeting.start.addingTimeInterval(1)) }) {
         summaries.regenerateMeeting(meeting.id)
       }
+      summaries.releaseDays()
     }
   }
 

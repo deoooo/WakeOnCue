@@ -36,14 +36,20 @@ final class Refiner {
   @ObservationIgnored private let store: Store
   @ObservationIgnored private var recognizer: (any SentenceRecognizer)?
   @ObservationIgnored private var modelName: String?
-  /// Stretches being re-transcribed on request, for progress next to them.
+  /// Stretches being re-transcribed on request.
   private(set) var retranscribing: [DateInterval] = []
-  /// Sentences of those stretches still to do.
-  private(set) var retranscribeRemaining = 0
-  /// A finished stretch, the starts of the sentences whose words changed, and whether every
-  /// summary of the stretch should be written again (not only where the words changed).
+  /// Starts of every sentence asked for, and of those not done yet: progress per hour.
+  private(set) var requestedStarts: [Date] = []
+  private(set) var waitingStarts: [Date] = []
+  /// An hour whose sentences are all done and whose summary should be written again: its words
+  /// changed, or the whole stretch was asked to be summarized again.
+  @ObservationIgnored var onHourRetranscribed: ((Date) -> Void)?
+  /// A finished or stopped stretch, the starts of the sentences whose words changed, and whether
+  /// everything in it (meetings too) should be summarized again.
   @ObservationIgnored var onRetranscribed: ((DateInterval, [Date], Bool) -> Void)?
   @ObservationIgnored private var summarizeAll: Set<DateInterval> = []
+  @ObservationIgnored private var batchStarts: [DateInterval: [Date]] = [:]
+  @ObservationIgnored private var reportedHours: [DateInterval: Set<Date>] = [:]
 
   private struct Job {
     var sentence: Sentence
@@ -75,6 +81,16 @@ final class Refiner {
 
   func isRetranscribing(_ interval: DateInterval) -> Bool {
     retranscribing.contains { $0.start < interval.end && interval.start < $0.end }
+  }
+
+  /// The share of the sentences in `interval` done so far, 0 while they wait their turn; nil
+  /// when none of them is being re-transcribed, or all are done.
+  func retranscribeProgress(in interval: DateInterval) -> Double? {
+    let inside = { (date: Date) in date >= interval.start && date < interval.end }
+    let left = waitingStarts.count(where: inside)
+    guard left > 0 else { return nil }
+    let total = requestedStarts.count(where: inside)
+    return Double(max(total - left, 0)) / Double(max(total, 1))
   }
 
   /// Loads the model in the background, or drops it for Apple speech alone. The transcription
@@ -132,9 +148,12 @@ final class Refiner {
     guard !sentences.isEmpty else { return }
     retranscribing.append(interval)
     if all { summarizeAll.insert(interval) }
+    let starts = sentences.map(\.start)
+    batchStarts[interval, default: []] += starts
+    requestedStarts += starts
+    waitingStarts += starts
     queue += sentences.map { Job(sentence: $0, batch: interval) }
     pending = queue.count
-    retranscribeRemaining = queue.count { $0.batch != nil }
     start()
   }
 
@@ -142,16 +161,32 @@ final class Refiner {
   func cancelRetranscription() {
     queue.removeAll { $0.batch != nil }
     pending = queue.count
+    waitingStarts = []
     for interval in retranscribing { finish(interval, stopped: true) }
+  }
+
+  /// After a sentence of `batch`: once its hour has nothing left, that hour is summarized again.
+  private func hourDone(_ start: Date, batch: DateInterval) {
+    let calendar = Calendar.current
+    let hour = calendar.hourStart(start)
+    guard !queue.contains(where: { $0.batch == batch && calendar.hourStart($0.sentence.start) == hour }) else { return }
+    reportedHours[batch, default: []].insert(hour)
+    let changedHere = changed[batch]?.contains { calendar.hourStart($0) == hour } ?? false
+    if changedHere || summarizeAll.contains(batch) { onHourRetranscribed?(hour) }
   }
 
   private func finish(_ interval: DateInterval, stopped: Bool = false) {
     retranscribing.removeAll { $0 == interval }
-    retranscribeRemaining = queue.count { $0.batch != nil }
+    batchStarts[interval] = nil
+    requestedStarts = batchStarts.values.flatMap { $0 }
     let starts = changed.removeValue(forKey: interval) ?? []
-    // Stopped halfway: only what changed is summarized again.
+    // Stopped halfway: the hour it stopped in still gets its changes summarized.
+    let reported = reportedHours.removeValue(forKey: interval) ?? []
+    for hour in Set(starts.map(Calendar.current.hourStart)).subtracting(reported).sorted() {
+      onHourRetranscribed?(hour)
+    }
     let all = summarizeAll.remove(interval) != nil && !stopped
-    if all || !starts.isEmpty { onRetranscribed?(interval, starts, all) }
+    onRetranscribed?(interval, starts, all)
   }
 
   private func start() {
@@ -177,10 +212,16 @@ final class Refiner {
         recognizer.map { ($0, modelName) } ?? (job.batch != nil ? (AppleSentenceRecognizer(), nil) : nil)
       if let use, let changedText = await refine(job.sentence, with: use.recognizer, name: use.name),
         changedText, let batch = job.batch {
-        changed[batch, default: []].append(job.sentence.start)
+        if retranscribing.contains(batch) {
+          changed[batch, default: []].append(job.sentence.start)
+        } else {
+          // Finished after "停止": its hour was already handed over without it.
+          onHourRetranscribed?(Calendar.current.hourStart(job.sentence.start))
+        }
       }
-      if let batch = job.batch {
-        retranscribeRemaining = queue.count { $0.batch != nil }
+      if let batch = job.batch, retranscribing.contains(batch) {
+        if let index = waitingStarts.firstIndex(of: job.sentence.start) { waitingStarts.remove(at: index) }
+        hourDone(job.sentence.start, batch: batch)
         if !queue.contains(where: { $0.batch == batch }) { finish(batch) }
       }
     }

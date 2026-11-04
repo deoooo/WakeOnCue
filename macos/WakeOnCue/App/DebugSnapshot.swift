@@ -66,7 +66,8 @@
             model.regenerateSummaries(in: interval)
           }
           Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Debug").notice(
-            "\(parts[0], privacy: .public) \(interval, privacy: .public) with \(model.refiner.retranscribeName, privacy: .public) / \(model.summaries.engineName ?? "-", privacy: .public); remaining \(model.refiner.retranscribeRemaining)")
+            "\(parts[0], privacy: .public) \(interval, privacy: .public) with \(model.refiner.retranscribeName, privacy: .public) / \(model.summaries.engineName ?? "-", privacy: .public)")
+        case "scrollhour": model.reveal(hour: Calendar.current.startOfDay(for: model.ui.day).addingTimeInterval(Double(Int(argument) ?? 0) * 3_600))
         case "stoptranscribe": model.refiner.cancelRetranscription()
         case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
         case "draft": model.ui.draftingMinutes = true

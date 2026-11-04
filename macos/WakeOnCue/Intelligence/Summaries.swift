@@ -30,6 +30,9 @@ final class Summaries {
   @ObservationIgnored private var failed: [Date: Date] = [:]
   @ObservationIgnored private var provisionalAt: [Date: (time: Date, count: Int)] = [:]
   @ObservationIgnored private var dirtyDays: Set<Date> = []
+  /// True while a re-transcription is still changing the day: hours are summarized as they
+  /// finish, the day once at the end (`releaseDays`), not after every hour.
+  @ObservationIgnored var holdsDays: () -> Bool = { false }
 
   private enum Job: Equatable {
     case hour(Date, final: Bool)
@@ -129,6 +132,12 @@ final class Summaries {
     enqueue(.day(calendar.startOfDay(for: interval.start)))
   }
 
+  /// Writes the day summaries held back during a re-transcription.
+  func releaseDays() {
+    guard !holdsDays() else { return }
+    for day in dirtyDays.sorted() { enqueue(.day(day)) }
+  }
+
   func regenerateMeeting(_ id: Int64) {
     enqueue(.meeting(id))
   }
@@ -203,7 +212,7 @@ final class Summaries {
         lastError = error.localizedDescription
         if case .hour(let hour, _) = job { failed[hour] = .now }
       }
-      if queue.isEmpty, let day = dirtyDays.first {
+      if queue.isEmpty, !holdsDays(), let day = dirtyDays.first {
         queue.append(.day(day))
       }
     }
@@ -216,6 +225,21 @@ final class Summaries {
   private func visibleSentences(in interval: DateInterval) -> [Sentence] {
     let hidden = store.marks(overlapping: interval)
     return store.sentences(in: interval).filter { s in !hidden.contains { $0.covers(s.start) } }
+  }
+
+  /// The hour's time is already next to its summary; repeating it reads as filler.
+  static let hourStyle = "直接从事情写起，比如「和供应商核对改价权限，决定把权限写进文档。」不要用「这一小时」「本小时」「这段时间」「主要」开头，也不要复述时间。"
+
+  /// Drops a leading "这一小时（里），" that models still write, also from older summaries.
+  nonisolated static func tidy(_ summary: String) -> String {
+    var text = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+    for prefix in ["这一个小时", "这一小时", "这个小时", "本小时", "这一时段", "这段时间"] where text.hasPrefix(prefix) {
+      text.removeFirst(prefix.count)
+      for word in ["里", "内", "中"] where text.hasPrefix(word) { text.removeFirst(word.count) }
+      while let first = text.first, "，,：: ".contains(first) { text.removeFirst() }
+      break
+    }
+    return text.isEmpty ? summary : text
   }
 
   private static func numbered(_ sentences: [Sentence]) -> String {
@@ -256,16 +280,16 @@ final class Summaries {
     var keys: [Int64] = []
     for part in Self.parts(sentences, limit: engine.partCharacters) {
       let result = try await engine.hour(
-        "下面是 \(TimeText.clock(hour)) 这一小时的转录，每句前面有编号。总结这一小时谈了什么，并挑出最能代表内容的二到五句原话。\n\n\(Self.numbered(part))")
+        "下面是 \(TimeText.clock(hour)) 开始一小时的转录，每句前面有编号。用一到两句话写出谈了哪些事、有什么结论，并挑出最能代表内容的二到五句原话。\(Self.hourStyle)\n\n\(Self.numbered(part))")
       notes.append(result.summary)
       keys += Self.ids(result.keySentences, in: part)
     }
     var summary = notes.first ?? ""
     if notes.count > 1 {
-      summary = try await engine.text("把下面几段笔记合成这一小时的总结，一到两句话，只输出总结：\n\n" + notes.joined(separator: "\n"))
+      summary = try await engine.text("把下面几段笔记合成一段总结，一到两句话，只输出总结。\(Self.hourStyle)\n\n" + notes.joined(separator: "\n"))
     }
     store.saveHourSummary(HourSummary(
-      hourStart: hour, summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+      hourStart: hour, summary: Self.tidy(summary),
       keySentenceIDs: Array(keys.uniqued().prefix(6)),
       generatedAt: .now, isFinal: final, engine: engine.name))
   }
