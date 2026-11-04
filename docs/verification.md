@@ -126,6 +126,7 @@ transcript by design and is not an accuracy sample.
 
 ## 仅剩实体机才能完成的验证
 
+- 手表静音置零（`WatchSilenceGate`）：判定逻辑与 iPhone 导入的单元测试已通过，手表真机未运行，真实环境下的判定准确度、节省量和耗电都没有证据（清单见 `docs/apple-watch.md`）；
 - 更长真机样本的主观音质与本地 PCM/最终 M4A 缺口检查（短时非静音样本已通过）；
 - 60 分钟连续录音稳定性；
 - 锁屏 30 分钟、切后台使用其他 App、音频 interruption 与 route change；
