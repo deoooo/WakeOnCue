@@ -259,15 +259,31 @@ final class ASRModels {
     }
   }
 
+  /// Downloads the shared sherpa-onnx runtime if it is not on this Mac yet.
+  func ensureRuntime() async throws {
+    guard !FileManager.default.fileExists(atPath: Self.runtimeFolder.appending(path: "libsherpa-onnx-c-api.dylib").path) else { return }
+    let downloader = Downloader(url: ASRModel.runtime.url, resumeData: nil)
+    guard case .finished(let location) = await downloader.run() else { throw downloader.error ?? DownloadError.incomplete }
+    let archive = Self.directory.appending(path: ASRModel.runtime.folder + ".tar.bz2")
+    try? FileManager.default.removeItem(at: archive)
+    try FileManager.default.moveItem(at: location, to: archive)
+    defer { try? FileManager.default.removeItem(at: archive) }
+    try await Self.verifyAndUnpack(archive, expected: ASRModel.runtime)
+  }
+
+  /// SHA-256 of a file, read in chunks.
+  nonisolated static func sha256(of file: URL) throws -> String {
+    let handle = try FileHandle(forReadingFrom: file)
+    defer { try? handle.close() }
+    var hasher = SHA256()
+    while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
   /// Checks the archive against the published SHA-256, then unpacks it with the system tar.
   private nonisolated static func verifyAndUnpack(_ archive: URL, expected: ReleaseFile) async throws {
     try await Task.detached(priority: .utility) {
-      let handle = try FileHandle(forReadingFrom: archive)
-      defer { try? handle.close() }
-      var hasher = SHA256()
-      while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
-      let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-      guard digest == expected.sha256 else { throw DownloadError.checksum }
+      guard try sha256(of: archive) == expected.sha256 else { throw DownloadError.checksum }
 
       let destination = archive.deletingLastPathComponent()
       try? FileManager.default.removeItem(at: destination.appending(path: expected.folder))

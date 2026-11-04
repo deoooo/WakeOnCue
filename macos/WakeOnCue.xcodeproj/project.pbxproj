@@ -10,7 +10,9 @@
 		02361A5C4C90E8A1A7DC6810 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C6CDCB796A3A7CABC5C2179 /* AppModel.swift */; };
 		0359D6D5059254AD36F47CED /* AudioDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2BABAE8DA93BE5C0F3606F /* AudioDevices.swift */; };
 		03D59601B837F7CE26110D70 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73F261F8DC2CA4A56E4125E8 /* Theme.swift */; };
+		040CF1327A9257C569249EB9 /* Voices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C1319CE831B4E9AF2684B7 /* Voices.swift */; };
 		04B8DF58B001AD0A4BA1AB85 /* MainState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CBEB0FA5F578C028F2C1AB5 /* MainState.swift */; };
+		06508AE94958E7947A60AA0F /* VoicesSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB9AF4A31AD882041D6357D /* VoicesSettings.swift */; };
 		067FF1AE8F731F7BA2C71112 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE068CA12358B2AAD7D8040 /* Store.swift */; };
 		074DA968826B94710C98EA54 /* WakeOnCueCLI in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9B9EF20756B3FE4556D363F7 /* WakeOnCueCLI */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		086A884091A17A549EDB8003 /* MeetingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB8CCAB0E8AF01B9447DD3AE /* MeetingPanel.swift */; };
@@ -37,6 +39,7 @@
 		7610503FB57D2EBF1B700601 /* DayData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E266453666E0C95A7FA1E1 /* DayData.swift */; };
 		7A6A162FB8C2E506E0DC513B /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604618984DEE22DF2306A61D /* MicrophoneCapture.swift */; };
 		7E7BB11820B6FB793FDF975E /* Transcription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE52C883D540F795D9651B6 /* Transcription.swift */; };
+		7F3D8836D37758C40E4F2F6B /* NameSpeakerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A3D9F83EDD5B94DDD6E9EB /* NameSpeakerSheet.swift */; };
 		8F20176409F8EF3037AB5912 /* Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EB5F2E91E7F6BEE26CE361 /* Meetings.swift */; };
 		902F4D218B78FA44D304C360 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A022333EA6F9C747D9F302F0 /* OnboardingView.swift */; };
 		923D7D41CB8B1FB62807B8A0 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB26335672FB5FEDF4193D27 /* Player.swift */; };
@@ -55,6 +58,7 @@
 		D1BBD885B69E28D81C00959A /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0028A2E2AAF6205861E79EE /* SQLite.swift */; };
 		DA75124CA81A8EA5429B211E /* SherpaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 460846AA753F3705B00049DD /* SherpaRecognizer.swift */; };
 		E1F33B0BC922222ADC6D56DC /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
+		E2642DE7992F33954E065BBD /* SpeakerEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78F8F059CF1202C908BA757 /* SpeakerEmbedder.swift */; };
 		E4B89798BEA9A7EFFEF4891C /* ASRModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28941DA64DCB881E51ED3167 /* ASRModels.swift */; };
 		E8036FF665374E69B8BDAB35 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8991E7CA10CFCAAC0F59D843 /* MainWindow.swift */; };
 		EA3C518BA6DAB72E4CE20EDD /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D162AE2275D6AFD63D9C3D1 /* Recorder.swift */; };
@@ -101,6 +105,7 @@
 		460846AA753F3705B00049DD /* SherpaRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaRecognizer.swift; sourceTree = "<group>"; };
 		48052510BD5ECF149F85F0F5 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		49DCEF7CD2B1CB054D5A4D01 /* Refiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Refiner.swift; sourceTree = "<group>"; };
+		4BB9AF4A31AD882041D6357D /* VoicesSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesSettings.swift; sourceTree = "<group>"; };
 		4E2BABAE8DA93BE5C0F3606F /* AudioDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDevices.swift; sourceTree = "<group>"; };
 		53B98023BF4C76B08EEB55EC /* TranscriptionServiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionServiceSettings.swift; sourceTree = "<group>"; };
 		552926D70A21371A53F717CA /* CommandLineSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLineSection.swift; sourceTree = "<group>"; };
@@ -128,6 +133,7 @@
 		AB8CCAB0E8AF01B9447DD3AE /* MeetingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPanel.swift; sourceTree = "<group>"; };
 		B2208B6D8AEEE945200BCF6C /* SummaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEngine.swift; sourceTree = "<group>"; };
 		B4024FFFBF93AB73D3092EA9 /* DayPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayPage.swift; sourceTree = "<group>"; };
+		B4A3D9F83EDD5B94DDD6E9EB /* NameSpeakerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameSpeakerSheet.swift; sourceTree = "<group>"; };
 		BB315D2686460BDB4B2A3070 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		BD9333388EA0FC832DE87BFE /* AppModel+Status.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Status.swift"; sourceTree = "<group>"; };
 		C1F94DFB59D63150B5C046E6 /* ModelList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelList.swift; sourceTree = "<group>"; };
@@ -135,12 +141,14 @@
 		CCC8A5EA8147A87BA3A18DC3 /* GatewayEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEngine.swift; sourceTree = "<group>"; };
 		D0028A2E2AAF6205861E79EE /* SQLite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLite.swift; sourceTree = "<group>"; };
 		DB26335672FB5FEDF4193D27 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		E78F8F059CF1202C908BA757 /* SpeakerEmbedder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerEmbedder.swift; sourceTree = "<group>"; };
 		EA40BBF45DCB552073BB0B06 /* AskPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPanel.swift; sourceTree = "<group>"; };
 		F1E266453666E0C95A7FA1E1 /* DayData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayData.swift; sourceTree = "<group>"; };
 		F261B9BF4489419B9A0B63F8 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
+		F3C1319CE831B4E9AF2684B7 /* Voices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voices.swift; sourceTree = "<group>"; };
 		F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_48FF0243-1242-4ED2-99FA-D95758C82F38" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_E26E5125-15E8-487C-9D78-33B5C3CAF234" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -152,6 +160,7 @@
 				C1F94DFB59D63150B5C046E6 /* ModelList.swift */,
 				635FE3194AEEB811362322F8 /* SettingsView.swift */,
 				53B98023BF4C76B08EEB55EC /* TranscriptionServiceSettings.swift */,
+				4BB9AF4A31AD882041D6357D /* VoicesSettings.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -172,7 +181,9 @@
 				49DCEF7CD2B1CB054D5A4D01 /* Refiner.swift */,
 				3D545CE67F1BE080ECD1C10A /* RemoteTranscriber.swift */,
 				460846AA753F3705B00049DD /* SherpaRecognizer.swift */,
+				E78F8F059CF1202C908BA757 /* SpeakerEmbedder.swift */,
 				7EE52C883D540F795D9651B6 /* Transcription.swift */,
+				F3C1319CE831B4E9AF2684B7 /* Voices.swift */,
 			);
 			path = Transcription;
 			sourceTree = "<group>";
@@ -199,6 +210,7 @@
 				6CBEB0FA5F578C028F2C1AB5 /* MainState.swift */,
 				8991E7CA10CFCAAC0F59D843 /* MainWindow.swift */,
 				AB8CCAB0E8AF01B9447DD3AE /* MeetingPanel.swift */,
+				B4A3D9F83EDD5B94DDD6E9EB /* NameSpeakerSheet.swift */,
 				3A184309A13DDC7166ACEC89 /* SentenceRow.swift */,
 				3054BB1053BC0B7E6DF8031B /* Sidebar.swift */,
 				71FD56E2EF262967915E1C2F /* TracksBar.swift */,
@@ -331,10 +343,10 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		"TEMP_388E300E-9CFD-4E59-9717-43234AAD1DE8" /* macos */ = {
+		"TEMP_C45DBF1E-2A60-4991-860B-F20E4252F00E" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_48FF0243-1242-4ED2-99FA-D95758C82F38" /* Signing.xcconfig */,
+				"TEMP_E26E5125-15E8-487C-9D78-33B5C3CAF234" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -470,6 +482,7 @@
 				7A6A162FB8C2E506E0DC513B /* MicrophoneCapture.swift in Sources */,
 				425806D6A75EE2860C13A0B0 /* ModelList.swift in Sources */,
 				983B7DFF9506D01318D09B82 /* Models.swift in Sources */,
+				7F3D8836D37758C40E4F2F6B /* NameSpeakerSheet.swift in Sources */,
 				902F4D218B78FA44D304C360 /* OnboardingView.swift in Sources */,
 				923D7D41CB8B1FB62807B8A0 /* Player.swift in Sources */,
 				B7C03903116C19A6F9624054 /* Preferences.swift in Sources */,
@@ -483,6 +496,7 @@
 				DA75124CA81A8EA5429B211E /* SherpaRecognizer.swift in Sources */,
 				2431FCE5473ACAEF42887704 /* Shortcuts.swift in Sources */,
 				C7F5DF1C19C22CED8E971A78 /* Sidebar.swift in Sources */,
+				E2642DE7992F33954E065BBD /* SpeakerEmbedder.swift in Sources */,
 				067FF1AE8F731F7BA2C71112 /* Store.swift in Sources */,
 				72D5742CC06D76D103CC9AD7 /* Summaries.swift in Sources */,
 				488BD77FE25CBE8F1990F024 /* SummaryEngine.swift in Sources */,
@@ -491,6 +505,8 @@
 				6FDB8548C6219C70B8108A09 /* TracksBar.swift in Sources */,
 				7E7BB11820B6FB793FDF975E /* Transcription.swift in Sources */,
 				CE966BD705302A7DFB01FF79 /* TranscriptionServiceSettings.swift in Sources */,
+				040CF1327A9257C569249EB9 /* Voices.swift in Sources */,
+				06508AE94958E7947A60AA0F /* VoicesSettings.swift in Sources */,
 				D09ACFD5B0E6077D89E83AA1 /* WakeOnCueApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -602,7 +618,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_48FF0243-1242-4ED2-99FA-D95758C82F38" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_E26E5125-15E8-487C-9D78-33B5C3CAF234" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -666,7 +682,7 @@
 		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_48FF0243-1242-4ED2-99FA-D95758C82F38" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_E26E5125-15E8-487C-9D78-33B5C3CAF234" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;

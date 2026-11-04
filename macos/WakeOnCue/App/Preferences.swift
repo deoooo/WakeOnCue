@@ -69,6 +69,10 @@ final class Preferences {
   var onboarded: Bool { didSet { defaults.set(onboarded, forKey: "onboarded") } }
   /// Recording is paused until this time; `.distantFuture` pauses until the user resumes.
   var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "pausedUntil") } }
+  /// Tell other people apart as 说话人 1, 2… without keeping voiceprints.
+  var splitSpeakers: Bool { didSet { defaults.set(splitSpeakers, forKey: "splitSpeakers") } }
+  /// Keep named people's voiceprints in the keychain and recognize them later.
+  var rememberVoices: Bool { didSet { defaults.set(rememberVoices, forKey: "rememberVoices") } }
   var summaryEngine: SummaryEngineChoice { didSet { defaults.set(summaryEngine.rawValue, forKey: "summaryEngine") } }
   var gatewayProtocol: GatewayProtocol { didSet { defaults.set(gatewayProtocol.rawValue, forKey: "gatewayProtocol") } }
   var gatewayBearerForAnthropic: Bool { didSet { defaults.set(gatewayBearerForAnthropic, forKey: "gatewayBearerForAnthropic") } }
@@ -90,6 +94,8 @@ final class Preferences {
     textRetentionDays = defaults.object(forKey: "textRetentionDays") as? Int ?? 0
     onboarded = defaults.bool(forKey: "onboarded")
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
+    splitSpeakers = defaults.bool(forKey: "splitSpeakers")
+    rememberVoices = defaults.bool(forKey: "rememberVoices")
     summaryEngine = SummaryEngineChoice(rawValue: defaults.string(forKey: "summaryEngine") ?? "") ?? .automatic
     gatewayProtocol = GatewayProtocol(rawValue: defaults.string(forKey: "gatewayProtocol") ?? "") ?? .chatCompletions
     gatewayBearerForAnthropic = defaults.bool(forKey: "gatewayBearerForAnthropic")

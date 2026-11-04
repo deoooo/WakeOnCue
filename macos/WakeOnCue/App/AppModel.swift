@@ -14,6 +14,7 @@ final class AppModel {
   let models: ASRModels
   let refiner: Refiner
   let asking: Asking
+  let voices: Voices
   let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -40,7 +41,11 @@ final class AppModel {
     models = ASRModels(preferences: preferences)
     let preferences = preferences
     models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
-    transcription.onSentence = { [weak refiner] in refiner?.enqueue($0) }
+    voices = Voices(store: store, preferences: preferences, models: models, recorder: recorder)
+    transcription.onSentence = { [weak refiner, weak voices] in
+      refiner?.enqueue($0)
+      voices?.enqueue($0)
+    }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
   }
 

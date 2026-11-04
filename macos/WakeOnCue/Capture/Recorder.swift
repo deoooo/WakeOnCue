@@ -309,12 +309,20 @@ final class Recorder {
 nonisolated final class AudioFanout: @unchecked Sendable {
   private let lock = NSLock()
   private var handler: (@Sendable (AudioChannel, TimedBuffer) -> Void)?
+  /// A short-lived second listener, e.g. while the user records their voiceprint.
+  private var tap: (@Sendable (AudioChannel, TimedBuffer) -> Void)?
 
   func connect(_ handler: @escaping @Sendable (AudioChannel, TimedBuffer) -> Void) {
     lock.withLock { self.handler = handler }
   }
 
+  func setTap(_ tap: (@Sendable (AudioChannel, TimedBuffer) -> Void)?) {
+    lock.withLock { self.tap = tap }
+  }
+
   func send(_ channel: AudioChannel, _ buffer: TimedBuffer) {
-    lock.withLock { handler }?(channel, buffer)
+    let (handler, tap) = lock.withLock { (self.handler, self.tap) }
+    handler?(channel, buffer)
+    tap?(channel, buffer)
   }
 }

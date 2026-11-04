@@ -22,6 +22,8 @@ final class MainState {
   var asking = false {
     didSet { if asking { meetingID = nil } }
   }
+  /// The sentence whose speaker the user is naming ("这是谁…").
+  var namingSentence: Sentence?
   var showTracks = false
   var showLegend = false
   var searchText = ""

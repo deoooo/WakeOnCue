@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 /// One transcript line. A click plays from here; dragging selects text to copy without playing.
 struct SentenceRow: View {
+  @Environment(AppModel.self) private var model
   let sentence: Sentence
   let highlighted: Bool
   let play: () -> Void
@@ -15,7 +17,7 @@ struct SentenceRow: View {
         .foregroundStyle(.secondary)
         .frame(width: 62, alignment: .leading)
       VStack(alignment: .leading, spacing: 2) {
-        (Text(sentence.speaker.label).fontWeight(.semibold) + Text(" · \(sentence.source)").foregroundStyle(.secondary))
+        (Text(sentence.speakerLabel).fontWeight(.semibold) + Text(" · \(sentence.source)").foregroundStyle(.secondary))
           .font(.caption)
         Text(sentence.text)
           .font(.system(size: 13))
@@ -33,6 +35,13 @@ struct SentenceRow: View {
     // A tap only fires when the pointer did not move, so a drag-selection never plays.
     .simultaneousGesture(TapGesture().onEnded(play))
     .onHover { hovering = $0 }
+    .contextMenu {
+      Button("复制这句") {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(sentence.text, forType: .string)
+      }
+      Button("这是谁…") { model.ui.namingSentence = sentence }
+    }
     .help("单击从这句播放，拖选可复制" + (sentence.refinedBy.map { "。由 \($0) 重新转录" } ?? ""))
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)

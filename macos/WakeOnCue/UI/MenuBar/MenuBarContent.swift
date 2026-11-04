@@ -53,7 +53,7 @@ struct MenuBarContent: View {
       if let live = model.transcription.live.values.max(by: { $0.start < $1.start }) {
         Text(live.text).font(.callout).lineLimit(2).foregroundStyle(.secondary)
       } else if let last = model.transcription.lastSentence {
-        Text("\(last.speaker.label)：\(last.text)").font(.callout).lineLimit(2).foregroundStyle(.secondary)
+        Text("\(last.speakerLabel)：\(last.text)").font(.callout).lineLimit(2).foregroundStyle(.secondary)
       }
       if let issue = model.currentIssue {
         Text("\(issue.title)。\(issue.detail)").font(.caption).foregroundStyle(Color.recording)
