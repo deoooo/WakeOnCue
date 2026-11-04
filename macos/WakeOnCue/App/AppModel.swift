@@ -51,6 +51,24 @@ final class AppModel {
       voices?.enqueue($0)
     }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
+    // New words make the old summaries wrong: redo the hours and meetings they fall in.
+    refiner.onRetranscribed = { [weak self] starts in
+      guard let self else { return }
+      let calendar = Calendar.current
+      for hour in Set(starts.map(calendar.hourStart)) {
+        summaries.invalidate(DateInterval(start: hour, duration: 3_600))
+      }
+      for meeting in store.meetings(overlapping: DateInterval(start: starts.min()!, end: starts.max()!.addingTimeInterval(1)))
+      where starts.contains(where: { $0 >= meeting.start && $0 < max(meeting.end, meeting.start.addingTimeInterval(1)) }) {
+        summaries.regenerateMeeting(meeting.id)
+      }
+    }
+  }
+
+  /// Every summary of the stretch again: its hours, its day and its meetings.
+  func regenerateSummaries(in interval: DateInterval) {
+    summaries.invalidate(interval)
+    for meeting in store.meetings(overlapping: interval) { summaries.regenerateMeeting(meeting.id) }
   }
 
   func launch() async {

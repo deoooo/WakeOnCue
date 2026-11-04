@@ -53,6 +53,20 @@
             Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Debug").notice(
               "ASK \(last.question, privacy: .public) → \(last.error ?? last.answer.map(\.text).joined(separator: " / "), privacy: .public) | cites: \(cites.joined(separator: " ; "), privacy: .public)")
           }
+        // "retranscribe 14" / "regenerate 14": that hour of the day shown; "retranscribe day".
+        case "retranscribe", "regenerate", "regenday":
+          let day = Calendar.current.startOfDay(for: model.ui.day)
+          let interval = argument == "day" || parts[0] == "regenday"
+            ? DateInterval(start: day, duration: 86_400)
+            : DateInterval(start: day.addingTimeInterval(Double(Int(argument) ?? 0) * 3_600), duration: 3_600)
+          if parts[0] == "retranscribe" {
+            model.refiner.retranscribe(interval)
+          } else {
+            model.regenerateSummaries(in: interval)
+          }
+          Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Debug").notice(
+            "\(parts[0], privacy: .public) \(interval, privacy: .public) with \(model.refiner.retranscribeName, privacy: .public) / \(model.summaries.engineName ?? "-", privacy: .public); remaining \(model.refiner.retranscribeRemaining)")
+        case "stoptranscribe": model.refiner.cancelRetranscription()
         case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
         case "draft": model.ui.draftingMinutes = true
         case "close": model.closeMeeting()

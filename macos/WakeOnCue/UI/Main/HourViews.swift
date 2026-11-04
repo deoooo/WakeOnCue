@@ -198,6 +198,9 @@ struct HourRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityValue(expanded ? "已展开" : "已收起")
+        RedoStatus(interval: hour.interval, engine: hour.summary.map(\.engine)) {
+          model.summaries.regenerate(hour: hour.interval.start)
+        }
       }
     case .quiet:
       Text("录了，但这一小时没人说话，没有总结。").font(.callout).foregroundStyle(.secondary)
@@ -250,11 +253,10 @@ struct HourRow: View {
         if hour.meetings.isEmpty {
           Button("标成一场会议…") { model.markMeeting(in: hour.interval) }
         }
-        Button("重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
+        Button("用 \(model.summaries.engineName ?? "AI") 重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
           .disabled(model.summaries.engineName == nil)
-        if let asr = model.models.active {
-          Button("用 \(asr.name) 重新转录") { model.refiner.retranscribe(hour.interval) }
-        }
+        Button("用 \(model.refiner.retranscribeName) 重新转录") { model.refiner.retranscribe(hour.interval) }
+          .disabled(model.refiner.isRetranscribing(hour.interval))
       }
       if hour.state == .speech || hour.state == .privateHour {
         Button(hour.state == .privateHour ? "取消私人" : "标为私人") {
@@ -303,5 +305,40 @@ struct HourRow: View {
     .overlay(alignment: .leading) { Rectangle().fill(.separator).frame(width: 2) }
     .padding(.leading, 76)
     .padding(.bottom, 8)
+  }
+}
+
+/// Under a summary: re-transcription in progress, or a summary written by an engine that is no
+/// longer the chosen one, with a way to write it again.
+struct RedoStatus: View {
+  @Environment(AppModel.self) private var model
+  let interval: DateInterval
+  /// The engine that wrote the summary shown, or nil when there is none.
+  let engine: String??
+  let regenerate: () -> Void
+
+  init(interval: DateInterval, engine: String?? = .none, regenerate: @escaping () -> Void) {
+    self.interval = interval
+    self.engine = engine
+    self.regenerate = regenerate
+  }
+
+  var body: some View {
+    if model.refiner.isRetranscribing(interval) {
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.mini)
+        Text("正在用 \(model.refiner.retranscribeName) 重新转录，还有 \(model.refiner.retranscribeRemaining) 句，完成后更新总结")
+        Button("停止") { model.refiner.cancelRetranscription() }.buttonStyle(.link)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    } else if let engine, model.summaries.isOutdated(engine: engine), let current = model.summaries.engineName {
+      HStack(spacing: 6) {
+        Text("由 \(engine ?? AppleIntelligenceEngine().name) 生成，现在选的是 \(current)")
+        Button("重新生成") { regenerate() }.buttonStyle(.link)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
   }
 }

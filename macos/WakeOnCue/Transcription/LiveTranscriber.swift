@@ -233,3 +233,66 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
     return sentences.filter { !$0.text.allSatisfy { enders.contains($0) || $0 == "，" || $0 == "," } }
   }
 }
+
+/// Apple speech on one stored sentence, for "重新转录" when no downloaded model is in use: the
+/// same engine as the live transcript, but it hears the whole sentence at once.
+nonisolated struct AppleSentenceRecognizer: SentenceRecognizer {
+  /// The samples' format, as `Refiner.samples` reads them from the segment files.
+  static let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+
+  struct Unavailable: LocalizedError {
+    var errorDescription: String? { "Apple 语音现在不可用" }
+  }
+
+  @concurrent nonisolated func recognize(_ samples: [Float]) async throws -> String {
+    let transcriber = SpeechTranscriber(locale: LiveTranscriber.locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+    guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]),
+      let input = Self.buffer(samples, format: format)
+    else { throw Unavailable() }
+    let analyzer = SpeechAnalyzer(modules: [transcriber])
+    let results = Task {
+      var text = ""
+      for try await result in transcriber.results where result.isFinal {
+        text += String(result.text.characters)
+      }
+      return text
+    }
+    let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
+    continuation.yield(AnalyzerInput(buffer: input))
+    continuation.finish()
+    do {
+      try await analyzer.start(inputSequence: stream)
+      try await analyzer.finalizeAndFinishThroughEndOfInput()
+    } catch {
+      await analyzer.cancelAndFinishNow()
+      results.cancel()
+      throw error
+    }
+    return try await results.value
+  }
+
+  /// The samples in the analyzer's format.
+  private static func buffer(_ samples: [Float], format: AVAudioFormat) -> AVAudioPCMBuffer? {
+    guard let source = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(samples.count)),
+      let channel = source.floatChannelData?[0]
+    else { return nil }
+    source.frameLength = AVAudioFrameCount(samples.count)
+    samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+    if format == inputFormat { return source }
+    guard let converter = AVAudioConverter(from: inputFormat, to: format) else { return nil }
+    let capacity = AVAudioFrameCount(Double(samples.count) * format.sampleRate / inputFormat.sampleRate) + 1_024
+    guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return nil }
+    var supplied = false
+    var error: NSError?
+    let status = converter.convert(to: output, error: &error) { _, inputStatus in
+      if supplied {
+        inputStatus.pointee = .endOfStream
+        return nil
+      }
+      supplied = true
+      inputStatus.pointee = .haveData
+      return source
+    }
+    return status == .error || output.frameLength == 0 ? nil : output
+  }
+}

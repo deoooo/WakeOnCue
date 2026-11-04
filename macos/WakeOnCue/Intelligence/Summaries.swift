@@ -133,6 +133,13 @@ final class Summaries {
     enqueue(.meeting(id))
   }
 
+  /// True when `engine` wrote a summary but another engine is chosen now, e.g. after switching
+  /// from Apple Intelligence to the gateway. Old summaries stay until regenerated.
+  func isOutdated(engine: String?) -> Bool {
+    guard let engineName else { return false }
+    return (engine ?? AppleIntelligenceEngine().name) != engineName
+  }
+
   /// Regenerates one hour now, e.g. from the hour's menu.
   func regenerate(hour: Date) {
     failed[hour] = nil

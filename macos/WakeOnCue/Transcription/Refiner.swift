@@ -6,6 +6,10 @@ import OSLog
 /// Re-transcribes Apple speech's sentences with the downloaded model, one sentence at a time.
 /// Apple speech keeps doing the live transcript and its sentence boundaries act as the voice
 /// activity detection; the better text replaces the live one, while times and speakers stay.
+///
+/// "重新转录" runs a stretch of time again with whatever is chosen now: the downloaded model or
+/// service, or Apple speech when none is. Once a stretch is done, the hours and meetings whose
+/// words changed are handed to `onRetranscribed`, so their summaries follow the new words.
 @Observable
 final class Refiner {
   private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Refiner")
@@ -32,7 +36,21 @@ final class Refiner {
   @ObservationIgnored private let store: Store
   @ObservationIgnored private var recognizer: (any SentenceRecognizer)?
   @ObservationIgnored private var modelName: String?
-  @ObservationIgnored private var queue: [Sentence] = []
+  /// Stretches being re-transcribed on request, for progress next to them.
+  private(set) var retranscribing: [DateInterval] = []
+  /// Sentences of those stretches still to do.
+  private(set) var retranscribeRemaining = 0
+  /// Starts of the sentences whose words changed in a finished stretch.
+  @ObservationIgnored var onRetranscribed: (([Date]) -> Void)?
+
+  private struct Job {
+    var sentence: Sentence
+    /// The stretch it was requested for; nil for a live sentence.
+    var batch: DateInterval?
+  }
+
+  @ObservationIgnored private var queue: [Job] = []
+  @ObservationIgnored private var changed: [DateInterval: [Date]] = [:]
   @ObservationIgnored private var running = false
   @ObservationIgnored private var generation = 0
 
@@ -45,14 +63,27 @@ final class Refiner {
     audioSeconds > 5 ? workSeconds / audioSeconds * 60 : nil
   }
 
+  /// What "重新转录" uses now.
+  var retranscribeName: String {
+    switch status {
+    case .ready(let name), .loading(let name): name
+    case .off, .failed: "Apple 语音"
+    }
+  }
+
+  func isRetranscribing(_ interval: DateInterval) -> Bool {
+    retranscribing.contains { $0.start < interval.end && interval.start < $0.end }
+  }
+
   /// Loads the model in the background, or drops it for Apple speech alone. The transcription
-  /// service needs no loading.
+  /// service needs no loading. Stretches asked for again carry on with the new choice.
   func use(_ model: ASRModel?, service: TranscriptionServiceConfig? = nil) {
     generation += 1
     let current = generation
     recognizer = nil
-    queue = []
-    pending = 0
+    modelName = nil
+    queue.removeAll { $0.batch == nil }
+    pending = queue.count
     lastError = nil
     if let model, model.isRemote, let service {
       recognizer = RemoteTranscriber(config: service)
@@ -86,17 +117,35 @@ final class Refiner {
   /// A new live sentence; it is re-transcribed once its audio is on disk.
   func enqueue(_ sentence: Sentence) {
     guard modelName != nil || status != .off else { return }
-    queue.append(sentence)
+    queue.append(Job(sentence: sentence))
     pending = queue.count
     start()
   }
 
-  /// "用 Qwen3-ASR 重新转录": every sentence of the hour, again.
+  /// "重新转录": every sentence of the stretch again, with what is chosen now.
   func retranscribe(_ interval: DateInterval) {
-    guard status != .off else { return }
-    queue += store.sentences(in: interval)
+    let queued = Set(queue.filter { $0.batch != nil }.map(\.sentence.id))
+    let sentences = store.sentences(in: interval).filter { !queued.contains($0.id) }
+    guard !sentences.isEmpty else { return }
+    retranscribing.append(interval)
+    queue += sentences.map { Job(sentence: $0, batch: interval) }
     pending = queue.count
+    retranscribeRemaining = queue.count { $0.batch != nil }
     start()
+  }
+
+  /// Stops the stretches asked for; what already changed still updates its summaries.
+  func cancelRetranscription() {
+    queue.removeAll { $0.batch != nil }
+    pending = queue.count
+    for interval in retranscribing { finish(interval) }
+  }
+
+  private func finish(_ interval: DateInterval) {
+    retranscribing.removeAll { $0 == interval }
+    retranscribeRemaining = queue.count { $0.batch != nil }
+    let starts = changed.removeValue(forKey: interval) ?? []
+    if !starts.isEmpty { onRetranscribed?(starts) }
   }
 
   private func start() {
@@ -110,47 +159,71 @@ final class Refiner {
 
   private func drain() async {
     while !queue.isEmpty {
-      // Wait for the model to finish loading.
-      guard let recognizer, let modelName else {
-        if case .loading = status {
-          try? await Task.sleep(for: .seconds(1))
-          continue
-        }
-        queue = []
-        break
+      if recognizer == nil, case .loading = status {
+        // Wait for the model to finish loading.
+        try? await Task.sleep(for: .seconds(1))
+        continue
       }
-      let sentence = queue.removeFirst()
+      let job = queue.removeFirst()
       pending = queue.count
-      let wait = sentence.end.addingTimeInterval(Self.settle).timeIntervalSinceNow
-      if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-      // Private and deleted time never goes to a model, and never leaves this Mac.
-      if store.marks(overlapping: DateInterval(start: sentence.start, end: max(sentence.end, sentence.start))).contains(where: { $0.covers(sentence.start) }) {
-        continue
+      // Apple speech already wrote the live text; it only runs again when asked.
+      let use: (recognizer: any SentenceRecognizer, name: String?)? =
+        recognizer.map { ($0, modelName) } ?? (job.batch != nil ? (AppleSentenceRecognizer(), nil) : nil)
+      if let use, let changedText = await refine(job.sentence, with: use.recognizer, name: use.name),
+        changedText, let batch = job.batch {
+        changed[batch, default: []].append(job.sentence.start)
       }
-      let segments = store.segments(overlapping: DateInterval(start: sentence.start.addingTimeInterval(-Self.margin), end: sentence.end.addingTimeInterval(Self.margin)))
-        .filter { $0.channel == sentence.channel }
-      let start = sentence.start.addingTimeInterval(-Self.margin)
-      let end = sentence.end.addingTimeInterval(Self.margin)
-      let began = Date()
-      let samples = await Task.detached(priority: .utility) { Self.samples(from: segments, start: start, end: end) }.value
-      guard samples.count > 1_600 else { continue }
-      let text: String
-      do {
-        text = try await recognizer.recognize(samples)
-        lastError = nil
-      } catch {
-        lastError = error.localizedDescription
-        Self.logger.error("Re-transcription failed: \(error.localizedDescription, privacy: .public)")
-        continue
-      }
-      audioSeconds += end.timeIntervalSince(start)
-      workSeconds += Date().timeIntervalSince(began)
-      let cleaned = Self.clean(text)
-      if !cleaned.isEmpty, cleaned != sentence.text {
-        store.refineSentence(id: sentence.id, text: cleaned, by: modelName)
+      if let batch = job.batch {
+        retranscribeRemaining = queue.count { $0.batch != nil }
+        if !queue.contains(where: { $0.batch == batch }) { finish(batch) }
       }
     }
     pending = 0
+  }
+
+  /// Runs one sentence again and stores the result. Returns whether its words changed, or nil
+  /// when it was skipped or failed.
+  private func refine(_ sentence: Sentence, with recognizer: any SentenceRecognizer, name modelName: String?) async -> Bool? {
+    let wait = sentence.end.addingTimeInterval(Self.settle).timeIntervalSinceNow
+    if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+    // Private and deleted time never goes to a model, and never leaves this Mac.
+    if store.marks(overlapping: DateInterval(start: sentence.start, end: max(sentence.end, sentence.start))).contains(where: { $0.covers(sentence.start) }) {
+      return nil
+    }
+    let segments = store.segments(overlapping: DateInterval(start: sentence.start.addingTimeInterval(-Self.margin), end: sentence.end.addingTimeInterval(Self.margin)))
+      .filter { $0.channel == sentence.channel }
+    let start = sentence.start.addingTimeInterval(-Self.margin)
+    let end = sentence.end.addingTimeInterval(Self.margin)
+    let began = Date()
+    let samples = await Task.detached(priority: .utility) { Self.samples(from: segments, start: start, end: end) }.value
+    guard samples.count > 1_600 else { return nil }
+    let text: String
+    do {
+      text = try await recognizer.recognize(samples)
+      lastError = nil
+    } catch {
+      lastError = error.localizedDescription
+      Self.logger.error("Re-transcription failed: \(error.localizedDescription, privacy: .public)")
+      return nil
+    }
+    if modelName != nil {
+      audioSeconds += end.timeIntervalSince(start)
+      workSeconds += Date().timeIntervalSince(began)
+    }
+    let cleaned = Self.clean(text)
+    guard !cleaned.isEmpty else { return false }
+    // Apple speech run again on a short sound (嗯, 对) can hear English ("you"); keep the
+    // Chinese the live pass heard instead.
+    if modelName == nil, !Self.hasChinese(cleaned), Self.hasChinese(sentence.text) { return false }
+    // The current text may be gone: the sentence was deleted, or merged with a recording.
+    guard let current = store.sentences(ids: [sentence.id]).first else { return nil }
+    guard cleaned != current.text || modelName != current.refinedBy else { return false }
+    store.refineSentence(id: sentence.id, text: cleaned, by: modelName)
+    return cleaned != current.text
+  }
+
+  nonisolated static func hasChinese(_ text: String) -> Bool {
+    text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
   }
 
   /// Qwen3-ASR sometimes prefixes the detected language; keep only the words.

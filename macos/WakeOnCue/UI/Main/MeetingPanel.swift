@@ -25,8 +25,12 @@ struct MeetingPanel: View {
     }
   }
 
+  private func interval(_ meeting: Meeting) -> DateInterval {
+    DateInterval(start: meeting.start, end: max(meeting.end, meeting.start))
+  }
+
   private func sentences(_ meeting: Meeting) -> [Sentence] {
-    let interval = DateInterval(start: meeting.start, end: max(meeting.end, meeting.start))
+    let interval = interval(meeting)
     let hidden = model.store.marks(overlapping: interval)
     return model.store.sentences(in: interval).filter { s in !hidden.contains { $0.covers(s.start) } }
   }
@@ -63,7 +67,12 @@ struct MeetingPanel: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 0) {
-            Text(pointsCaption(meeting)).font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+            Text(pointsCaption(meeting)).font(.caption).foregroundStyle(.secondary)
+              .padding(.bottom, meeting.pointsGeneratedAt == nil ? 8 : 2)
+            RedoStatus(interval: interval(meeting), engine: meeting.pointsGeneratedAt == nil ? .none : .some(meeting.pointsEngine)) {
+              model.summaries.regenerateMeeting(meeting.id)
+            }
+            .padding(.bottom, 6)
             VStack(alignment: .leading, spacing: 6) {
               ForEach(Array(meeting.points.enumerated()), id: \.offset) { _, point in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -101,6 +110,13 @@ struct MeetingPanel: View {
         }
         Button("播放整场") { if let first = rows.first { model.play(first) } }
           .disabled(rows.isEmpty)
+        Menu("重新…") {
+          Button("用 \(model.summaries.engineName ?? "AI") 重新生成要点") { model.summaries.regenerateMeeting(meeting.id) }
+            .disabled(model.summaries.engineName == nil || rows.isEmpty)
+          Button("用 \(model.refiner.retranscribeName) 重新转录整场") { model.refiner.retranscribe(interval(meeting)) }
+            .disabled(rows.isEmpty || model.refiner.isRetranscribing(interval(meeting)))
+        }
+        .fixedSize()
         Spacer()
         Button("发送纪要…") { model.ui.draftingMinutes = true }
           .buttonStyle(.borderedProminent)

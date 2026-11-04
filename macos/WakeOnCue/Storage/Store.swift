@@ -9,7 +9,13 @@ final class Store {
   static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Store")
 
   nonisolated static var rootDirectory: URL {
-    URL.applicationSupportDirectory.appending(path: "WakeOnCue", directoryHint: .isDirectory)
+    #if DEBUG
+      // Development aid: a copy of the library, so a test build never touches the real one.
+      if let path = ProcessInfo.processInfo.environment["WAKEONCUE_DATA_DIR"], !path.isEmpty {
+        return URL(filePath: path, directoryHint: .isDirectory)
+      }
+    #endif
+    return URL.applicationSupportDirectory.appending(path: "WakeOnCue", directoryHint: .isDirectory)
   }
 
   nonisolated static var audioDirectory: URL {
@@ -122,8 +128,8 @@ final class Store {
   }
 
   /// A better transcript of the same words; times and speaker stay as they were.
-  func refineSentence(id: Int64, text: String, by model: String) {
-    run("UPDATE sentence SET text = ?, refined_by = ? WHERE id = ?", [.text(text), .text(model), .int(id)])
+  func refineSentence(id: Int64, text: String, by model: String?) {
+    run("UPDATE sentence SET text = ?, refined_by = ? WHERE id = ?", [.text(text), model.map { .text($0) } ?? .null, .int(id)])
     changed()
   }
 

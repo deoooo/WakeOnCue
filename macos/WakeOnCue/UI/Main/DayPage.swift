@@ -59,6 +59,7 @@ struct DayPage: View {
           Text(Summaries.credit(engine: summary.engine, at: summary.generatedAt))
             .help(local ? "总结在这台 Mac 上生成，没有上传" : "总结由网关生成，转录文字发送到了该网关")
         }
+        redoMenu
       }
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -72,6 +73,9 @@ struct DayPage: View {
           .font(.system(size: 17, weight: .semibold))
           .foregroundStyle(.secondary)
       }
+      RedoStatus(interval: dayInterval, engine: data.summary.map(\.engine)) {
+        model.regenerateSummaries(in: dayInterval)
+      }
       if let destination = model.summaries.destination {
         Label("总结由网关生成，转录文字会发送到 \(destination)。标为私人或已删除的时段不会发送。", systemImage: "arrow.up.forward.app")
           .font(.caption)
@@ -84,6 +88,30 @@ struct DayPage: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(RoundedRectangle(cornerRadius: 12).fill(Color.hero))
     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+  }
+
+  private var dayInterval: DateInterval { DateInterval(start: data.day, duration: 86_400) }
+
+  /// Writing the whole day again after switching the transcription model or the AI service.
+  private var redoMenu: some View {
+    Menu {
+      Button("用 \(model.summaries.engineName ?? "AI") 重新生成这一天的总结") {
+        model.regenerateSummaries(in: dayInterval)
+      }
+      .disabled(model.summaries.engineName == nil || data.rows.allSatisfy { $0.state != .speech })
+      Button("用 \(model.refiner.retranscribeName) 重新转录这一天") {
+        model.refiner.retranscribe(dayInterval)
+      }
+      .disabled(model.refiner.isRetranscribing(dayInterval) || data.rows.allSatisfy { $0.state != .speech })
+      Text("重新转录后，文字有变化的小时和会议会自动重新总结。")
+    } label: {
+      Image(systemName: "arrow.clockwise")
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help("重新转录或重新总结这一天")
+    .accessibilityLabel("重新转录或重新总结这一天")
   }
 
   @ViewBuilder private var details: some View {
