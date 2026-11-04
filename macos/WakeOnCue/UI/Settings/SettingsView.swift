@@ -8,23 +8,27 @@ struct SettingsView: View {
   enum Section: String, CaseIterable, Identifiable {
     case recording = "录音"
     case transcription = "转录模型"
+    case ai = "AI 服务"
     case calendar = "日历"
     case storage = "存储"
     case permissions = "权限"
     var id: String { rawValue }
   }
 
-  @State private var section: Section = .recording
+  @Environment(AppModel.self) private var model
 
   var body: some View {
+    @Bindable var ui = model.ui
+    let section = ui.settingsSection
     NavigationSplitView {
-      List(Section.allCases, selection: $section) { Text($0.rawValue).tag($0) }
+      List(Section.allCases, selection: $ui.settingsSection) { Text($0.rawValue).tag($0) }
         .navigationSplitViewColumnWidth(170)
     } detail: {
       Group {
         switch section {
         case .recording: RecordingSettings()
         case .transcription: TranscriptionSettings()
+        case .ai: AISettings()
         case .calendar: CalendarSettings()
         case .storage: StorageSettings()
         case .permissions: PermissionSettings()
@@ -122,7 +126,7 @@ private struct TranscriptionSettings: View {
       }
       Section("可用模型") {
         LabeledContent {
-          Text(model.transcription.issue ?? "已就绪").foregroundStyle(model.transcription.issue == nil ? .green : Color.recording)
+          SpeechStatusText(status: model.transcription.status)
         } label: {
           Text("Apple 语音")
           Text("系统提供，支持实时。第一期的默认选择")
@@ -274,8 +278,12 @@ private struct PermissionSettings: View {
           note: model.recorder.meetingAudioIssue ?? "开会时自动开始录")
         row("日历", ok: model.meetings.calendarAccess == .fullAccess, anchor: "Privacy_Calendars")
         LabeledContent("Apple 智能") {
-          Text(model.summaries.unavailableReason ?? "已打开")
-            .foregroundStyle(model.summaries.unavailableReason == nil ? .green : .secondary)
+          Text(AppleIntelligenceEngine.unavailableReason ?? "已打开")
+            .foregroundStyle(AppleIntelligenceEngine.unavailableReason == nil ? .green : .secondary)
+        }
+        LabeledContent("总结") {
+          Text(model.summaries.engineName.map { "使用\($0)" } ?? model.summaries.unavailableReason ?? "")
+            .foregroundStyle(model.summaries.engineName == nil ? Color.recording : .green)
         }
         Toggle("登录时启动", isOn: Binding(get: { model.launchesAtLogin }, set: { model.launchesAtLogin = $0 }))
       }

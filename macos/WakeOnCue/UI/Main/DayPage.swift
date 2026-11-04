@@ -55,8 +55,9 @@ struct DayPage: View {
         Text(model.ui.isToday ? "今天一句话" : "这一天一句话").fontWeight(.semibold)
         Spacer()
         if let summary = data.summary {
-          Text("本机 Apple 智能生成 · \(TimeText.clock(summary.generatedAt)) 更新")
-            .help("总结在这台 Mac 上生成，没有上传")
+          let local = summary.engine == nil || summary.engine == AppleIntelligenceEngine().name
+          Text(Summaries.credit(engine: summary.engine, at: summary.generatedAt))
+            .help(local ? "总结在这台 Mac 上生成，没有上传" : "总结由网关生成，转录文字发送到了该网关")
         }
       }
       .font(.caption)
@@ -70,6 +71,12 @@ struct DayPage: View {
         Text(model.summaries.dayPlaceholder(for: data))
           .font(.system(size: 17, weight: .semibold))
           .foregroundStyle(.secondary)
+      }
+      if let destination = model.summaries.destination {
+        Label("总结由网关生成，转录文字会发送到 \(destination)。标为私人或已删除的时段不会发送。", systemImage: "arrow.up.forward.app")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.top, 2)
       }
     }
     .padding(.vertical, 18)

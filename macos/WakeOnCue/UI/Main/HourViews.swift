@@ -250,6 +250,8 @@ struct HourRow: View {
         if hour.meetings.isEmpty {
           Button("标成一场会议…") { model.markMeeting(in: hour.interval) }
         }
+        Button("重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
+          .disabled(model.summaries.engineName == nil)
       }
       if hour.state == .speech || hour.state == .privateHour {
         Button(hour.state == .privateHour ? "取消私人" : "标为私人") {

@@ -38,7 +38,21 @@ enum MicrophoneChoice: String, CaseIterable {
   }
 }
 
-/// User settings, stored in UserDefaults.
+enum SummaryEngineChoice: String, CaseIterable {
+  /// Apple Intelligence when this Mac has it, otherwise the gateway.
+  case automatic
+  /// Always the gateway, even when Apple Intelligence is available.
+  case gateway
+
+  var label: String {
+    switch self {
+    case .automatic: "自动（优先本机 Apple 智能）"
+    case .gateway: "始终使用网关"
+    }
+  }
+}
+
+/// User settings, stored in UserDefaults. The gateway's API key is in the keychain instead.
 @Observable
 final class Preferences {
   @ObservationIgnored private let defaults = UserDefaults.standard
@@ -55,6 +69,11 @@ final class Preferences {
   var onboarded: Bool { didSet { defaults.set(onboarded, forKey: "onboarded") } }
   /// Recording is paused until this time; `.distantFuture` pauses until the user resumes.
   var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "pausedUntil") } }
+  var summaryEngine: SummaryEngineChoice { didSet { defaults.set(summaryEngine.rawValue, forKey: "summaryEngine") } }
+  var gatewayBaseURL: String { didSet { defaults.set(gatewayBaseURL, forKey: "gatewayBaseURL") } }
+  var gatewayModel: String { didSet { defaults.set(gatewayModel, forKey: "gatewayModel") } }
+  /// The gateway host the user agreed to send transcripts to; another host needs a new consent.
+  var gatewayConsentHost: String? { didSet { defaults.set(gatewayConsentHost, forKey: "gatewayConsentHost") } }
 
   init() {
     alwaysRecord = defaults.object(forKey: "alwaysRecord") as? Bool ?? true
@@ -65,5 +84,9 @@ final class Preferences {
     textRetentionDays = defaults.object(forKey: "textRetentionDays") as? Int ?? 0
     onboarded = defaults.bool(forKey: "onboarded")
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
+    summaryEngine = SummaryEngineChoice(rawValue: defaults.string(forKey: "summaryEngine") ?? "") ?? .automatic
+    gatewayBaseURL = defaults.string(forKey: "gatewayBaseURL") ?? ""
+    gatewayModel = defaults.string(forKey: "gatewayModel") ?? ""
+    gatewayConsentHost = defaults.string(forKey: "gatewayConsentHost")
   }
 }

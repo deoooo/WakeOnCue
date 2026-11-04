@@ -47,7 +47,7 @@
           if size.count == 2, let window = NSApp.windows.first(where: { $0.isVisible && $0.frame.width >= 900 }) {
             window.setContentSize(NSSize(width: size[0], height: size[1]))
           }
-        case "settings": model.openSettings?()
+        case "settings": model.showSettings(SettingsView.Section(rawValue: argument) ?? .recording)
         default: break
         }
       }

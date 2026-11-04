@@ -26,6 +26,11 @@
 	<string>26.0</string>
 	<key>LSRequiresNativeExecution</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

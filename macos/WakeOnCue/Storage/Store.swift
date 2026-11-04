@@ -65,6 +65,11 @@ final class Store {
         attendees TEXT NOT NULL, points TEXT NOT NULL, minutes TEXT, points_generated REAL,
         adjusted INTEGER NOT NULL DEFAULT 0)
       """)
+    // Added after the first release: which engine wrote each summary.
+    for table in ["hour_summary", "day_summary", "meeting"] {
+      let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
+      if !columns.contains("engine") { try db.execute("ALTER TABLE \(table) ADD COLUMN engine TEXT") }
+    }
   }
 
   private func changed() { revision += 1 }
@@ -265,9 +270,9 @@ final class Store {
 
   func saveHourSummary(_ summary: HourSummary) {
     run(
-      "INSERT OR REPLACE INTO hour_summary (hour, summary, keys, generated, final) VALUES (?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO hour_summary (hour, summary, keys, generated, final, engine) VALUES (?, ?, ?, ?, ?, ?)",
       [.date(summary.hourStart), .text(summary.summary), .json(summary.keySentenceIDs),
-       .date(summary.generatedAt), .int(summary.isFinal ? 1 : 0)])
+       .date(summary.generatedAt), .int(summary.isFinal ? 1 : 0), summary.engine.map { .text($0) } ?? .null])
     changed()
   }
 
@@ -278,36 +283,37 @@ final class Store {
 
   func hourSummaries(in interval: DateInterval) -> [Date: HourSummary] {
     let rows = fetch(
-      "SELECT hour, summary, keys, generated, final FROM hour_summary WHERE hour >= ? AND hour < ?",
+      "SELECT hour, summary, keys, generated, final, engine FROM hour_summary WHERE hour >= ? AND hour < ?",
       [.date(interval.start), .date(interval.end)]
     ) { row in
       HourSummary(
         hourStart: row.date(0), summary: row.text(1), keySentenceIDs: row.json(2, as: [Int64].self) ?? [],
-        generatedAt: row.date(3), isFinal: row.int(4) != 0)
+        generatedAt: row.date(3), isFinal: row.int(4) != 0, engine: row.isNull(5) ? nil : row.text(5))
     }
     return Dictionary(rows.map { ($0.hourStart, $0) }, uniquingKeysWith: { $1 })
   }
 
   func saveDaySummary(_ summary: DaySummary) {
     run(
-      "INSERT OR REPLACE INTO day_summary (day, headline, details, generated) VALUES (?, ?, ?, ?)",
-      [.date(summary.day), .json(summary.headline), .json(summary.details), .date(summary.generatedAt)])
+      "INSERT OR REPLACE INTO day_summary (day, headline, details, generated, engine) VALUES (?, ?, ?, ?, ?)",
+      [.date(summary.day), .json(summary.headline), .json(summary.details), .date(summary.generatedAt),
+       summary.engine.map { .text($0) } ?? .null])
     changed()
   }
 
   func daySummary(for day: Date) -> DaySummary? {
-    fetch("SELECT day, headline, details, generated FROM day_summary WHERE day = ?", [.date(day)]) { row in
+    fetch("SELECT day, headline, details, generated, engine FROM day_summary WHERE day = ?", [.date(day)]) { row in
       guard let headline = row.json(1, as: CitedLine.self) else { return nil }
       return DaySummary(
         day: row.date(0), headline: headline, details: row.json(2, as: [CitedLine].self) ?? [],
-        generatedAt: row.date(3))
+        generatedAt: row.date(3), engine: row.isNull(4) ? nil : row.text(4))
     }.first
   }
 
   // MARK: Meetings
 
   private static let meetingColumns =
-    "id, title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted"
+    "id, title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted, engine"
 
   private static func meeting(_ row: SQLiteDatabase.Row) -> Meeting? {
     Meeting(
@@ -320,7 +326,8 @@ final class Store {
       points: row.json(10, as: [CitedLine].self) ?? [],
       minutes: row.isNull(11) ? nil : row.text(11),
       pointsGeneratedAt: row.optionalDate(12),
-      userAdjusted: row.int(13) != 0)
+      userAdjusted: row.int(13) != 0,
+      pointsEngine: row.isNull(14) ? nil : row.text(14))
   }
 
   func meetings(overlapping interval: DateInterval) -> [Meeting] {
@@ -350,16 +357,17 @@ final class Store {
       .optionalDate(meeting.calendarEnd), meeting.app.map { .text($0) } ?? .null,
       .json(meeting.attendees), .json(meeting.points), meeting.minutes.map { .text($0) } ?? .null,
       .optionalDate(meeting.pointsGeneratedAt), .int(meeting.userAdjusted ? 1 : 0),
+      meeting.pointsEngine.map { .text($0) } ?? .null,
     ]
     if meeting.id == 0 {
       run(
-        "INSERT INTO meeting (title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO meeting (title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted, engine) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         values)
       changed()
       return db.lastInsertID
     }
     run(
-      "UPDATE meeting SET title = ?, start = ?, end = ?, origin = ?, calendar_id = ?, calendar_start = ?, calendar_end = ?, app = ?, attendees = ?, points = ?, minutes = ?, points_generated = ?, adjusted = ? WHERE id = ?",
+      "UPDATE meeting SET title = ?, start = ?, end = ?, origin = ?, calendar_id = ?, calendar_start = ?, calendar_end = ?, app = ?, attendees = ?, points = ?, minutes = ?, points_generated = ?, adjusted = ?, engine = ? WHERE id = ?",
       values + [.int(meeting.id)])
     changed()
     return meeting.id

@@ -108,7 +108,9 @@ struct MeetingPanel: View {
   }
 
   private func pointsCaption(_ meeting: Meeting) -> String {
-    if let generated = meeting.pointsGeneratedAt { return "要点 · \(TimeText.clock(generated)) 生成" }
+    if let generated = meeting.pointsGeneratedAt {
+      return "要点 · \(meeting.pointsEngine ?? AppleIntelligenceEngine().name)\(TimeText.clock(generated)) 生成"
+    }
     if let reason = model.summaries.unavailableReason { return "要点 · \(reason)，没有生成" }
     return meeting.end > .now ? "要点 · 会议结束后几分钟内生成" : "要点 · 正在生成…"
   }

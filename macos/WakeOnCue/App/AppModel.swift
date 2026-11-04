@@ -16,6 +16,11 @@ final class AppModel {
   /// SwiftUI's settings opener, handed over by the main window.
   @ObservationIgnored var openSettings: (() -> Void)?
 
+  func showSettings(_ section: SettingsView.Section) {
+    ui.settingsSection = section
+    openSettings?()
+  }
+
   init() {
     do {
       store = try Store()
@@ -25,7 +30,7 @@ final class AppModel {
     recorder = Recorder(store: store, preferences: preferences)
     transcription = Transcription(store: store, recorder: recorder)
     player = Player(store: store)
-    summaries = Summaries(store: store)
+    summaries = Summaries(store: store, preferences: preferences)
     meetings = Meetings(store: store, summaries: summaries)
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
   }
