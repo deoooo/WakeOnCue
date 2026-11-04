@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.deoooo.WakeOnCue.mac-sync</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -36,10 +40,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_wakeoncue._tcp</string>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>WakeOnCue connects to the transcription or AI service you configure on your local network.</string>
+	<string>WakeOnCue connects to the transcription or AI service you configure on your local network, and forwards Watch and iPhone recordings to your paired Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WakeOnCue needs microphone access to record meetings you explicitly start.</string>
 	<key>NSSupportsLiveActivities</key>
@@ -49,6 +57,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
