@@ -21,7 +21,11 @@ final class Store {
 
   @ObservationIgnored private let db: SQLiteDatabase
 
-  init(directory: URL = Store.rootDirectory) throws {
+  init(directory: URL = Store.rootDirectory, readOnly: Bool = false) throws {
+    if readOnly {
+      db = try SQLiteDatabase(url: directory.appending(path: "library.sqlite"), readOnly: true)
+      return
+    }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     db = try SQLiteDatabase(url: directory.appending(path: "library.sqlite"))
     try migrate()
@@ -77,8 +81,12 @@ final class Store {
       try db.execute("ALTER TABLE remote_segment ADD COLUMN clock_offset REAL")
     }
     // Added after the first release: which engine wrote each summary.
-    if !(try db.query("PRAGMA table_info(sentence)") { $0.text(1) }).contains("refined_by") {
+    let sentenceColumns = try db.query("PRAGMA table_info(sentence)") { $0.text(1) }
+    if !sentenceColumns.contains("refined_by") {
       try db.execute("ALTER TABLE sentence ADD COLUMN refined_by TEXT")
+    }
+    if !sentenceColumns.contains("speaker_name") {
+      try db.execute("ALTER TABLE sentence ADD COLUMN speaker_name TEXT")
     }
     for table in ["hour_summary", "day_summary", "meeting"] {
       let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
@@ -119,19 +127,34 @@ final class Store {
     changed()
   }
 
+  /// Who said it, as found from the voice. Times and text stay.
+  func setSpeaker(id: Int64, speaker: Speaker, name: String?) {
+    run("UPDATE sentence SET speaker = ?, speaker_name = ? WHERE id = ?",
+        [.text(speaker.rawValue), name.map { .text($0) } ?? .null, .int(id)])
+    changed()
+  }
+
+  /// Renames every sentence of a day that carries `old`, e.g. "说话人 2" → "林雨".
+  func renameSpeaker(_ old: String, to new: String, in interval: DateInterval) {
+    run("UPDATE sentence SET speaker_name = ? WHERE speaker_name = ? AND start >= ? AND start < ?",
+        [.text(new), .text(old), .date(interval.start), .date(interval.end)])
+    changed()
+  }
+
   func deleteSentence(id: Int64) {
     run("DELETE FROM sentence WHERE id = ?", [.int(id)])
     changed()
   }
 
-  private static let sentenceColumns = "id, start, end, channel, speaker, source, text, refined_by"
+  private static let sentenceColumns = "id, start, end, channel, speaker, source, text, refined_by, speaker_name"
 
   private static func sentence(_ row: SQLiteDatabase.Row) -> Sentence? {
     Sentence(
       id: row.int(0), start: row.date(1), end: row.date(2),
       channel: AudioChannel(rawValue: row.text(3)) ?? .microphone,
       speaker: Speaker(rawValue: row.text(4)) ?? .me,
-      source: row.text(5), text: row.text(6), refinedBy: row.isNull(7) ? nil : row.text(7))
+      source: row.text(5), text: row.text(6), refinedBy: row.isNull(7) ? nil : row.text(7),
+      speakerName: row.isNull(8) ? nil : row.text(8))
   }
 
   /// Every sentence that starts in the interval, including private and deleted ones.

@@ -11,8 +11,10 @@ final class AppModel {
   let transcription: Transcription
   let player: Player
   let summaries: Summaries
-  let models = ASRModels()
+  let models: ASRModels
   let refiner: Refiner
+  let asking: Asking
+  let voices: Voices
   let sync: SyncServer
   let merger: Merger
   let meetings: Meetings
@@ -39,14 +41,21 @@ final class AppModel {
     refiner = Refiner(store: store)
     sync = SyncServer(store: store, preferences: preferences)
     merger = Merger(store: store, preferences: preferences, summaries: summaries)
-    models.onActiveChange = { [weak refiner] in refiner?.use($0) }
-    transcription.onSentence = { [weak refiner] in refiner?.enqueue($0) }
+    asking = Asking(store: store, summaries: summaries)
+    models = ASRModels(preferences: preferences)
+    let preferences = preferences
+    models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
+    voices = Voices(store: store, preferences: preferences, models: models, recorder: recorder)
+    transcription.onSentence = { [weak refiner, weak voices] in
+      refiner?.enqueue($0)
+      voices?.enqueue($0)
+    }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
   }
 
   func launch() async {
     await recorder.startIfAllowed()
-    refiner.use(models.active)
+    refiner.use(models.active, service: preferences.transcriptionService)
     await transcription.start()
     summaries.start()
     meetings.start()
@@ -99,6 +108,7 @@ final class AppModel {
   }
 
   func openMeeting(_ id: Int64) {
+    ui.asking = false
     ui.meetingID = id
     ui.draftingMinutes = false
   }

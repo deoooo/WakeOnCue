@@ -221,7 +221,7 @@ private struct MinutesDraft: View {
 
   private var fullText: String {
     guard withTranscript else { return text }
-    let transcript = sentences.map { "\(TimeText.seconds($0.start)) \($0.speaker.label)：\($0.text)" }
+    let transcript = sentences.map { "\(TimeText.seconds($0.start)) \($0.speakerLabel)：\($0.text)" }
     return text + "\n\n完整转录\n" + transcript.joined(separator: "\n")
   }
 

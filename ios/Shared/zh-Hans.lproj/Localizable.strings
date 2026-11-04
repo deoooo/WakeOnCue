@@ -131,6 +131,8 @@
 "Could not play this recording: %@" = "无法播放此录音：%@";
 "Could not prepare the recording file: %@" = "无法准备录音文件：%@";
 "Recording error: %@" = "录音错误：%@";
+"Finish the current recording before playing another one." = "请先结束当前录音，再播放其他录音。";
+"The recording was too short to save." = "录音太短，未保存。";
 "Microphone access is required. You can enable it in iOS Settings." = "需要麦克风权限。你可以在 iOS 设置中启用。";
 "The audio player could not start." = "无法启动音频播放器。";
 "The microphone returned an invalid audio format." = "麦克风返回了无效的音频格式。";
@@ -182,7 +184,6 @@
 "Could not read converted audio data" = "无法读取转换后的音频数据";
 "No playable audio chunks were found." = "没有找到可播放的录音分片。";
 "Could not create the combined audio track." = "无法合并录音文件。";
-"Audio chunk %d is not playable." = "录音分片 %d 无法播放。";
 "M4A export is unavailable." = "当前无法导出 M4A 文件。";
 "Could not download the recording: %@" = "无法下载录音文件：%@";
 "Spoken language" = "讲话语言";
@@ -478,3 +479,22 @@
 "This device does not support Apple Intelligence. To get summaries, add a service in Settings." = "这台设备不支持 Apple 智能。如需摘要，请在设置中添加服务。";
 "Apple Intelligence is turned off. Turn it on in iPhone Settings, or add a service in Settings." = "Apple 智能已关闭。请在 iPhone 设置中开启，或在本 App 的设置中添加服务。";
 "Apple Intelligence is still getting ready. Summaries can start once it finishes downloading." = "Apple 智能还在准备中，下载完成后即可生成摘要。";
+
+/* Mac forwarding */
+"Mac" = "Mac";
+"Waiting to send" = "等待发送";
+"%lld pieces" = "%lld 段";
+"Last sent" = "上次发送";
+"Send now" = "立即发送";
+"Unpair this Mac" = "取消与这台 Mac 配对";
+"Not connected to a Mac." = "还没有连接 Mac。";
+"On the Mac, open WakeOnCue › Settings › Devices and scan its pairing code with the Camera app. Watch and iPhone recordings then go to the Mac over your local network, encrypted with the pairing key, and are deleted here only after the Mac confirms it has them." = "在 Mac 上打开 WakeOnCue › 设置 › 设备与回传，用“相机”扫描配对二维码。之后手表和 iPhone 的录音会通过本地网络、用配对密钥加密后转给 Mac，Mac 确认收到后才会从这台 iPhone 上删除。";
+"Scan the Mac's pairing code again." = "请重新扫描 Mac 上的配对二维码。";
+"Sending %lld of %lld" = "正在发送第 %lld 段，共 %lld 段";
+"The Mac is not on this network. Waiting pieces are sent when it is." = "Mac 不在这个网络上。连上同一个网络后会自动发送。";
+"This pairing code has expired. Refresh it on the Mac." = "这个配对码已过期，请在 Mac 上刷新。";
+"Forwarding is turned off on the Mac." = "Mac 上关闭了自动回传。";
+"The Mac no longer accepts this iPhone. Scan its pairing code again." = "这台 Mac 不再接受这台 iPhone，请重新扫描配对二维码。";
+"The Mac is not on this network." = "Mac 不在这个网络上。";
+"The Mac no longer accepts this iPhone." = "这台 Mac 不再接受这台 iPhone。";
+"The Mac sent an unexpected reply." = "Mac 的回复无法识别。";

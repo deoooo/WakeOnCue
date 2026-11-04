@@ -122,6 +122,8 @@
 "Could not play this recording: %@" = "Could not play this recording: %@";
 "Could not prepare the recording file: %@" = "Could not prepare the recording file: %@";
 "Recording error: %@" = "Recording error: %@";
+"Finish the current recording before playing another one." = "Finish the current recording before playing another one.";
+"The recording was too short to save." = "The recording was too short to save.";
 "Microphone access is required. You can enable it in iOS Settings." = "Microphone access is required. You can enable it in iOS Settings.";
 "The audio player could not start." = "The audio player could not start.";
 "The microphone returned an invalid audio format." = "The microphone returned an invalid audio format.";
@@ -171,7 +173,6 @@
 "Could not read converted audio data" = "Could not read converted audio data";
 "No playable audio chunks were found." = "No playable audio chunks were found.";
 "Could not create the combined audio track." = "Could not create the combined audio track.";
-"Audio chunk %d is not playable." = "Audio chunk %d is not playable.";
 "M4A export is unavailable." = "M4A export is unavailable.";
 "Could not download the recording: %@" = "Could not download the recording: %@";
 "Spoken language" = "Spoken language";
@@ -467,3 +468,22 @@
 "This device does not support Apple Intelligence. To get summaries, add a service in Settings." = "This device does not support Apple Intelligence. To get summaries, add a service in Settings.";
 "Apple Intelligence is turned off. Turn it on in iPhone Settings, or add a service in Settings." = "Apple Intelligence is turned off. Turn it on in iPhone Settings, or add a service in Settings.";
 "Apple Intelligence is still getting ready. Summaries can start once it finishes downloading." = "Apple Intelligence is still getting ready. Summaries can start once it finishes downloading.";
+
+/* Mac forwarding */
+"Mac" = "Mac";
+"Waiting to send" = "Waiting to send";
+"%lld pieces" = "%lld pieces";
+"Last sent" = "Last sent";
+"Send now" = "Send now";
+"Unpair this Mac" = "Unpair this Mac";
+"Not connected to a Mac." = "Not connected to a Mac.";
+"On the Mac, open WakeOnCue › Settings › Devices and scan its pairing code with the Camera app. Watch and iPhone recordings then go to the Mac over your local network, encrypted with the pairing key, and are deleted here only after the Mac confirms it has them." = "On the Mac, open WakeOnCue › Settings › Devices and scan its pairing code with the Camera app. Watch and iPhone recordings then go to the Mac over your local network, encrypted with the pairing key, and are deleted here only after the Mac confirms it has them.";
+"Scan the Mac's pairing code again." = "Scan the Mac's pairing code again.";
+"Sending %lld of %lld" = "Sending %lld of %lld";
+"The Mac is not on this network. Waiting pieces are sent when it is." = "The Mac is not on this network. Waiting pieces are sent when it is.";
+"This pairing code has expired. Refresh it on the Mac." = "This pairing code has expired. Refresh it on the Mac.";
+"Forwarding is turned off on the Mac." = "Forwarding is turned off on the Mac.";
+"The Mac no longer accepts this iPhone. Scan its pairing code again." = "The Mac no longer accepts this iPhone. Scan its pairing code again.";
+"The Mac is not on this network." = "The Mac is not on this network.";
+"The Mac no longer accepts this iPhone." = "The Mac no longer accepts this iPhone.";
+"The Mac sent an unexpected reply." = "The Mac sent an unexpected reply.";

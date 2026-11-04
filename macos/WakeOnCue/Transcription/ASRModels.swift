@@ -20,6 +20,8 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
     case appleSpeech
     /// sherpa-onnx Qwen3-ASR; files by role, relative to the package folder.
     case qwen3(files: [String: String])
+    /// The user's OpenAI-compatible transcription service; audio leaves this Mac.
+    case remoteService
   }
 
   let id: String
@@ -31,7 +33,8 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
   let kind: Kind
   let package: ReleaseFile?
 
-  var isBuiltIn: Bool { package == nil }
+  var isBuiltIn: Bool { kind == .appleSpeech }
+  var isRemote: Bool { kind == .remoteService }
 
   static let appleSpeech = ASRModel(
     id: "apple-speech", name: "Apple 语音（系统自带）", detail: "系统提供，边录边转", size: "", source: "macOS",
@@ -55,7 +58,16 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
       sha256: "393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96",
       folder: "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"))
 
-  static let catalog: [ASRModel] = [.appleSpeech, .qwen3_0_6B]
+  static let transcriptionService = ASRModel(
+    id: "openai-compatible-transcription",
+    name: "第三方转录服务（OpenAI 兼容）",
+    detail: "按句把音频发到你配置的服务转录，比实时晚几秒",
+    size: "",
+    source: "你配置的服务",
+    kind: .remoteService,
+    package: nil)
+
+  static let catalog: [ASRModel] = [.appleSpeech, .qwen3_0_6B, .transcriptionService]
 
   /// The sherpa-onnx libraries every downloadable model runs on (Apple silicon, without TTS).
   static let runtime = ReleaseFile(
@@ -92,19 +104,32 @@ final class ASRModels {
   /// Called when the active model changes, so the refiner can load or drop it.
   @ObservationIgnored var onActiveChange: ((ASRModel?) -> Void)?
 
-  init() {
+  @ObservationIgnored private let preferences: Preferences
+
+  init(preferences: Preferences) {
+    self.preferences = preferences
     try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-    for model in ASRModel.catalog where !model.isBuiltIn {
+    for model in ASRModel.catalog where model.package != nil {
       states[model.id] = isInstalled(model) ? .installed : resumeData(for: model) != nil ? .paused(fraction: savedFraction(model)) : .notDownloaded
     }
     let saved = defaults.string(forKey: "asrModel")
-    activeID = ASRModel.catalog.first { $0.id == saved && states[$0.id] == .installed }?.id
+    activeID = ASRModel.catalog.first { $0.id == saved && !$0.isBuiltIn && state(of: $0) == .installed }?.id
   }
 
   var active: ASRModel? { ASRModel.catalog.first { $0.id == activeID } }
 
   func state(of model: ASRModel) -> State {
-    model.isBuiltIn ? .installed : states[model.id] ?? .notDownloaded
+    switch model.kind {
+    case .appleSpeech: .installed
+    case .remoteService: preferences.transcriptionServiceReady ? .installed : .notDownloaded
+    case .qwen3: states[model.id] ?? .notDownloaded
+    }
+  }
+
+  /// The service's settings changed: drop it if it is no longer usable, reload it otherwise.
+  func transcriptionServiceChanged() {
+    guard active?.isRemote == true else { return }
+    activate(state(of: .transcriptionService) == .installed ? .transcriptionService : nil)
   }
 
   func activate(_ model: ASRModel?) {
@@ -234,15 +259,31 @@ final class ASRModels {
     }
   }
 
+  /// Downloads the shared sherpa-onnx runtime if it is not on this Mac yet.
+  func ensureRuntime() async throws {
+    guard !FileManager.default.fileExists(atPath: Self.runtimeFolder.appending(path: "libsherpa-onnx-c-api.dylib").path) else { return }
+    let downloader = Downloader(url: ASRModel.runtime.url, resumeData: nil)
+    guard case .finished(let location) = await downloader.run() else { throw downloader.error ?? DownloadError.incomplete }
+    let archive = Self.directory.appending(path: ASRModel.runtime.folder + ".tar.bz2")
+    try? FileManager.default.removeItem(at: archive)
+    try FileManager.default.moveItem(at: location, to: archive)
+    defer { try? FileManager.default.removeItem(at: archive) }
+    try await Self.verifyAndUnpack(archive, expected: ASRModel.runtime)
+  }
+
+  /// SHA-256 of a file, read in chunks.
+  nonisolated static func sha256(of file: URL) throws -> String {
+    let handle = try FileHandle(forReadingFrom: file)
+    defer { try? handle.close() }
+    var hasher = SHA256()
+    while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
   /// Checks the archive against the published SHA-256, then unpacks it with the system tar.
   private nonisolated static func verifyAndUnpack(_ archive: URL, expected: ReleaseFile) async throws {
     try await Task.detached(priority: .utility) {
-      let handle = try FileHandle(forReadingFrom: archive)
-      defer { try? handle.close() }
-      var hasher = SHA256()
-      while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
-      let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-      guard digest == expected.sha256 else { throw DownloadError.checksum }
+      guard try sha256(of: archive) == expected.sha256 else { throw DownloadError.checksum }
 
       let destination = archive.deletingLastPathComponent()
       try? FileManager.default.removeItem(at: destination.appending(path: expected.folder))

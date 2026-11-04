@@ -22,13 +22,15 @@ final class Refiner {
   }
 
   private(set) var status: Status = .off
+  /// The latest failure of a sentence, e.g. the transcription service's HTTP error.
+  private(set) var lastError: String?
   private(set) var pending = 0
   /// Seconds of audio processed and seconds it took, to tell whether it keeps up.
   private(set) var audioSeconds: Double = 0
   private(set) var workSeconds: Double = 0
 
   @ObservationIgnored private let store: Store
-  @ObservationIgnored private var recognizer: SherpaRecognizer?
+  @ObservationIgnored private var recognizer: (any SentenceRecognizer)?
   @ObservationIgnored private var modelName: String?
   @ObservationIgnored private var queue: [Sentence] = []
   @ObservationIgnored private var running = false
@@ -43,13 +45,21 @@ final class Refiner {
     audioSeconds > 5 ? workSeconds / audioSeconds * 60 : nil
   }
 
-  /// Loads the model in the background, or drops it for Apple speech alone.
-  func use(_ model: ASRModel?) {
+  /// Loads the model in the background, or drops it for Apple speech alone. The transcription
+  /// service needs no loading.
+  func use(_ model: ASRModel?, service: TranscriptionServiceConfig? = nil) {
     generation += 1
     let current = generation
     recognizer = nil
     queue = []
     pending = 0
+    lastError = nil
+    if let model, model.isRemote, let service {
+      recognizer = RemoteTranscriber(config: service)
+      modelName = model.name
+      status = .ready(model.name)
+      return
+    }
     guard let model, let files = ASRModels.files(of: model) else {
       status = .off
       modelName = nil
@@ -113,16 +123,26 @@ final class Refiner {
       pending = queue.count
       let wait = sentence.end.addingTimeInterval(Self.settle).timeIntervalSinceNow
       if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+      // Private and deleted time never goes to a model, and never leaves this Mac.
+      if store.marks(overlapping: DateInterval(start: sentence.start, end: max(sentence.end, sentence.start))).contains(where: { $0.covers(sentence.start) }) {
+        continue
+      }
       let segments = store.segments(overlapping: DateInterval(start: sentence.start.addingTimeInterval(-Self.margin), end: sentence.end.addingTimeInterval(Self.margin)))
         .filter { $0.channel == sentence.channel }
       let start = sentence.start.addingTimeInterval(-Self.margin)
       let end = sentence.end.addingTimeInterval(Self.margin)
       let began = Date()
-      let text = await Task.detached(priority: .utility) { () -> String in
-        let samples = Self.samples(from: segments, start: start, end: end)
-        guard samples.count > 1_600 else { return "" }
-        return recognizer.recognize(samples)
-      }.value
+      let samples = await Task.detached(priority: .utility) { Self.samples(from: segments, start: start, end: end) }.value
+      guard samples.count > 1_600 else { continue }
+      let text: String
+      do {
+        text = try await recognizer.recognize(samples)
+        lastError = nil
+      } catch {
+        lastError = error.localizedDescription
+        Self.logger.error("Re-transcription failed: \(error.localizedDescription, privacy: .public)")
+        continue
+      }
       audioSeconds += end.timeIntervalSince(start)
       workSeconds += Date().timeIntervalSince(began)
       let cleaned = Self.clean(text)

@@ -35,12 +35,14 @@ enum WatchSessionInbox {
     return directory
   }
 
-  static func stage(segmentURL: URL, metadata: WatchSegmentMetadata, root: URL? = nil) throws {
+  @discardableResult
+  static func stage(segmentURL: URL, metadata: WatchSegmentMetadata, root: URL? = nil) throws -> URL {
     let destination = try directory(for: metadata.sessionID, root: root)
       .appending(path: metadata.fileName)
     try? FileManager.default.removeItem(at: destination)
     try FileManager.default.moveItem(at: segmentURL, to: destination)
     try RecordingFileLayout.protect(destination)
+    return destination
   }
 
   static func stage(summary: WatchSessionSummary, root: URL? = nil) throws {

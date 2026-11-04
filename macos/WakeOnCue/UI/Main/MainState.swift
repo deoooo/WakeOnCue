@@ -18,6 +18,12 @@ final class MainState {
   var highlighted: Int64?
   var meetingID: Int64?
   var draftingMinutes = false
+  /// The "提问" panel; it shares the right side with the meeting panel.
+  var asking = false {
+    didSet { if asking { meetingID = nil } }
+  }
+  /// The sentence whose speaker the user is naming ("这是谁…").
+  var namingSentence: Sentence?
   var showTracks = false
   var showLegend = false
   var searchText = ""

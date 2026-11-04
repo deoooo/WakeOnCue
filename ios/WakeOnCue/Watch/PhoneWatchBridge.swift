@@ -115,7 +115,16 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate, @unchecked Sendable {
       if let segment = WatchBridgeCoding.value(
         WatchSegmentMetadata.self, key: WatchBridgeKey.segment, in: info)
       {
-        try WatchSessionInbox.stage(segmentURL: file.fileURL, metadata: segment)
+        let staged = try WatchSessionInbox.stage(segmentURL: file.fileURL, metadata: segment)
+        // The Mac gets each raw segment with its real start time; it is kept until the Mac confirms.
+        do {
+          try MacOutbox.enqueue(
+            file: staged, id: "watch-\(segment.sessionID.uuidString.lowercased())-\(String(format: "%04d", segment.index))",
+            source: "watch", recordingID: segment.sessionID.uuidString.lowercased(), index: segment.index,
+            startedAt: segment.startedAt, duration: segment.duration)
+        } catch {
+          logger.error("Could not queue a Watch segment for the Mac: \(error.localizedDescription, privacy: .public)")
+        }
         logger.notice(
           "Watch segment \(segment.index) of \(segment.sessionID.uuidString.prefix(8), privacy: .public) staged")
       } else {

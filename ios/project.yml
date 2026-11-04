@@ -31,6 +31,8 @@ targets:
       - path: WakeOnCue
       - path: Shared
       - path: WatchShared
+      # The Mac ⇄ iPhone transfer protocol, shared with the Mac app (docs/sync-protocol.md).
+      - path: ../macos/WakeOnCue/Sync/SyncProtocol.swift
     dependencies:
       - package: WakeOnCueCore
       - target: WakeOnCueWidgets
@@ -52,7 +54,11 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: WakeOnCue needs microphone access to record meetings you explicitly start.
         NSCalendarsFullAccessUsageDescription: WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.
-        NSLocalNetworkUsageDescription: WakeOnCue connects to the transcription or AI service you configure on your local network.
+        NSLocalNetworkUsageDescription: WakeOnCue connects to the transcription or AI service you configure on your local network, and forwards Watch and iPhone recordings to your paired Mac.
+        NSBonjourServices:
+          - _wakeoncue._tcp
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.deoooo.WakeOnCue.mac-sync
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: false
         UILaunchScreen: {}
@@ -60,6 +66,7 @@ targets:
           NSAllowsLocalNetworking: true
         UIBackgroundModes:
           - audio
+          - fetch
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
@@ -118,6 +125,7 @@ targets:
         PRODUCT_NAME: WakeOnCueWatch
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: WakeOnCueWatch/Info.plist
       properties:
@@ -182,6 +190,7 @@ targets:
         ENABLE_APP_SANDBOX: false
         ENABLE_HARDENED_RUNTIME: false
         COMBINE_HIDPI_IMAGES: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: WakeOnCueMac/Info.plist
       properties:
