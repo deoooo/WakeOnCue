@@ -181,6 +181,7 @@ final class SyncServer {
       try await channel.send(.failure(segmentID: nil, reason: "这台 iPhone 还没有和这台 Mac 配对", retry: false))
       return
     }
+    Self.logger.notice("Hello from \(deviceName, privacy: .public)")
     devices[index].name = deviceName
     devices[index].lastSeen = .now
     PairingKeychain.devices = devices
@@ -250,6 +251,7 @@ final class SyncServer {
         receivedToday += 1
         connected[deviceID] = .some(nil)
         try await channel.send(.stored(segmentID: segmentID))
+        Self.logger.notice("Stored \(segmentID, privacy: .public) from \(deviceName, privacy: .public)")
         onSegment?(info, final)
 
       case .bye:
