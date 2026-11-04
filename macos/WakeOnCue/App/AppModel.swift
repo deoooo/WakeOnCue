@@ -15,6 +15,7 @@ final class AppModel {
   let refiner: Refiner
   let asking: Asking
   let voices: Voices
+  let sync: SyncServer
   let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -37,6 +38,7 @@ final class AppModel {
     summaries = Summaries(store: store, preferences: preferences)
     meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
+    sync = SyncServer(store: store, preferences: preferences)
     asking = Asking(store: store, summaries: summaries)
     models = ASRModels(preferences: preferences)
     let preferences = preferences
@@ -56,6 +58,7 @@ final class AppModel {
     summaries.start()
     meetings.start()
     startHousekeeping()
+    sync.start()
   }
 
   // MARK: Looking and playing

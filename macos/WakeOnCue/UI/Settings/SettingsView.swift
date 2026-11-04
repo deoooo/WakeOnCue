@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
   enum Section: String, CaseIterable, Identifiable {
     case recording = "录音"
+    case devices = "设备与回传"
     case transcription = "转录模型"
     case voices = "声音"
     case ai = "AI 服务"
@@ -28,6 +29,7 @@ struct SettingsView: View {
       Group {
         switch section {
         case .recording: RecordingSettings()
+        case .devices: DevicesSettings()
         case .transcription: TranscriptionSettings()
         case .voices: VoicesSettings()
         case .ai: AISettings()

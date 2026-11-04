@@ -73,6 +73,10 @@ final class Preferences {
   var splitSpeakers: Bool { didSet { defaults.set(splitSpeakers, forKey: "splitSpeakers") } }
   /// Keep named people's voiceprints in the keychain and recognize them later.
   var rememberVoices: Bool { didSet { defaults.set(rememberVoices, forKey: "rememberVoices") } }
+  /// 自动回传: paired phones may send Watch and iPhone audio.
+  var autoSync: Bool { didSet { defaults.set(autoSync, forKey: "autoSync") } }
+  /// 内容相同时自动合并 (used when merging).
+  var mergeSameContent: Bool { didSet { defaults.set(mergeSameContent, forKey: "mergeSameContent") } }
   var summaryEngine: SummaryEngineChoice { didSet { defaults.set(summaryEngine.rawValue, forKey: "summaryEngine") } }
   var gatewayProtocol: GatewayProtocol { didSet { defaults.set(gatewayProtocol.rawValue, forKey: "gatewayProtocol") } }
   var gatewayBearerForAnthropic: Bool { didSet { defaults.set(gatewayBearerForAnthropic, forKey: "gatewayBearerForAnthropic") } }
@@ -96,6 +100,8 @@ final class Preferences {
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
     splitSpeakers = defaults.bool(forKey: "splitSpeakers")
     rememberVoices = defaults.bool(forKey: "rememberVoices")
+    autoSync = defaults.object(forKey: "autoSync") as? Bool ?? true
+    mergeSameContent = defaults.object(forKey: "mergeSameContent") as? Bool ?? true
     summaryEngine = SummaryEngineChoice(rawValue: defaults.string(forKey: "summaryEngine") ?? "") ?? .automatic
     gatewayProtocol = GatewayProtocol(rawValue: defaults.string(forKey: "gatewayProtocol") ?? "") ?? .chatCompletions
     gatewayBearerForAnthropic = defaults.bool(forKey: "gatewayBearerForAnthropic")

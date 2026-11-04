@@ -70,6 +70,9 @@ targets:
         NSMicrophoneUsageDescription: WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。
         NSAudioCaptureUsageDescription: WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。
         NSCalendarsFullAccessUsageDescription: WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。
+        NSLocalNetworkUsageDescription: WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。
+        NSBonjourServices:
+          - _wakeoncue._tcp
         # The summary gateway may be on the local network over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -93,6 +96,8 @@ targets:
       # Reads the library through the app's own storage code.
       - path: WakeOnCue/Storage
       - path: WakeOnCue/App/TimeText.swift
+      # Store records received segments with the sync protocol's types.
+      - path: WakeOnCue/Sync/SyncProtocol.swift
     settings:
       base:
         PRODUCT_NAME: wakeoncue

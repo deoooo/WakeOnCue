@@ -69,6 +69,12 @@ final class Store {
         attendees TEXT NOT NULL, points TEXT NOT NULL, minutes TEXT, points_generated REAL,
         adjusted INTEGER NOT NULL DEFAULT 0)
       """)
+    try db.execute("""
+      CREATE TABLE IF NOT EXISTS remote_segment (
+        id TEXT PRIMARY KEY, device TEXT NOT NULL, source TEXT NOT NULL, recording TEXT NOT NULL,
+        idx INTEGER NOT NULL, start REAL NOT NULL, duration REAL NOT NULL, path TEXT NOT NULL,
+        received REAL NOT NULL, merged INTEGER NOT NULL DEFAULT 0)
+      """)
     // Added after the first release: which engine wrote each summary.
     let sentenceColumns = try db.query("PRAGMA table_info(sentence)") { $0.text(1) }
     if !sentenceColumns.contains("refined_by") {
@@ -408,6 +414,29 @@ final class Store {
   func deleteMeeting(id: Int64) {
     run("DELETE FROM meeting WHERE id = ?", [.int(id)])
     changed()
+  }
+
+  // MARK: Audio from other devices
+
+  /// A segment received from a phone, waiting to be merged into the timeline.
+  func insertRemoteSegment(_ info: SyncProtocol.SegmentInfo, device: String, path: String) {
+    run(
+      "INSERT OR REPLACE INTO remote_segment (id, device, source, recording, idx, start, duration, path, received, merged) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+      [.text(info.id), .text(device), .text(info.source), .text(info.recordingID), .int(Int64(info.index)),
+       .date(info.startedAt), .double(info.duration), .text(path), .date(.now)])
+    changed()
+  }
+
+  func hasRemoteSegment(id: String) -> Bool {
+    !fetch("SELECT 1 FROM remote_segment WHERE id = ?", [.text(id)]) { _ in true }.isEmpty
+  }
+
+  /// Segments received per device and how many still wait to be merged.
+  func remoteSegmentCounts() -> [String: (total: Int, waiting: Int, latest: Date?)] {
+    let rows = fetch("SELECT device, COUNT(*), SUM(merged = 0), MAX(start + duration) FROM remote_segment GROUP BY device") { row in
+      (row.text(0), Int(row.int(1)), Int(row.int(2)), row.optionalDate(3))
+    }
+    return Dictionary(rows.map { ($0.0, (total: $0.1, waiting: $0.2, latest: $0.3)) }, uniquingKeysWith: { a, _ in a })
   }
 
   // MARK: Storage use

@@ -33,8 +33,14 @@
 	</dict>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_wakeoncue._tcp</string>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

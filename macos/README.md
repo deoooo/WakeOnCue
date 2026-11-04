@@ -33,6 +33,7 @@ scripts/setup-signing.sh
 | `Storage` | SQLite（句子、分段、私人和删除时段、录不了的原因、总结、会议） |
 | `Intelligence` | 每小时总结和要点句、当天总结、会议要点，都带引用。引擎是本机 Apple 智能（Foundation Models），或用户配置的 OpenAI 兼容网关（API Key 存钥匙串） |
 | `Meetings` | 日历关联，按实际说话调整起止；没有日历的会议 App 通话；手动标成会议 |
+| `Sync` | 接收已配对 iPhone 转来的手表和 iPhone 录音：扫码配对、TLS-PSK 加密、断点续传、SHA-256 校验后入库，协议见 [docs/sync-protocol.md](../docs/sync-protocol.md) |
 | `Playback` | 跨分段连续播放，麦克风和会议声音同时播放，跳过私人和已删除的时段 |
 | `UI` | 主窗口、会议面板和纪要、搜索、最近删除、菜单栏、首次使用、设置 |
 
