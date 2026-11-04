@@ -13,7 +13,7 @@ struct AISettings: View {
   var body: some View {
     @Bindable var preferences = model.preferences
     let summaries = model.summaries
-    let config = GatewayConfig(baseURL: preferences.gatewayBaseURL, model: preferences.gatewayModel, apiKey: apiKey)
+    let config = preferences.gateway
     let consented = preferences.gatewayConsentHost != nil && preferences.gatewayConsentHost == config.host
     Form {
       Section {
@@ -37,7 +37,21 @@ struct AISettings: View {
       }
 
       Section {
-        TextField("Base URL", text: $preferences.gatewayBaseURL, prompt: Text("https://example.com/v1"))
+        Picker("协议", selection: $preferences.gatewayProtocol) {
+          ForEach(GatewayProtocol.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        .onChange(of: preferences.gatewayProtocol) { old, new in
+          // Follow the protocol's default address unless the user typed their own.
+          if preferences.gatewayBaseURL.isEmpty || preferences.gatewayBaseURL == old.defaultBaseURL {
+            preferences.gatewayBaseURL = new.defaultBaseURL
+          }
+          testResult = nil
+          summaries.refreshEngine()
+        }
+        TextField("Base URL", text: $preferences.gatewayBaseURL, prompt: Text(preferences.gatewayProtocol.defaultBaseURL))
+        if let endpoint = config.endpoint {
+          LabeledContent("请求地址", value: endpoint.absoluteString).font(.caption).foregroundStyle(.secondary)
+        }
         TextField("模型", text: $preferences.gatewayModel, prompt: Text("模型名称"))
         LabeledContent("API Key") {
           HStack {
@@ -47,9 +61,16 @@ struct AISettings: View {
             Button("保存", action: saveKey).disabled(apiKey.isEmpty || apiKey == GatewayKeychain.read())
           }
         }
+        if preferences.gatewayProtocol == .anthropic {
+          Toggle(isOn: $preferences.gatewayBearerForAnthropic) {
+            Text("用 Authorization: Bearer 发送 Key")
+            Text("默认用 x-api-key。只认 Bearer 的网关才需要打开")
+          }
+          .onChange(of: preferences.gatewayBearerForAnthropic) { summaries.refreshEngine() }
+        }
         HStack {
           Button(testing ? "正在测试…" : "测试连接", action: test)
-            .disabled(testing || !GatewayConfig(baseURL: preferences.gatewayBaseURL, model: preferences.gatewayModel, apiKey: GatewayKeychain.read()).isComplete)
+            .disabled(testing || !config.isComplete)
           if let testResult {
             switch testResult {
             case .success(let message): Text(message).foregroundStyle(.green).font(.caption)
@@ -63,7 +84,7 @@ struct AISettings: View {
         }
         .disabled(config.endpoint == nil && !consented)
       } header: {
-        Text("OpenAI 兼容网关")
+        Text("网关")
       } footer: {
         Text("API Key 只存在这台 Mac 的钥匙串里。使用网关时，每小时、当天和会议的转录文字会发送到网关生成总结；音频不会发送，标为私人或已删除的时段也不会发送。")
           .font(.caption).foregroundStyle(.secondary)

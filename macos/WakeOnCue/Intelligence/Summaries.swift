@@ -55,7 +55,7 @@ final class Summaries {
 
   /// The gateway configuration as it stands, with the key from the keychain.
   var gatewayConfig: GatewayConfig {
-    GatewayConfig(baseURL: preferences.gatewayBaseURL, model: preferences.gatewayModel, apiKey: GatewayKeychain.read())
+    preferences.gateway
   }
 
   /// True once the gateway is filled in and the user agreed to send transcripts to its host.
@@ -84,6 +84,7 @@ final class Summaries {
       }
     }
     let changed = next?.name != engine?.name || next?.destination != engine?.destination
+      || (next as? GatewayEngine)?.config != (engine as? GatewayEngine)?.config
     engine = next
     engineName = next?.name
     destination = next?.destination

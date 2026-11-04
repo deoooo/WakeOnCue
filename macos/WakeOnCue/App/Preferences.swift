@@ -70,6 +70,8 @@ final class Preferences {
   /// Recording is paused until this time; `.distantFuture` pauses until the user resumes.
   var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "pausedUntil") } }
   var summaryEngine: SummaryEngineChoice { didSet { defaults.set(summaryEngine.rawValue, forKey: "summaryEngine") } }
+  var gatewayProtocol: GatewayProtocol { didSet { defaults.set(gatewayProtocol.rawValue, forKey: "gatewayProtocol") } }
+  var gatewayBearerForAnthropic: Bool { didSet { defaults.set(gatewayBearerForAnthropic, forKey: "gatewayBearerForAnthropic") } }
   var gatewayBaseURL: String { didSet { defaults.set(gatewayBaseURL, forKey: "gatewayBaseURL") } }
   var gatewayModel: String { didSet { defaults.set(gatewayModel, forKey: "gatewayModel") } }
   /// The gateway host the user agreed to send transcripts to; another host needs a new consent.
@@ -85,8 +87,19 @@ final class Preferences {
     onboarded = defaults.bool(forKey: "onboarded")
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
     summaryEngine = SummaryEngineChoice(rawValue: defaults.string(forKey: "summaryEngine") ?? "") ?? .automatic
+    gatewayProtocol = GatewayProtocol(rawValue: defaults.string(forKey: "gatewayProtocol") ?? "") ?? .chatCompletions
+    gatewayBearerForAnthropic = defaults.bool(forKey: "gatewayBearerForAnthropic")
     gatewayBaseURL = defaults.string(forKey: "gatewayBaseURL") ?? ""
     gatewayModel = defaults.string(forKey: "gatewayModel") ?? ""
     gatewayConsentHost = defaults.string(forKey: "gatewayConsentHost")
+  }
+}
+
+extension Preferences {
+  /// The gateway as configured, with the key from the keychain.
+  var gateway: GatewayConfig {
+    GatewayConfig(
+      kind: gatewayProtocol, baseURL: gatewayBaseURL, model: gatewayModel, apiKey: GatewayKeychain.read(),
+      bearerForAnthropic: gatewayBearerForAnthropic)
   }
 }
