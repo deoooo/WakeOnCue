@@ -30,6 +30,14 @@ targets:
     platform: macOS
     sources:
       - path: WakeOnCue
+    dependencies:
+      # The command-line tool ships inside the app: WakeOnCue.app/Contents/Helpers/wakeoncue. Not in
+      # Contents/MacOS, where it would replace "WakeOnCue" on a case-insensitive disk.
+      - target: WakeOnCueCLI
+        embed: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     preBuildScripts:
       - name: Check signing identity
         basedOnDependencyAnalysis: false
@@ -77,6 +85,27 @@ targets:
         # The sherpa-onnx libraries are downloaded from its official releases (signed by their
         # publisher, checked against the published SHA-256) and loaded with dlopen.
         com.apple.security.cs.disable-library-validation: true
+
+  # Named apart from the app: on a case-insensitive disk "wakeoncue" and "WakeOnCue" would share
+  # build folders and module files.
+  WakeOnCueCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: WakeOnCueCLI
+      # Reads the library through the app's own storage code.
+      - path: WakeOnCue/Storage
+      - path: WakeOnCue/App/TimeText.swift
+      # Store records received segments with the sync protocol's types.
+      - path: WakeOnCue/Sync/SyncProtocol.swift
+    settings:
+      base:
+        PRODUCT_NAME: wakeoncue
+        PRODUCT_MODULE_NAME: WakeOnCueCLI
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos.cli
+        ENABLE_HARDENED_RUNTIME: true
+        OTHER_LDFLAGS: -lsqlite3
+        SKIP_INSTALL: YES
 
 schemes:
   WakeOnCue:

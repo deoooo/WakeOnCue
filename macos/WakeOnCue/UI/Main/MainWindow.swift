@@ -20,14 +20,14 @@ struct MainWindow: View {
           let overlay = geometry.size.width < 760
           HStack(spacing: 0) {
             page(data).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if meetingShown && !overlay {
+            if panelShown && !overlay {
               Divider()
-              MeetingPanel(data: data).frame(width: 400)
+              sidePanel(data).frame(width: 400)
             }
           }
           .overlay(alignment: .trailing) {
-            if meetingShown && overlay {
-              MeetingPanel(data: data)
+            if panelShown && overlay {
+              sidePanel(data)
                 .frame(width: min(400, geometry.size.width - 40))
                 .background(.background)
                 .shadow(color: .black.opacity(0.18), radius: 16)
@@ -52,12 +52,22 @@ struct MainWindow: View {
     .background(WindowSizer())
     .onAppear { model.openSettings = { openSettings() } }
     .sheet(isPresented: .constant(!model.preferences.onboarded)) { OnboardingView() }
+    .sheet(item: $ui.namingSentence) { sentence in NameSpeakerSheet(sentence: sentence) }
     .onChange(of: ui.searchText) {
       ui.page = ui.searchText.trimmingCharacters(in: .whitespaces).isEmpty ? .day : .search
     }
   }
 
   private var meetingShown: Bool { model.ui.meetingID != nil && model.ui.page == .day }
+  private var panelShown: Bool { meetingShown || model.ui.asking }
+
+  @ViewBuilder private func sidePanel(_ data: DayData) -> some View {
+    if model.ui.asking {
+      AskPanel()
+    } else {
+      MeetingPanel(data: data)
+    }
+  }
 
   @ViewBuilder private func page(_ data: DayData) -> some View {
     switch model.ui.page {
@@ -98,6 +108,13 @@ struct MainWindow: View {
       }
       .help("暂停或继续（⌃⌥P）")
       .disabled(model.recorder.state == .off && !model.preferences.onboarded)
+    }
+    ToolbarItem(placement: .primaryAction) {
+      Toggle(isOn: Bindable(model.ui).asking) {
+        Label("提问", systemImage: "bubble.left.and.text.bubble.right")
+      }
+      .help("问问你的录音（⌘K）")
+      .keyboardShortcut("k")
     }
     ToolbarItem(placement: .primaryAction) {
       Toggle(isOn: Bindable(model.ui).showTracks) {

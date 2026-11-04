@@ -72,6 +72,19 @@ final class OneShotConverterInput: @unchecked Sendable {
   }
 }
 
+/// Holds the only reference to a finished chunk's file, so releasing it closes the file.
+private final class FinishedChunkFile: @unchecked Sendable {
+  private var file: AVAudioFile?
+
+  init(_ file: AVAudioFile?) {
+    self.file = file
+  }
+
+  func close() {
+    file = nil
+  }
+}
+
 final class AudioCaptureService: @unchecked Sendable {
   static let sampleRate = 24_000.0
 
@@ -85,7 +98,19 @@ final class AudioCaptureService: @unchecked Sendable {
 
   let chunks: AsyncStream<CapturedAudioChunk>
 
-  private let engine = AVAudioEngine()
+  /// Audio session and engine calls can block for hundreds of milliseconds, so they run here.
+  private let controlQueue = DispatchQueue(
+    label: "com.deoooo.WakeOnCue.capture-control", qos: .userInitiated)
+  /// Closes and hashes finished chunks, in order, without holding up the audio tap.
+  private let chunkQueue = DispatchQueue(
+    label: "com.deoooo.WakeOnCue.capture-chunks", qos: .utility)
+  private var engine: AVAudioEngine?
+  private var tapFormat: AVAudioFormat?
+  private var engineObserver: NSObjectProtocol?
+  private var stallTimer: DispatchSourceTimer?
+  private var stallMonitor = RecordingCaptureStallMonitor()
+  private var lastBufferAt = Date()
+  private var hasReportedWriteFailure = false
   private let recordingID: String
   private let fileLayout: RecordingFileLayout
   private let testFixtureURL: URL?
@@ -130,14 +155,81 @@ final class AudioCaptureService: @unchecked Sendable {
   deinit {
     if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
     if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+    if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+    stallTimer?.cancel()
   }
 
-  func start() throws {
-    if let testFixtureURL {
-      try startTestFixture(at: testFixtureURL)
-      return
-    }
+  func start() async throws {
+    try await onControlQueue { try self.startOnControlQueue() }
+  }
 
+  func pause() async throws {
+    try await onControlQueue { try self.pauseOnControlQueue(reason: .userPaused) }
+  }
+
+  func resume() async throws {
+    try await onControlQueue { try self.resumeOnControlQueue() }
+  }
+
+  func stop() async throws {
+    try await onControlQueue { try self.stopOnControlQueue() }
+  }
+
+  private func onControlQueue(_ work: @escaping @Sendable () throws -> Void) async throws {
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, Error>) in
+      controlQueue.async {
+        continuation.resume(with: Result { try work() })
+      }
+    }
+  }
+
+  private func startOnControlQueue() throws {
+    do {
+      if let testFixtureURL {
+        try startTestFixture(at: testFixtureURL)
+      } else {
+        try startMicrophone()
+      }
+    } catch {
+      abandonStart()
+      throw error
+    }
+  }
+
+  private func startMicrophone() throws {
+    try configureAudioSession()
+    guard
+      let outputFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: Self.sampleRate,
+        channels: 1,
+        interleaved: false
+      )
+    else {
+      throw AudioCaptureError.invalidInputFormat
+    }
+    lock.withLock { self.outputFormat = outputFormat }
+    sourceFile = try setup("createSourceFile") { try makeSourceFile(format: outputFormat) }
+    try setup("createFirstChunk") { try openNextChunk(format: outputFormat) }
+    installObservers()
+    lock.withLock {
+      running = true
+      paused = false
+      captureMeter.reset()
+      captureFeedback = RecordingCaptureFeedback(
+        normalizedInputLevel: 0,
+        inputSourceName: Self.currentInputSourceName(),
+        sustainedSilenceDuration: nil,
+        pauseReason: nil
+      )
+      publishCaptureFeedbackLocked()
+    }
+    try startEngine()
+    startStallTimer()
+  }
+
+  private func configureAudioSession() throws {
     let session = AVAudioSession.sharedInstance()
     try setup("setCategory") {
       try session.setCategory(
@@ -155,50 +247,131 @@ final class AudioCaptureService: @unchecked Sendable {
     try setup("setActive") {
       try session.setActive(true)
     }
+  }
 
+  /// Always builds a new engine: one that was stopped by a route change or a media services reset
+  /// cannot restart with a tap in the old hardware format.
+  private func startEngine() throws {
+    stopEngine()
+    let engine = AVAudioEngine()
     let input = engine.inputNode
     let inputFormat = input.inputFormat(forBus: 0)
     guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
-      let outputFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: Self.sampleRate,
-        channels: 1,
-        interleaved: false
-      )
+      let outputFormat = lock.withLock({ self.outputFormat })
     else {
       throw AudioCaptureError.invalidInputFormat
     }
     guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
       throw AudioCaptureError.converterUnavailable
     }
-    self.outputFormat = outputFormat
-    self.converter = converter
-    sourceFile = try setup("createSourceFile") { try makeSourceFile(format: outputFormat) }
-    try setup("createFirstChunk") { try openNextChunk(format: outputFormat) }
-    installObservers()
-
+    lock.withLock {
+      self.converter = converter
+      lastBufferAt = Date()
+    }
     input.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
       self?.process(buffer)
     }
     engine.prepare()
-    lock.withLock {
-      running = true
-      paused = false
-      captureMeter.reset()
-      captureFeedback = RecordingCaptureFeedback(
-        normalizedInputLevel: 0,
-        inputSourceName: Self.currentInputSourceName(),
-        sustainedSilenceDuration: nil,
-        pauseReason: nil
-      )
-      publishCaptureFeedbackLocked()
-    }
     do {
       try setup("engineStart") { try engine.start() }
     } catch {
-      lock.withLock { running = false }
       input.removeTap(onBus: 0)
       throw error
+    }
+    self.engine = engine
+    tapFormat = inputFormat
+    engineObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: engine,
+      queue: nil
+    ) { [weak self] _ in
+      self?.controlQueue.async { self?.handleEngineConfigurationChange() }
+    }
+  }
+
+  private func stopEngine() {
+    if let engineObserver {
+      NotificationCenter.default.removeObserver(engineObserver)
+      self.engineObserver = nil
+    }
+    if let engine {
+      engine.stop()
+      engine.inputNode.removeTap(onBus: 0)
+    }
+    engine = nil
+    tapFormat = nil
+  }
+
+  /// A route change stops the engine, and the new route can use a different sample rate.
+  private func handleEngineConfigurationChange() {
+    guard lock.withLock({ running && !paused }), let engine else { return }
+    if engine.isRunning, engine.inputNode.inputFormat(forBus: 0) == tapFormat { return }
+    restartOrPause()
+  }
+
+  private func restartOrPause() {
+    do {
+      try configureAudioSession()
+      try startEngine()
+    } catch {
+      pauseAfterLosingAudio()
+    }
+  }
+
+  /// Shows the user that recording stopped, instead of a running timer with nothing being saved.
+  private func pauseAfterLosingAudio() {
+    do {
+      try pauseOnControlQueue(reason: .systemInterruption)
+      onInterruptionChanged?(true, false)
+    } catch {
+      onCaptureError?(error)
+    }
+  }
+
+  private func startStallTimer() {
+    let timer = DispatchSource.makeTimerSource(queue: controlQueue)
+    timer.schedule(deadline: .now() + 1, repeating: 1)
+    timer.setEventHandler { [weak self] in self?.checkForStall() }
+    timer.resume()
+    stallTimer = timer
+  }
+
+  private func stopStallTimer() {
+    stallTimer?.cancel()
+    stallTimer = nil
+  }
+
+  private func checkForStall() {
+    let action = lock.withLock { () -> RecordingCaptureStallMonitor.Action in
+      guard running, !paused else { return .none }
+      return stallMonitor.evaluate(
+        secondsSinceLastBuffer: Date().timeIntervalSince(lastBufferAt))
+    }
+    switch action {
+    case .none: break
+    case .restart: restartOrPause()
+    case .giveUp: pauseAfterLosingAudio()
+    }
+  }
+
+  private func abandonStart() {
+    if !lock.withLock({ isUsingTestFixture }) { stopEngine() }
+    stopStallTimer()
+    removeObservers()
+    testFixtureTask?.cancel()
+    testFixtureTask = nil
+    lock.withLock {
+      running = false
+      chunkFile = nil
+      chunkURL = nil
+      sourceFile = nil
+      converter = nil
+      outputFormat = nil
+      isUsingTestFixture = false
+    }
+    chunkContinuation.finish()
+    if testFixtureURL == nil {
+      try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
   }
 
@@ -210,13 +383,9 @@ final class AudioCaptureService: @unchecked Sendable {
     }
   }
 
-  func pause() throws {
-    try pause(reason: .userPaused)
-  }
-
-  private func pause(reason: RecordingCapturePauseReason) throws {
+  private func pauseOnControlQueue(reason: RecordingCapturePauseReason) throws {
     guard lock.withLock({ running && !paused }) else { throw AudioCaptureError.notRunning }
-    if !isUsingTestFixture { engine.pause() }
+    if !lock.withLock({ isUsingTestFixture }) { stopEngine() }
     lock.withLock {
       paused = true
       finishCurrentChunkLocked()
@@ -231,18 +400,22 @@ final class AudioCaptureService: @unchecked Sendable {
     }
   }
 
-  func resume() throws {
+  private func resumeOnControlQueue() throws {
     guard lock.withLock({ running && paused }) else { throw AudioCaptureError.notRunning }
-    guard let outputFormat else { throw AudioCaptureError.invalidInputFormat }
+    guard let outputFormat = lock.withLock({ self.outputFormat }) else {
+      throw AudioCaptureError.invalidInputFormat
+    }
     try lock.withLock {
       if chunkFile == nil { try openNextChunkLocked(format: outputFormat) }
     }
-    if !isUsingTestFixture {
-      try AVAudioSession.sharedInstance().setActive(true)
-      try engine.start()
+    if !lock.withLock({ isUsingTestFixture }) {
+      try configureAudioSession()
+      try startEngine()
     }
     lock.withLock {
       paused = false
+      lastBufferAt = Date()
+      stallMonitor.reset()
       captureMeter.reset()
       captureFeedback = RecordingCaptureFeedback(
         normalizedInputLevel: 0,
@@ -255,15 +428,13 @@ final class AudioCaptureService: @unchecked Sendable {
     }
   }
 
-  func stop() throws {
+  private func stopOnControlQueue() throws {
     guard lock.withLock({ running }) else { throw AudioCaptureError.notRunning }
-    let wasUsingTestFixture = isUsingTestFixture
+    let wasUsingTestFixture = lock.withLock { isUsingTestFixture }
     testFixtureTask?.cancel()
     testFixtureTask = nil
-    if !wasUsingTestFixture {
-      engine.stop()
-      engine.inputNode.removeTap(onBus: 0)
-    }
+    stopStallTimer()
+    if !wasUsingTestFixture { stopEngine() }
     lock.withLock {
       running = false
       paused = false
@@ -276,15 +447,9 @@ final class AudioCaptureService: @unchecked Sendable {
       captureFeedback = .idle
       publishCaptureFeedbackLocked()
     }
-    chunkContinuation.finish()
-    if let interruptionObserver {
-      NotificationCenter.default.removeObserver(interruptionObserver)
-      self.interruptionObserver = nil
-    }
-    if let routeObserver {
-      NotificationCenter.default.removeObserver(routeObserver)
-      self.routeObserver = nil
-    }
+    // Queued after the last chunk, so the stream ends only once that chunk has been delivered.
+    chunkQueue.async { [chunkContinuation] in chunkContinuation.finish() }
+    removeObservers()
     if !wasUsingTestFixture {
       do {
         try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -312,14 +477,16 @@ final class AudioCaptureService: @unchecked Sendable {
       throw AudioCaptureError.converterUnavailable
     }
 
-    self.outputFormat = outputFormat
-    self.converter = converter
+    lock.withLock {
+      self.outputFormat = outputFormat
+      self.converter = converter
+      isUsingTestFixture = true
+    }
     sourceFile = try setup("createSourceFile") { try makeSourceFile(format: outputFormat) }
     try setup("createFirstChunk") { try openNextChunk(format: outputFormat) }
     lock.withLock {
       running = true
       paused = false
-      isUsingTestFixture = true
       captureMeter.reset()
       captureFeedback = RecordingCaptureFeedback(
         normalizedInputLevel: 0,
@@ -370,6 +537,8 @@ final class AudioCaptureService: @unchecked Sendable {
   private func process(_ inputBuffer: AVAudioPCMBuffer) {
     lock.withLock {
       guard running, !paused, let converter, let outputFormat else { return }
+      lastBufferAt = Date()
+      stallMonitor.noteBuffer()
       let ratio = outputFormat.sampleRate / inputBuffer.format.sampleRate
       let capacity = AVAudioFrameCount(ceil(Double(inputBuffer.frameLength) * ratio)) + 16
       guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity)
@@ -382,7 +551,7 @@ final class AudioCaptureService: @unchecked Sendable {
         converterInput.provide(status: inputStatus)
       }
       guard status != .error, conversionError == nil else {
-        onCaptureError?(
+        reportWriteFailureLocked(
           AudioCaptureError.conversionFailed(conversionError?.localizedDescription ?? "unknown"))
         return
       }
@@ -390,6 +559,7 @@ final class AudioCaptureService: @unchecked Sendable {
       updateCaptureFeedbackLocked(from: outputBuffer)
       do {
         try sourceFile?.write(from: outputBuffer)
+        if chunkFile == nil { try openNextChunkLocked(format: outputFormat) }
         try chunkFile?.write(from: outputBuffer)
         let frames = AVAudioFramePosition(outputBuffer.frameLength)
         currentChunkFrames += frames
@@ -398,10 +568,18 @@ final class AudioCaptureService: @unchecked Sendable {
           finishCurrentChunkLocked()
           try openNextChunkLocked(format: outputFormat)
         }
+        hasReportedWriteFailure = false
       } catch {
-        onCaptureError?(error)
+        reportWriteFailureLocked(error)
       }
     }
+  }
+
+  /// A full disk fails every buffer; one alert is enough, and leaves the Finish button reachable.
+  private func reportWriteFailureLocked(_ error: Error) {
+    guard !hasReportedWriteFailure else { return }
+    hasReportedWriteFailure = true
+    onCaptureError?(error)
   }
 
   private func updateCaptureFeedbackLocked(from buffer: AVAudioPCMBuffer) {
@@ -488,26 +666,29 @@ final class AudioCaptureService: @unchecked Sendable {
     let index = nextChunkIndex
     let startedAt = chunkStartedAt
     let duration = Double(currentChunkFrames) / Self.sampleRate
+    let file = FinishedChunkFile(chunkFile)
     chunkFile = nil
     chunkURL = nil
     currentChunkFrames = 0
-    do {
-      let data = try Data(contentsOf: url, options: .mappedIfSafe)
-      let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-      let size = Int64(data.count)
-      chunkContinuation.yield(
-        CapturedAudioChunk(
-          index: index,
-          url: url,
-          checksum: checksum,
-          size: size,
-          startedAt: startedAt,
-          duration: duration
+    nextChunkIndex += 1
+    chunkQueue.async { [chunkContinuation, onCaptureError] in
+      file.close()
+      do {
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        chunkContinuation.yield(
+          CapturedAudioChunk(
+            index: index,
+            url: url,
+            checksum: checksum,
+            size: Int64(data.count),
+            startedAt: startedAt,
+            duration: duration
+          )
         )
-      )
-      nextChunkIndex += 1
-    } catch {
-      onCaptureError?(error)
+      } catch {
+        onCaptureError?(error)
+      }
     }
   }
 
@@ -517,7 +698,7 @@ final class AudioCaptureService: @unchecked Sendable {
       object: AVAudioSession.sharedInstance(),
       queue: nil
     ) { [weak self] notification in
-      self?.handleInterruption(notification)
+      self?.controlQueue.async { self?.handleInterruption(notification) }
     }
     routeObserver = NotificationCenter.default.addObserver(
       forName: AVAudioSession.routeChangeNotification,
@@ -525,8 +706,8 @@ final class AudioCaptureService: @unchecked Sendable {
       queue: nil
     ) { [weak self] _ in
       guard let self else { return }
-      let shouldRestart = self.lock.withLock {
-        guard self.running else { return false }
+      self.lock.withLock {
+        guard self.running else { return }
         self.captureFeedback = RecordingCaptureFeedback(
           normalizedInputLevel: self.captureFeedback.normalizedInputLevel,
           inputSourceName: Self.currentInputSourceName(),
@@ -534,12 +715,18 @@ final class AudioCaptureService: @unchecked Sendable {
           pauseReason: self.captureFeedback.pauseReason
         )
         self.publishCaptureFeedbackLocked()
-        return !self.paused
       }
-      guard shouldRestart else { return }
-      if !self.engine.isRunning {
-        do { try self.engine.start() } catch { self.onCaptureError?(error) }
-      }
+    }
+  }
+
+  private func removeObservers() {
+    if let interruptionObserver {
+      NotificationCenter.default.removeObserver(interruptionObserver)
+      self.interruptionObserver = nil
+    }
+    if let routeObserver {
+      NotificationCenter.default.removeObserver(routeObserver)
+      self.routeObserver = nil
     }
   }
 
@@ -551,7 +738,7 @@ final class AudioCaptureService: @unchecked Sendable {
     case .began:
       guard lock.withLock({ running && !paused }) else { return }
       do {
-        try pause(reason: .systemInterruption)
+        try pauseOnControlQueue(reason: .systemInterruption)
         onInterruptionChanged?(true, false)
       } catch {
         onCaptureError?(error)
@@ -566,7 +753,7 @@ final class AudioCaptureService: @unchecked Sendable {
         return
       }
       do {
-        try resume()
+        try resumeOnControlQueue()
         onInterruptionChanged?(false, true)
       } catch {
         onCaptureError?(error)

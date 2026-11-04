@@ -9,6 +9,7 @@ struct SettingsView: View {
     case recording = "录音"
     case devices = "设备与回传"
     case transcription = "转录模型"
+    case voices = "声音"
     case ai = "AI 服务"
     case calendar = "日历"
     case storage = "存储"
@@ -30,6 +31,7 @@ struct SettingsView: View {
         case .recording: RecordingSettings()
         case .devices: DevicesSettings()
         case .transcription: TranscriptionSettings()
+        case .voices: VoicesSettings()
         case .ai: AISettings()
         case .calendar: CalendarSettings()
         case .storage: StorageSettings()
@@ -132,6 +134,7 @@ private struct TranscriptionSettings: View {
       Section("可用模型") {
         ModelList()
       }
+      TranscriptionServiceSection()
       Section {
         LabeledContent("模型存放位置") {
           HStack {
@@ -144,7 +147,7 @@ private struct TranscriptionSettings: View {
           .font(.caption).foregroundStyle(.secondary)
       }
       Section("说话人") {
-        Text("麦克风里是你的声音算「我」，会议 App 那一路算「会议对方」，麦克风里明显更远、更轻的声音算「他人」。具体人名和记住声音在第二期。")
+        Text("麦克风里是你的声音算「我」，会议 App 那一路算「会议对方」，麦克风里的其他人算「他人」。录入你的声音、区分说话人和记住声音在设置 › 声音里。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -241,6 +244,7 @@ private struct StorageSettings: View {
           }
         }
       }
+      CommandLineSection()
     }
     .task { measure() }
   }
