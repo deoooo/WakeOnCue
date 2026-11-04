@@ -11,7 +11,7 @@ final class AppModel {
   let transcription: Transcription
   let player: Player
   let summaries: Summaries
-  let models = ASRModels()
+  let models: ASRModels
   let refiner: Refiner
   let asking: Asking
   let meetings: Meetings
@@ -37,14 +37,16 @@ final class AppModel {
     meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
     asking = Asking(store: store, summaries: summaries)
-    models.onActiveChange = { [weak refiner] in refiner?.use($0) }
+    models = ASRModels(preferences: preferences)
+    let preferences = preferences
+    models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
     transcription.onSentence = { [weak refiner] in refiner?.enqueue($0) }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
   }
 
   func launch() async {
     await recorder.startIfAllowed()
-    refiner.use(models.active)
+    refiner.use(models.active, service: preferences.transcriptionService)
     await transcription.start()
     summaries.start()
     meetings.start()
