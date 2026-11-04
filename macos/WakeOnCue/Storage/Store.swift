@@ -21,7 +21,11 @@ final class Store {
 
   @ObservationIgnored private let db: SQLiteDatabase
 
-  init(directory: URL = Store.rootDirectory) throws {
+  init(directory: URL = Store.rootDirectory, readOnly: Bool = false) throws {
+    if readOnly {
+      db = try SQLiteDatabase(url: directory.appending(path: "library.sqlite"), readOnly: true)
+      return
+    }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     db = try SQLiteDatabase(url: directory.appending(path: "library.sqlite"))
     try migrate()

@@ -42,6 +42,22 @@ scripts/setup-signing.sh
 
 模型和 sherpa-onnx 运行库都在用户点「下载」时从 k2-fsa/sherpa-onnx 的官方 GitHub Releases 下载，按发布页的 SHA-256 校验后解压，运行时用 `dlopen` 载入（因此开启了 `com.apple.security.cs.disable-library-validation`）。仓库里只有 C 头文件，见 `Vendor/sherpa-onnx`。加一个新模型（比如以后的官方 1.7B 包）只需在 `ASRModel.catalog` 里加一条。
 
+## 命令行工具
+
+App 里带了一个只读的命令行工具 `WakeOnCue.app/Contents/Helpers/wakeoncue`（源码在 `WakeOnCueCLI/`，和 App 共用 `Storage` 的代码）。在设置 › 存储 › 命令行里点「安装」，就会在 `~/.local/bin` 下建一个链接。
+
+```bash
+wakeoncue day                      # 今天的总结、重点事件和每小时总结
+wakeoncue day 昨天 --json
+wakeoncue transcript --hour 10     # 今天 10 点这一小时的原文
+wakeoncue transcript 11-03 --from 14:30 --to 15:00
+wakeoncue search 告警 灰度 --days 7 --speaker 会议对方
+wakeoncue meetings
+wakeoncue meeting 3
+```
+
+所有命令都可以加 `--json`，方便脚本和 Claude 等 AI 工具使用。标为私人或已删除的时段不会出现在任何结果里。它只读打开数据库，App 运行时也可以用。
+
 ## 调试
 
 Debug 构建可以让 App 每隔几秒把自己的窗口截成 PNG，并执行 `<路径>.cmd` 里的命令（见 `App/DebugSnapshot.swift`），用于在没有鼠标的情况下检查界面：

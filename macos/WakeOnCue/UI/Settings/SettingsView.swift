@@ -240,6 +240,7 @@ private struct StorageSettings: View {
           }
         }
       }
+      CommandLineSection()
     }
     .task { measure() }
   }
