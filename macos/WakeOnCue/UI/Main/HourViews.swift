@@ -253,9 +253,9 @@ struct HourRow: View {
         if hour.meetings.isEmpty {
           Button("标成一场会议…") { model.markMeeting(in: hour.interval) }
         }
-        Button("用 \(model.summaries.engineName ?? "AI") 重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
+        Button("重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
           .disabled(model.summaries.engineName == nil)
-        Button("用 \(model.refiner.retranscribeName) 重新转录") { model.refiner.retranscribe(hour.interval) }
+        Button("重新转录并总结") { model.refiner.retranscribe(hour.interval, summarizeAll: true) }
           .disabled(model.refiner.isRetranscribing(hour.interval))
       }
       if hour.state == .speech || hour.state == .privateHour {
@@ -327,7 +327,7 @@ struct RedoStatus: View {
     if model.refiner.isRetranscribing(interval) {
       HStack(spacing: 6) {
         ProgressView().controlSize(.mini)
-        Text("正在用 \(model.refiner.retranscribeName) 重新转录，还有 \(model.refiner.retranscribeRemaining) 句，完成后更新总结")
+        Text("正在重新转录，还有 \(model.refiner.retranscribeRemaining) 句，完成后更新总结")
         Button("停止") { model.refiner.cancelRetranscription() }.buttonStyle(.link)
       }
       .font(.caption)

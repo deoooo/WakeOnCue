@@ -52,8 +52,9 @@ final class AppModel {
     }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
     // New words make the old summaries wrong: redo the hours and meetings they fall in.
-    refiner.onRetranscribed = { [weak self] starts in
+    refiner.onRetranscribed = { [weak self] interval, starts, all in
       guard let self else { return }
+      if all { return regenerateSummaries(in: interval) }
       let calendar = Calendar.current
       for hour in Set(starts.map(calendar.hourStart)) {
         summaries.invalidate(DateInterval(start: hour, duration: 3_600))

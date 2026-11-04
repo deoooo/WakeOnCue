@@ -40,8 +40,10 @@ final class Refiner {
   private(set) var retranscribing: [DateInterval] = []
   /// Sentences of those stretches still to do.
   private(set) var retranscribeRemaining = 0
-  /// Starts of the sentences whose words changed in a finished stretch.
-  @ObservationIgnored var onRetranscribed: (([Date]) -> Void)?
+  /// A finished stretch, the starts of the sentences whose words changed, and whether every
+  /// summary of the stretch should be written again (not only where the words changed).
+  @ObservationIgnored var onRetranscribed: ((DateInterval, [Date], Bool) -> Void)?
+  @ObservationIgnored private var summarizeAll: Set<DateInterval> = []
 
   private struct Job {
     var sentence: Sentence
@@ -122,12 +124,14 @@ final class Refiner {
     start()
   }
 
-  /// "重新转录": every sentence of the stretch again, with what is chosen now.
-  func retranscribe(_ interval: DateInterval) {
+  /// "重新转录": every sentence of the stretch again, with what is chosen now. With
+  /// `summarizeAll`, every summary of the stretch is written again afterwards.
+  func retranscribe(_ interval: DateInterval, summarizeAll all: Bool = false) {
     let queued = Set(queue.filter { $0.batch != nil }.map(\.sentence.id))
     let sentences = store.sentences(in: interval).filter { !queued.contains($0.id) }
     guard !sentences.isEmpty else { return }
     retranscribing.append(interval)
+    if all { summarizeAll.insert(interval) }
     queue += sentences.map { Job(sentence: $0, batch: interval) }
     pending = queue.count
     retranscribeRemaining = queue.count { $0.batch != nil }
@@ -138,14 +142,16 @@ final class Refiner {
   func cancelRetranscription() {
     queue.removeAll { $0.batch != nil }
     pending = queue.count
-    for interval in retranscribing { finish(interval) }
+    for interval in retranscribing { finish(interval, stopped: true) }
   }
 
-  private func finish(_ interval: DateInterval) {
+  private func finish(_ interval: DateInterval, stopped: Bool = false) {
     retranscribing.removeAll { $0 == interval }
     retranscribeRemaining = queue.count { $0.batch != nil }
     let starts = changed.removeValue(forKey: interval) ?? []
-    if !starts.isEmpty { onRetranscribed?(starts) }
+    // Stopped halfway: only what changed is summarized again.
+    let all = summarizeAll.remove(interval) != nil && !stopped
+    if all || !starts.isEmpty { onRetranscribed?(interval, starts, all) }
   }
 
   private func start() {

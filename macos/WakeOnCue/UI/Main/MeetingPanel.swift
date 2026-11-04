@@ -111,9 +111,9 @@ struct MeetingPanel: View {
         Button("播放整场") { if let first = rows.first { model.play(first) } }
           .disabled(rows.isEmpty)
         Menu("重新…") {
-          Button("用 \(model.summaries.engineName ?? "AI") 重新生成要点") { model.summaries.regenerateMeeting(meeting.id) }
+          Button("重新生成要点") { model.summaries.regenerateMeeting(meeting.id) }
             .disabled(model.summaries.engineName == nil || rows.isEmpty)
-          Button("用 \(model.refiner.retranscribeName) 重新转录整场") { model.refiner.retranscribe(interval(meeting)) }
+          Button("重新转录并生成要点") { model.refiner.retranscribe(interval(meeting), summarizeAll: true) }
             .disabled(rows.isEmpty || model.refiner.isRetranscribing(interval(meeting)))
         }
         .fixedSize()

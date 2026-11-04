@@ -53,14 +53,15 @@
             Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Debug").notice(
               "ASK \(last.question, privacy: .public) → \(last.error ?? last.answer.map(\.text).joined(separator: " / "), privacy: .public) | cites: \(cites.joined(separator: " ; "), privacy: .public)")
           }
-        // "retranscribe 14" / "regenerate 14": that hour of the day shown; "retranscribe day".
-        case "retranscribe", "regenerate", "regenday":
+        // "retranscribe 14" / "regenerate 14": that hour of the day shown; "retranscribe day";
+        // "redoday" re-transcribes the day shown and then writes all its summaries again.
+        case "retranscribe", "regenerate", "regenday", "redoday":
           let day = Calendar.current.startOfDay(for: model.ui.day)
-          let interval = argument == "day" || parts[0] == "regenday"
+          let interval = argument == "day" || parts[0] == "regenday" || parts[0] == "redoday"
             ? DateInterval(start: day, duration: 86_400)
             : DateInterval(start: day.addingTimeInterval(Double(Int(argument) ?? 0) * 3_600), duration: 3_600)
-          if parts[0] == "retranscribe" {
-            model.refiner.retranscribe(interval)
+          if parts[0] == "retranscribe" || parts[0] == "redoday" {
+            model.refiner.retranscribe(interval, summarizeAll: parts[0] == "redoday")
           } else {
             model.regenerateSummaries(in: interval)
           }

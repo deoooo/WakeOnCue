@@ -92,26 +92,26 @@ struct DayPage: View {
 
   private var dayInterval: DateInterval { DateInterval(start: data.day, duration: 86_400) }
 
-  /// Writing the whole day again after switching the transcription model or the AI service.
+  /// The whole day at once, after switching the transcription model or the AI service: a click
+  /// re-transcribes every hour and then writes every summary again; the arrow offers the
+  /// summaries alone.
   private var redoMenu: some View {
-    Menu {
-      Button("用 \(model.summaries.engineName ?? "AI") 重新生成这一天的总结") {
-        model.regenerateSummaries(in: dayInterval)
-      }
-      .disabled(model.summaries.engineName == nil || data.rows.allSatisfy { $0.state != .speech })
-      Button("用 \(model.refiner.retranscribeName) 重新转录这一天") {
-        model.refiner.retranscribe(dayInterval)
-      }
-      .disabled(model.refiner.isRetranscribing(dayInterval) || data.rows.allSatisfy { $0.state != .speech })
-      Text("重新转录后，文字有变化的小时和会议会自动重新总结。")
+    let silent = data.rows.allSatisfy { $0.state != .speech }
+    return Menu {
+      Button("重新转录并总结整天") { model.refiner.retranscribe(dayInterval, summarizeAll: true) }
+        .disabled(model.refiner.isRetranscribing(dayInterval))
+      Button("只重新总结整天") { model.regenerateSummaries(in: dayInterval) }
+        .disabled(model.summaries.engineName == nil)
     } label: {
-      Image(systemName: "arrow.clockwise")
+      Label("重新转录并总结整天", systemImage: "arrow.clockwise")
+    } primaryAction: {
+      model.refiner.retranscribe(dayInterval, summarizeAll: true)
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
+    .menuStyle(.button)
+    .controlSize(.small)
     .fixedSize()
-    .help("重新转录或重新总结这一天")
-    .accessibilityLabel("重新转录或重新总结这一天")
+    .disabled(silent || model.refiner.isRetranscribing(dayInterval))
+    .help("整天的每一小时重新转录，完成后重新生成每小时总结、当天总结和会议要点")
   }
 
   @ViewBuilder private var details: some View {
