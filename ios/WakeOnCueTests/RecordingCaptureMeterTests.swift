@@ -3,6 +3,28 @@ import XCTest
 @testable import WakeOnCue
 
 final class RecordingCaptureMeterTests: XCTestCase {
+  func testStallMonitorIgnoresShortGaps() {
+    var monitor = RecordingCaptureStallMonitor()
+    XCTAssertEqual(monitor.evaluate(secondsSinceLastBuffer: 2.9), .none)
+  }
+
+  func testStallMonitorRestartsThenGivesUp() {
+    var monitor = RecordingCaptureStallMonitor()
+    for _ in 0..<RecordingCaptureStallMonitor.maximumRestarts {
+      XCTAssertEqual(monitor.evaluate(secondsSinceLastBuffer: 3), .restart)
+    }
+    XCTAssertEqual(monitor.evaluate(secondsSinceLastBuffer: 3), .giveUp)
+  }
+
+  func testStallMonitorForgetsRestartsOnceAudioReturns() {
+    var monitor = RecordingCaptureStallMonitor()
+    for _ in 0..<RecordingCaptureStallMonitor.maximumRestarts {
+      _ = monitor.evaluate(secondsSinceLastBuffer: 3)
+    }
+    monitor.noteBuffer()
+    XCTAssertEqual(monitor.evaluate(secondsSinceLastBuffer: 3), .restart)
+  }
+
   func testReportsSustainedSilenceOnlyAfterThreshold() {
     var meter = RecordingCaptureMeter()
     let silence = [Float](repeating: 0, count: 2_400)

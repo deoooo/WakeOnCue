@@ -23,6 +23,8 @@ struct ModelRow: View {
     LabeledContent {
       HStack(spacing: 8) {
         switch state {
+        case .notDownloaded where entry.isRemote:
+          Text("在下方填写并开启").foregroundStyle(.secondary)
         case .notDownloaded:
           Button("下载") { models.download(entry) }
         case .downloading(let fraction):
@@ -45,7 +47,7 @@ struct ModelRow: View {
           } else {
             Button("使用") { models.activate(entry.isBuiltIn ? nil : entry) }
           }
-          if !entry.isBuiltIn {
+          if entry.package != nil {
             Button("删除") { models.delete(entry) }
           }
         }
@@ -53,7 +55,7 @@ struct ModelRow: View {
       .font(.callout)
     } label: {
       Text(entry.name)
-      Text(entry.isBuiltIn ? entry.detail : "\(entry.detail) · \(entry.size) · \(entry.source)")
+      Text(entry.package == nil ? entry.detail : "\(entry.detail) · \(entry.size) · \(entry.source)")
       if !entry.isBuiltIn, inUse {
         RefinerStatusText()
       }
@@ -71,6 +73,8 @@ struct RefinerStatusText: View {
     case .off: EmptyView()
     case .loading(let name): Text("正在载入 \(name)…")
     case .failed(let reason): Text(reason).foregroundStyle(Color.recording)
+    case .ready where refiner.lastError != nil:
+      Text("最近一句失败：\(refiner.lastError ?? "")").foregroundStyle(Color.recording)
     case .ready:
       if let perMinute = refiner.secondsPerMinute {
         Text("每分钟音频约用 \(perMinute.formatted(.number.precision(.fractionLength(1)))) 秒\(refiner.pending > 0 ? "，还有 \(refiner.pending) 句排队" : "")")

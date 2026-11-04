@@ -1,6 +1,18 @@
 import SwiftUI
 
+/// Reads the meter itself, so its ten updates a second redraw only this view and not the home screen.
+struct LiveCaptureFeedbackView: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    CaptureFeedbackView(feedback: model.captureFeedback) {
+      Task { await model.resumeRecording() }
+    }
+  }
+}
+
 struct CaptureFeedbackView: View {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let feedback: RecordingCaptureFeedback
   let onResume: () -> Void
 
@@ -47,6 +59,10 @@ struct CaptureFeedbackView: View {
             Capsule()
               .fill(statusColor)
               .frame(width: proxy.size.width * CGFloat(feedback.normalizedInputLevel))
+              .animation(
+                reduceMotion ? nil : .linear(duration: RecordingCaptureMeter.updateInterval),
+                value: feedback.normalizedInputLevel
+              )
           }
       }
       .frame(height: 6)

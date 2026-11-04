@@ -130,6 +130,7 @@ private struct TranscriptionSettings: View {
       Section("可用模型") {
         ModelList()
       }
+      TranscriptionServiceSection()
       Section {
         LabeledContent("模型存放位置") {
           HStack {
