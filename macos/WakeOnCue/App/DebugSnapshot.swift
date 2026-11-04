@@ -18,9 +18,10 @@
       }
     }
 
-    private static func runCommands(at path: String, model: AppModel) {
-      guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
-      try? FileManager.default.removeItem(atPath: path)
+    private static func runCommands(at commandFile: String, model: AppModel) {
+      let path = commandFile.replacingOccurrences(of: ".cmd", with: "")
+      guard let text = try? String(contentsOfFile: commandFile, encoding: .utf8) else { return }
+      try? FileManager.default.removeItem(atPath: commandFile)
       for line in text.split(separator: "\n") {
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         let argument = parts.count > 1 ? parts[1] : ""
@@ -35,6 +36,12 @@
         case "meeting": model.openMeeting(Int64(argument) ?? 0)
         case "download": model.models.download(.qwen3_0_6B)
         case "pausedl": model.models.pause(.qwen3_0_6B)
+        case "pairqr":
+          model.sync.newInvitation()
+          Task {
+            for _ in 0..<30 where model.sync.invitation == nil { try? await Task.sleep(for: .milliseconds(100)) }
+            try? model.sync.invitation?.url.absoluteString.write(toFile: path + ".pair", atomically: true, encoding: .utf8)
+          }
         case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
         case "draft": model.ui.draftingMinutes = true
         case "close": model.closeMeeting()

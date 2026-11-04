@@ -13,6 +13,7 @@ final class AppModel {
   let summaries: Summaries
   let models = ASRModels()
   let refiner: Refiner
+  let sync: SyncServer
   let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -35,6 +36,7 @@ final class AppModel {
     summaries = Summaries(store: store, preferences: preferences)
     meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
+    sync = SyncServer(store: store, preferences: preferences)
     models.onActiveChange = { [weak refiner] in refiner?.use($0) }
     transcription.onSentence = { [weak refiner] in refiner?.enqueue($0) }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
@@ -47,6 +49,7 @@ final class AppModel {
     summaries.start()
     meetings.start()
     startHousekeeping()
+    sync.start()
   }
 
   // MARK: Looking and playing
