@@ -48,6 +48,7 @@ targets:
         DEVELOPMENT_LANGUAGE: zh-Hans
         SWIFT_EMIT_LOC_STRINGS: NO
         OTHER_LDFLAGS: -lsqlite3
+        SWIFT_OBJC_BRIDGING_HEADER: WakeOnCue/WakeOnCue-Bridging-Header.h
     info:
       path: WakeOnCue/Info.plist
       properties:
@@ -70,6 +71,9 @@ targets:
       properties:
         com.apple.security.device.audio-input: true
         com.apple.security.personal-information.calendars: true
+        # The sherpa-onnx libraries are downloaded from its official releases (signed by their
+        # publisher, checked against the published SHA-256) and loaded with dlopen.
+        com.apple.security.cs.disable-library-validation: true
 
 schemes:
   WakeOnCue:

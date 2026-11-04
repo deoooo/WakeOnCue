@@ -66,6 +66,9 @@ final class Store {
         adjusted INTEGER NOT NULL DEFAULT 0)
       """)
     // Added after the first release: which engine wrote each summary.
+    if !(try db.query("PRAGMA table_info(sentence)") { $0.text(1) }).contains("refined_by") {
+      try db.execute("ALTER TABLE sentence ADD COLUMN refined_by TEXT")
+    }
     for table in ["hour_summary", "day_summary", "meeting"] {
       let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
       if !columns.contains("engine") { try db.execute("ALTER TABLE \(table) ADD COLUMN engine TEXT") }
@@ -99,19 +102,25 @@ final class Store {
     return id
   }
 
+  /// A better transcript of the same words; times and speaker stay as they were.
+  func refineSentence(id: Int64, text: String, by model: String) {
+    run("UPDATE sentence SET text = ?, refined_by = ? WHERE id = ?", [.text(text), .text(model), .int(id)])
+    changed()
+  }
+
   func deleteSentence(id: Int64) {
     run("DELETE FROM sentence WHERE id = ?", [.int(id)])
     changed()
   }
 
-  private static let sentenceColumns = "id, start, end, channel, speaker, source, text"
+  private static let sentenceColumns = "id, start, end, channel, speaker, source, text, refined_by"
 
   private static func sentence(_ row: SQLiteDatabase.Row) -> Sentence? {
     Sentence(
       id: row.int(0), start: row.date(1), end: row.date(2),
       channel: AudioChannel(rawValue: row.text(3)) ?? .microphone,
       speaker: Speaker(rawValue: row.text(4)) ?? .me,
-      source: row.text(5), text: row.text(6))
+      source: row.text(5), text: row.text(6), refinedBy: row.isNull(7) ? nil : row.text(7))
   }
 
   /// Every sentence that starts in the interval, including private and deleted ones.

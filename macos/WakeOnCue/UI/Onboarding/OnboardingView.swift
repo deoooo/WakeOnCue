@@ -115,6 +115,11 @@ struct OnboardingView: View {
       permissionRow("Apple 语音 · 中文", "系统自带，支持边录边转。") {
         SpeechStatusText(status: model.transcription.status).font(.caption)
       }
+      Form { ModelRow(entry: .qwen3_0_6B) }
+        .formStyle(.columns)
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider() }
+      Text("可选。可以稍后在设置 › 转录模型里下载。").font(.caption).foregroundStyle(.secondary)
       permissionRow("总结", "优先由这台 Mac 上的 Apple 智能生成。不支持 Apple 智能的 Mac 可以在设置 › AI 服务里配置自己的网关。") {
         if let engine = model.summaries.engineName {
           Text("✓ \(engine)").foregroundStyle(.green)

@@ -252,6 +252,9 @@ struct HourRow: View {
         }
         Button("重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
           .disabled(model.summaries.engineName == nil)
+        if let asr = model.models.active {
+          Button("用 \(asr.name) 重新转录") { model.refiner.retranscribe(hour.interval) }
+        }
       }
       if hour.state == .speech || hour.state == .privateHour {
         Button(hour.state == .privateHour ? "取消私人" : "标为私人") {

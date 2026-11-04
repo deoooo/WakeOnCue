@@ -121,22 +121,25 @@ private struct TranscriptionSettings: View {
   var body: some View {
     Form {
       Section {
-        LabeledContent("实时转录用", value: "Apple 语音")
+        LabeledContent("实时转录") { SpeechStatusText(status: model.transcription.status) }
         LabeledContent("说话语言", value: "中文")
+      } footer: {
+        Text("Apple 语音一直负责边录边转。启用下载的模型后，每句话会在几秒后用它重新转录，替换 Apple 语音的结果；时间和说话人不变。")
+          .font(.caption).foregroundStyle(.secondary)
       }
       Section("可用模型") {
-        LabeledContent {
-          SpeechStatusText(status: model.transcription.status)
-        } label: {
-          Text("Apple 语音")
-          Text("系统提供，支持实时。第一期的默认选择")
+        ModelList()
+      }
+      Section {
+        LabeledContent("模型存放位置") {
+          HStack {
+            Text(TimeText.bytes(model.models.bytesOnDisk())).foregroundStyle(.secondary)
+            Button("在访达中显示") { NSWorkspace.shared.activateFileViewerSelecting([ASRModels.directory]) }
+          }
         }
-        LabeledContent {
-          Text("第二期").foregroundStyle(.secondary)
-        } label: {
-          Text("下载第三方模型")
-          Text("SenseVoice、Whisper 等，中文和中英混说更准")
-        }
+      } footer: {
+        Text("下载中断后会从断点继续，完成后按官方发布的 SHA-256 校验文件。")
+          .font(.caption).foregroundStyle(.secondary)
       }
       Section("说话人") {
         Text("麦克风里是你的声音算「我」，会议 App 那一路算「会议对方」，麦克风里明显更远、更轻的声音算「他人」。具体人名和记住声音在第二期。")

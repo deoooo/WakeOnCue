@@ -31,6 +31,8 @@ nonisolated struct Sentence: Identifiable, Hashable, Sendable {
   /// What the user sees as the source: "Mac 麦克风" or the meeting app's name.
   var source: String
   var text: String
+  /// The model that re-transcribed this sentence, or nil for Apple speech's live result.
+  var refinedBy: String? = nil
 }
 
 nonisolated struct AudioSegment: Identifiable, Hashable, Sendable {

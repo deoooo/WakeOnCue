@@ -33,7 +33,7 @@ struct SentenceRow: View {
     // A tap only fires when the pointer did not move, so a drag-selection never plays.
     .simultaneousGesture(TapGesture().onEnded(play))
     .onHover { hovering = $0 }
-    .help("单击从这句播放，拖选可复制")
+    .help("单击从这句播放，拖选可复制" + (sentence.refinedBy.map { "。由 \($0) 重新转录" } ?? ""))
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityAction(named: "从这句播放", play)
