@@ -39,8 +39,11 @@ final class Player {
       return
     }
     start = max(start, first.start)
-    // Every channel that has audio at `start` plays together.
-    let current = segments.filter { $0.start <= start.addingTimeInterval(0.5) && $0.end > start }
+    // Every Mac channel that has audio at `start` plays together; Watch or iPhone audio only
+    // where the Mac has none.
+    let atStart = segments.filter { $0.start <= start.addingTimeInterval(0.5) && $0.end > start }
+    let local = atStart.filter { $0.channel != .remote }
+    let current = local.isEmpty ? Array(atStart.filter { $0.channel == .remote }.prefix(1)) : local
     var started: [AVAudioPlayer] = []
     let deviceTime = current.isEmpty ? 0 : (try? AVAudioPlayer(contentsOf: url(of: current[0])))?.deviceCurrentTime ?? 0
     for segment in current {

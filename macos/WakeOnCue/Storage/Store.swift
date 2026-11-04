@@ -75,6 +75,11 @@ final class Store {
         idx INTEGER NOT NULL, start REAL NOT NULL, duration REAL NOT NULL, path TEXT NOT NULL,
         received REAL NOT NULL, merged INTEGER NOT NULL DEFAULT 0)
       """)
+    let remoteColumns = try db.query("PRAGMA table_info(remote_segment)") { $0.text(1) }
+    if !remoteColumns.contains("outcome") {
+      try db.execute("ALTER TABLE remote_segment ADD COLUMN outcome TEXT")
+      try db.execute("ALTER TABLE remote_segment ADD COLUMN clock_offset REAL")
+    }
     // Added after the first release: which engine wrote each summary.
     let sentenceColumns = try db.query("PRAGMA table_info(sentence)") { $0.text(1) }
     if !sentenceColumns.contains("refined_by") {
@@ -239,6 +244,13 @@ final class Store {
   func addMark(_ kind: TimeMark.Kind, start: Date, end: Date) {
     run("INSERT INTO mark (kind, start, end, created) VALUES (?, ?, ?, ?)",
         [.text(kind.rawValue), .date(start), .date(end), .date(.now)])
+    changed()
+  }
+
+  /// Ends open marks of a kind, e.g. a pause when recording resumes.
+  func closeMarks(_ kind: TimeMark.Kind, at end: Date) {
+    run("UPDATE mark SET end = ? WHERE kind = ? AND end > ? AND start <= ?",
+        [.date(end), .text(kind.rawValue), .date(end), .date(end)])
     changed()
   }
 
@@ -424,6 +436,28 @@ final class Store {
       "INSERT OR REPLACE INTO remote_segment (id, device, source, recording, idx, start, duration, path, received, merged) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
       [.text(info.id), .text(device), .text(info.source), .text(info.recordingID), .int(Int64(info.index)),
        .date(info.startedAt), .double(info.duration), .text(path), .date(.now)])
+    changed()
+  }
+
+  nonisolated struct RemoteSegment: Sendable {
+    var id: String
+    var device: String
+    var source: String
+    var start: Date
+    var duration: TimeInterval
+    var path: String
+  }
+
+  func unmergedRemoteSegments() -> [RemoteSegment] {
+    fetch("SELECT id, device, source, start, duration, path FROM remote_segment WHERE merged = 0 ORDER BY start") { row in
+      RemoteSegment(id: row.text(0), device: row.text(1), source: row.text(2), start: row.date(3), duration: row.double(4), path: row.text(5))
+    }
+  }
+
+  /// Records what merging did with a segment: "filled", "duplicate", "kept", "dropped".
+  func finishRemoteSegment(id: String, outcome: String, clockOffset: TimeInterval?) {
+    run("UPDATE remote_segment SET merged = 1, outcome = ?, clock_offset = ? WHERE id = ?",
+        [.text(outcome), clockOffset.map { .double($0) } ?? .null, .text(id)])
     changed()
   }
 

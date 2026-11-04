@@ -48,9 +48,19 @@
 ## Mac 端如何保存
 
 - 收到一半的内容在 `~/Library/Application Support/WakeOnCue/Inbox/.partial/`，重连后从那里续传。
-- 校验通过后移到 `Inbox/<deviceID>/<segmentID>.<format>`，记入 `remote_segment` 表（`merged = 0`），等待合并（5c）。
+- 校验通过后移到 `Inbox/<deviceID>/<segmentID>.<format>`，记入 `remote_segment` 表（`merged = 0`），随即合并。
+
+## 合并（Mac 端，`Sync/Merger.swift`）
+
+1. 按 `startedAt` 加上这台设备已知的时钟偏差，放到时间线上。
+2. 和 Mac 麦克风同一时段（前后各多取 3 秒）比较：把两边都算成 20 毫秒一帧的对数音量包络，在 ±3 秒内找相关性最高的错位，相关系数用 Pearson，只算 Mac 录到的帧。
+3. 重叠至少 10 秒且相关系数 ≥ 0.5：**内容相同**。错位就是时钟偏差，记下来（平滑更新）；Mac 录到的部分丢弃，只把 Mac 没录到、至少 1 秒的空档补进来。
+4. 相关系数低，或重叠不够 10 秒，或关掉了「内容相同时自动合并」：**内容不同**，整段保留，用已知的时钟偏差对齐。
+5. 落在暂停、私人、已删除时段里的部分丢弃。
+6. 保留下来的音频写成和 Mac 自己一样的 AAC 分段（通道 `remote`，来源「Apple Watch」或「iPhone」），离线转录，说话人默认是「我」，并重新生成受影响小时的总结。
+7. `remote_segment.outcome` 记下结果：`duplicate`（和 Mac 相同，全部丢弃）、`filled`（补了空档）、`kept`（两边都保留）、`dropped`（全在不录音的时段里）、`unreadable`。
 
 ## 尚未包含
 
-- 暂停时段：Mac 现在只记录“暂停到何时”，没有保存历史暂停区间，所以 `drop` 里还没有暂停。合并（5c）会按 Mac 的录音和暂停情况再过滤一次。
+- 暂停时段：Mac 暂停时记一条 `paused` 标记，`drop` 里会带上，合并时也会丢弃。
 - 删除同步回 iPhone 和手表：已删除的时段通过 `drop` 让 iPhone 不再发送；iPhone 本地的删除和“最近删除”同步留到 5b。

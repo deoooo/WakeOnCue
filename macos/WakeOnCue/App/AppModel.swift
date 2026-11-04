@@ -16,6 +16,7 @@ final class AppModel {
   let asking: Asking
   let voices: Voices
   let sync: SyncServer
+  let merger: Merger
   let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -39,6 +40,7 @@ final class AppModel {
     meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
     sync = SyncServer(store: store, preferences: preferences)
+    merger = Merger(store: store, preferences: preferences, summaries: summaries)
     asking = Asking(store: store, summaries: summaries)
     models = ASRModels(preferences: preferences)
     let preferences = preferences
@@ -58,7 +60,9 @@ final class AppModel {
     summaries.start()
     meetings.start()
     startHousekeeping()
+    sync.onSegment = { [weak merger] _, _ in Task { await merger?.mergePending() } }
     sync.start()
+    Task { await merger.mergePending() }
   }
 
   // MARK: Looking and playing

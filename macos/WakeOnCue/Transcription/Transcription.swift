@@ -55,7 +55,7 @@ final class Transcription {
       return
     }
     status = .ready
-    for channel in AudioChannel.allCases {
+    for channel in [AudioChannel.microphone, .meeting] {
       transcribers[channel] = LiveTranscriber(
         channel: channel,
         onSentence: { [weak self] sentence in Task { @MainActor in self?.save(sentence) } },
@@ -74,6 +74,9 @@ final class Transcription {
 
   private func save(_ recognized: RecognizedSentence) {
     switch recognized.channel {
+    case .remote:
+      // Forwarded audio is transcribed by the merger, not live.
+      return
     case .meeting:
       let source = recorder.meetingPipeline.source
       let id = store.insertSentence(

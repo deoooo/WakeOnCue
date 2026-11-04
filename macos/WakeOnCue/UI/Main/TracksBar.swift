@@ -51,6 +51,9 @@ struct TracksBar: View {
         }
         lane("Mac 麦克风", channel: .microphone, color: .sourceMac, height: 14)
         lane("会议声音", channel: .meeting, color: .sourceMeeting, height: 8)
+        if data.segments.contains(where: { $0.channel == .remote }) {
+          lane("手表 / iPhone", channel: .remote, color: .sourceWatch, height: 8)
+        }
       }
     }
     .padding(.horizontal, 16)
@@ -74,7 +77,7 @@ struct TracksBar: View {
               .help("\(segment.channel == .microphone ? "Mac 麦克风" : segment.source) \(TimeText.range(segment.start, segment.end))")
           }
           // Hidden hours cover every lane so nothing in them can be played.
-          ForEach(data.marks) { mark in
+          ForEach(data.marks.filter { $0.kind != .paused }) { mark in
             Group {
               if mark.kind == .privateRange {
                 Hatch(spacing: 4).stroke(Color.hatch, lineWidth: 1.5).background(Color.soft)
