@@ -64,12 +64,14 @@ nonisolated enum GatewayError: LocalizedError {
   case notConfigured
   case http(Int, String)
   case badResponse(String)
+  case truncated
 
   var errorDescription: String? {
     switch self {
     case .notConfigured: "网关还没有设置好"
     case .http(let status, let body): "网关返回 HTTP \(status)：\(GatewayError.message(in: body))"
     case .badResponse(let detail): "网关的回复无法解析：\(detail.prefix(160))"
+    case .truncated: "模型的回复超出了输出长度上限，没有给出结果"
     }
   }
 
@@ -159,7 +161,8 @@ nonisolated struct GatewayEngine: SummaryEngine {
   }
 
   /// One completion in the configured protocol, retried with backoff on transient failures.
-  func complete(_ prompt: String, system: String = SummaryPrompts.instructions, maxTokens: Int = 1_200, json: Bool = false, attempts: Int = 4) async throws -> String {
+  /// Reasoning models count their thinking against the output limit, so leave plenty of room.
+  func complete(_ prompt: String, system: String = SummaryPrompts.instructions, maxTokens: Int = 8_000, json: Bool = false, attempts: Int = 4) async throws -> String {
     var delay: Double = 2
     for attempt in 1...attempts {
       do {
@@ -213,8 +216,11 @@ nonisolated struct GatewayEngine: SummaryEngine {
     guard (200..<300).contains(status) else {
       throw GatewayError.http(status, String(decoding: data, as: UTF8.self))
     }
-    guard let text = Self.text(in: data, kind: config.kind) else {
-      throw GatewayError.badResponse(String(decoding: data, as: UTF8.self))
+    guard let text = Self.text(in: data, kind: config.kind), !text.isEmpty else {
+      let raw = String(decoding: data, as: UTF8.self)
+      // A reasoning model that used up the limit while thinking returns no content at all.
+      if raw.contains("\"length\"") || raw.contains("max_tokens") || raw.contains("max_output_tokens") { throw GatewayError.truncated }
+      throw GatewayError.badResponse(raw)
     }
     // Reasoning models may prepend their thinking; keep only the answer.
     if let end = text.range(of: "</think>") { return String(text[end.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -272,7 +278,7 @@ nonisolated struct GatewayEngine: SummaryEngine {
   func test() async -> Result<String, Error> {
     let started = Date()
     do {
-      let reply = try await complete("请只回复：连接正常", system: "你是连接测试。", maxTokens: 20, attempts: 1)
+      let reply = try await complete("请只回复：连接正常", system: "你是连接测试。", maxTokens: 512, attempts: 1)
       let milliseconds = Int(Date().timeIntervalSince(started) * 1_000)
       return .success("连接正常，用时 \(milliseconds) 毫秒。模型回复：\(reply.prefix(40))")
     } catch {

@@ -303,7 +303,7 @@ final class Summaries {
     var points: [CitedLine] = []
     for part in Self.parts(sentences, limit: engine.partCharacters) {
       let results = try await engine.points(
-        "下面是会议「\(meeting.title)」的转录，每句前面有编号。列出会上的结论、决定和谁答应做什么，每条注明依据的原话编号。\n\n\(Self.numbered(part))")
+        "下面是会议「\(meeting.title)」的转录，每句前面有编号。列出会议要点：先写结论、决定和谁答应做什么；没有明确决定时，就写谈了哪些事、各自的进展或问题。每条注明依据的原话编号，至少列出一条。\n\n\(Self.numbered(part))")
       points += results.map { CitedLine(text: $0.text, cites: Self.ids($0.sources, in: part)) }
     }
     meeting.points = Array(points.prefix(8))

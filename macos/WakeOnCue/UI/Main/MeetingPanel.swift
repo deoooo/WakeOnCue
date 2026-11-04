@@ -75,7 +75,10 @@ struct MeetingPanel: View {
                 }
               }
             }
-            .padding(.bottom, 18)
+            .padding(.bottom, meeting.points.isEmpty && meeting.pointsGeneratedAt != nil ? 6 : 18)
+            if meeting.points.isEmpty && meeting.pointsGeneratedAt != nil {
+              Text("这段对话里没找到可以列成要点的内容。").font(.callout).foregroundStyle(.secondary).padding(.bottom, 18)
+            }
             Text("完整转录 · \(rows.count) 句")
               .font(.system(size: 13, weight: .semibold))
               .foregroundStyle(.secondary)
