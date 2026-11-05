@@ -192,7 +192,7 @@ struct HourRow: View {
             Text(summaryText)
               .font(.system(size: 14))
               .lineSpacing(3)
-              .foregroundStyle(hour.summary == nil ? .secondary : .primary)
+              .foregroundStyle(hour.summary?.summary.isEmpty ?? true ? .secondary : .primary)
               .multilineTextAlignment(.leading)
             if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
             Text(expanded ? "收起原文" : "展开原文").font(.caption).foregroundStyle(.tint)

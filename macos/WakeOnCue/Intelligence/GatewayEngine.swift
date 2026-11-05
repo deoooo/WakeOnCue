@@ -81,6 +81,14 @@ nonisolated enum GatewayError: LocalizedError {
     return false
   }
 
+  /// An error body saying the prompt is longer than the model takes, as OpenAI, Anthropic and
+  /// common gateways word it.
+  static func isContextMessage(_ body: String) -> Bool {
+    let text = body.lowercased()
+    return ["context_length", "context length", "context window", "maximum context", "too many tokens", "prompt is too long", "input is too long"]
+      .contains { text.contains($0) }
+  }
+
   /// The error message from an OpenAI or Anthropic error body, or the body itself.
   static func message(in body: String) -> String {
     struct Body: Decodable {
@@ -104,6 +112,11 @@ nonisolated struct GatewayEngine: SummaryEngine {
   var destination: String? { config.host }
   var partCharacters: Int { 12_000 }
 
+  func isContextOverflow(_ error: Error) -> Bool {
+    guard case .http(let status, let body) = error as? GatewayError, status == 400 || status == 413 else { return false }
+    return GatewayError.isContextMessage(body)
+  }
+
   func hour(_ prompt: String) async throws -> HourResult {
     struct Reply: Decodable {
       var summary: String
@@ -125,7 +138,7 @@ nonisolated struct GatewayEngine: SummaryEngine {
     let reply: Reply = try await json(
       prompt,
       shape: #"{"headline": {"text": "用一句话说出今天最重要的结果", "sources": [依据的原话编号]}, "details": [{"text": "当天的一条要点", "sources": [依据的原话编号，一到三个]}]}"#)
-    return DayResult(headline: reply.headline.result, details: reply.details.prefix(6).map(\.result))
+    return DayResult(headline: reply.headline.result, details: reply.details.prefix(8).map(\.result))
   }
 
   func points(_ prompt: String) async throws -> [CitedResult] {

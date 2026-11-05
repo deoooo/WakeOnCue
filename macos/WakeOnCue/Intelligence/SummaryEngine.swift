@@ -32,6 +32,8 @@ protocol SummaryEngine: Sendable {
   var destination: String? { get }
   /// Characters of transcript per request.
   var partCharacters: Int { get }
+  /// The request held more than the model's context; the same text in smaller parts may work.
+  nonisolated func isContextOverflow(_ error: Error) -> Bool
 
   func hour(_ prompt: String) async throws -> HourResult
   func text(_ prompt: String) async throws -> String
@@ -58,6 +60,11 @@ nonisolated struct AppleIntelligenceEngine: SummaryEngine {
   var destination: String? { nil }
   /// The on-device context window is small; leave room for instructions and output.
   var partCharacters: Int { 1_800 }
+
+  func isContextOverflow(_ error: Error) -> Bool {
+    if case .exceededContextWindowSize = error as? LanguageModelSession.GenerationError { return true }
+    return false
+  }
 
   static var unavailableReason: String? {
     switch SystemLanguageModel.default.availability {
@@ -137,7 +144,7 @@ struct CitedDraft {
 struct DayDraft {
   @Guide(description: "用一句话说出今天最重要的结果")
   var headline: CitedDraft
-  @Guide(description: "当天的要点，每条一句话", .count(1...6))
+  @Guide(description: "当天的要点，每条一句话，每个小时最多一条", .count(1...8))
   var details: [CitedDraft]
 }
 

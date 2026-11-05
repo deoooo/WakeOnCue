@@ -124,6 +124,11 @@ targets:
       - path: WakeOnCue/App/TimeText.swift
       - path: WakeOnCue/Sync/SyncProtocol.swift
       - path: WakeOnCue/UI/Main/DayData.swift
+      - path: WakeOnCue/Transcription/TranscriptFilter.swift
+      - path: WakeOnCue/Transcription/SentenceSplitter.swift
+      - path: WakeOnCue/Intelligence/SummaryMaterial.swift
+      - path: WakeOnCue/Intelligence/SummaryEngine.swift
+      - path: WakeOnCue/Intelligence/GatewayEngine.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos.tests

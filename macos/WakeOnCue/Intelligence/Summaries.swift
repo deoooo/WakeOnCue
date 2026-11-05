@@ -107,6 +107,9 @@ final class Summaries {
 
   func hourPlaceholder(for hour: DayData.Hour) -> String {
     if let reason = unavailableReason { return "\(reason)，这一小时没有总结。展开原文可查看转录。" }
+    if hour.summary?.isFinal == true || (!hour.isCurrent && SummaryMaterial.isThin(hour.sentences)) {
+      return "只有零星几句，没有可总结的内容。展开原文可查看转录。"
+    }
     if failed[hour.interval.start] != nil {
       return "这一小时没能生成总结\(lastError.map { "（\($0)）" } ?? "")，稍后会重试。展开原文可查看转录。"
     }
@@ -232,43 +235,9 @@ final class Summaries {
     return store.sentences(in: interval).filter { s in !hidden.contains { $0.covers(s.start) } }
   }
 
-  /// The hour's time is already next to its summary; repeating it reads as filler.
-  static let hourStyle = "直接从事情写起，比如「和供应商核对改价权限，决定把权限写进文档。」不要用「这一小时」「本小时」「这段时间」「主要」开头，也不要复述时间。"
-
-  /// Drops a leading "这一小时（里），" that models still write, also from older summaries.
+  /// Drops a leading "这一小时（里），" and a closing "没有形成明确结论", also from older summaries.
   nonisolated static func tidy(_ summary: String) -> String {
-    var text = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-    for prefix in ["这一个小时", "这一小时", "这个小时", "本小时", "这一时段", "这段时间"] where text.hasPrefix(prefix) {
-      text.removeFirst(prefix.count)
-      for word in ["里", "内", "中"] where text.hasPrefix(word) { text.removeFirst(word.count) }
-      while let first = text.first, "，,：: ".contains(first) { text.removeFirst() }
-      break
-    }
-    return text.isEmpty ? summary : text
-  }
-
-  private static func numbered(_ sentences: [Sentence]) -> String {
-    sentences.enumerated().map { index, s in
-      "[\(index + 1)] \(TimeText.clock(s.start)) \(s.speakerLabel)：\(s.text)"
-    }.joined(separator: "\n")
-  }
-
-  /// Consecutive slices of at most `limit` characters.
-  private static func parts(_ sentences: [Sentence], limit: Int) -> [[Sentence]] {
-    var parts: [[Sentence]] = []
-    var current: [Sentence] = []
-    var size = 0
-    for sentence in sentences {
-      if size + sentence.text.count > limit, !current.isEmpty {
-        parts.append(current)
-        current = []
-        size = 0
-      }
-      current.append(sentence)
-      size += sentence.text.count + 12
-    }
-    if !current.isEmpty { parts.append(current) }
-    return parts
+    SummaryMaterial.tidy(summary)
   }
 
   private static func ids(_ numbers: [Int], in part: [Sentence]) -> [Int64] {
@@ -277,21 +246,24 @@ final class Summaries {
 
   private func summarizeHour(_ hour: Date, final: Bool, engine: any SummaryEngine) async throws {
     let sentences = visibleSentences(in: DateInterval(start: hour, duration: 3_600))
-    guard !sentences.isEmpty else {
-      store.removeHourSummary(hourStart: hour)
+    // A lone "嗯" or half a sentence: an empty summary, so the hour shows that little was said
+    // instead of "只有一句应答，没有形成结论", and is not asked for again.
+    guard !SummaryMaterial.isThin(sentences) else {
+      store.saveHourSummary(HourSummary(hourStart: hour, summary: "", keySentenceIDs: [], generatedAt: .now, isFinal: final, engine: engine.name))
       return
     }
     var notes: [String] = []
     var keys: [Int64] = []
-    for part in Self.parts(sentences, limit: engine.partCharacters) {
-      let result = try await engine.hour(
-        "下面是 \(TimeText.clock(hour)) 开始一小时的转录，每句前面有编号。用一到两句话写出谈了哪些事、有什么结论，并挑出最能代表内容的二到五句原话。\(Self.hourStyle)\n\n\(Self.numbered(part))")
-      notes.append(result.summary)
-      keys += Self.ids(result.keySentences, in: part)
+    for part in SummaryMaterial.parts(SummaryMaterial.meaningful(sentences), limit: engine.partCharacters) {
+      let results = try await SummaryMaterial.halving(part, engine: engine) { try await engine.hour(SummaryMaterial.hourPrompt(hour, part: $0)) }
+      for (result, piece) in results {
+        notes.append(result.summary)
+        keys += Self.ids(result.keySentences, in: piece)
+      }
     }
     var summary = notes.first ?? ""
     if notes.count > 1 {
-      summary = try await engine.text("把下面几段笔记合成一段总结，一到两句话，只输出总结。\(Self.hourStyle)\n\n" + notes.joined(separator: "\n"))
+      summary = try await engine.text(SummaryMaterial.mergePrompt(notes))
     }
     store.saveHourSummary(HourSummary(
       hourStart: hour, summary: Self.tidy(summary),
@@ -303,22 +275,17 @@ final class Summaries {
     let interval = DateInterval(start: day, duration: 86_400)
     let hidden = store.marks(overlapping: interval)
     let summaries = store.hourSummaries(in: interval).values
-      .filter { s in !hidden.contains { $0.covers(s.hourStart) } }
+      .filter { s in !s.summary.isEmpty && !hidden.contains { $0.covers(s.hourStart) } }
       .sorted { $0.hourStart < $1.hourStart }
     guard !summaries.isEmpty else { return }
-    var sources: [Sentence] = []
-    var lines: [String] = []
     let meetings = store.meetings(overlapping: interval).filter { m in !hidden.contains { $0.covers(m.start) } }
-    for summary in summaries {
-      lines.append("\(TimeText.clock(summary.hourStart)) 这一小时：\(summary.summary)")
-      let keys = store.sentences(ids: summary.keySentenceIDs).filter { s in !hidden.contains { $0.covers(s.start) } }
-      for sentence in keys.prefix(3) {
-        sources.append(sentence)
-        lines.append("  [\(sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)")
-      }
+    let hours = summaries.map { summary in
+      SummaryMaterial.DayHour(
+        start: summary.hourStart, summary: summary.summary,
+        keys: store.sentences(ids: summary.keySentenceIDs).filter { s in !hidden.contains { $0.covers(s.start) } })
     }
-    let meetingLines = meetings.map { "\(TimeText.range($0.start, $0.end)) \($0.title)" }.joined(separator: "\n")
     // What the user marked on the Watch or iPhone, important and to-do first, with what was said.
+    var sources: [Sentence] = []
     let marks = store.deviceMarks(overlapping: interval).filter { m in !hidden.contains { $0.covers(m.start) } }
       .sorted { ($0.isPriority ? 0 : 1, $0.start) < ($1.isPriority ? 0 : 1, $1.start) }
     var markLines: [String] = []
@@ -332,14 +299,13 @@ final class Summaries {
         markLines.append("  [\(sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)")
       }
     }
-    // Marked stretches go first, so cutting the material to size keeps them.
+    // Marked stretches go first and are kept whole; the hours share what is left.
     let marked = markLines.isEmpty ? "" : "主人在手表或 iPhone 上标记的时段（标为「重要」「待办」的必须写进要点，待办写成要做的事）：\n" + markLines.joined(separator: "\n") + "\n\n"
-    let material = (marked + lines.joined(separator: "\n")).prefix(engine.partCharacters * 2)
-    let result = try await engine.day("""
-      这是一天里每小时的总结和其中的原话，原话前有编号。写出今天最重要的一句话，以及当天的要点，每条都注明依据的原话编号。
-      \(meetingLines.isEmpty ? "" : "当天的会议：\n\(meetingLines)\n")
-      \(material)
-      """)
+    let (hourText, hourSources) = SummaryMaterial.dayMaterial(
+      hours, budget: max(engine.partCharacters * 2 - marked.count, engine.partCharacters / 2), firstNumber: sources.count + 1)
+    sources += hourSources
+    let result = try await engine.day(SummaryMaterial.dayPrompt(
+      material: marked + hourText, meetings: meetings.map { "\(TimeText.range($0.start, $0.end)) \($0.title)" }))
     let cite = { (numbers: [Int]) in numbers.compactMap { sources.indices.contains($0 - 1) ? sources[$0 - 1].id : nil } }
     store.saveDaySummary(DaySummary(
       day: day,
@@ -353,10 +319,14 @@ final class Summaries {
     let sentences = visibleSentences(in: DateInterval(start: meeting.start, end: max(meeting.end, meeting.start)))
     guard !sentences.isEmpty else { return }
     var points: [CitedLine] = []
-    for part in Self.parts(sentences, limit: engine.partCharacters) {
-      let results = try await engine.points(
-        "下面是会议「\(meeting.title)」的转录，每句前面有编号。列出会议要点：先写结论、决定和谁答应做什么；没有明确决定时，就写谈了哪些事、各自的进展或问题。每条注明依据的原话编号，至少列出一条。\n\n\(Self.numbered(part))")
-      points += results.map { CitedLine(text: $0.text, cites: Self.ids($0.sources, in: part)) }
+    for part in SummaryMaterial.parts(SummaryMaterial.meaningful(sentences), limit: engine.partCharacters) {
+      let results = try await SummaryMaterial.halving(part, engine: engine) {
+        try await engine.points(
+          "下面是会议「\(meeting.title)」的转录，每句前面有编号。列出会议要点：先写结论、决定和谁答应做什么；没有明确决定时，就写谈了哪些事、各自的进展或问题。每条注明依据的原话编号，至少列出一条。\n\n\(SummaryMaterial.numbered($0))")
+      }
+      for (result, piece) in results {
+        points += result.map { CitedLine(text: $0.text, cites: Self.ids($0.sources, in: piece)) }
+      }
     }
     meeting.points = Array(points.prefix(8))
     meeting.minutes = Meetings.minutes(for: meeting)

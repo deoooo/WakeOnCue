@@ -198,39 +198,14 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
 
   /// Splits a final result into sentences, timing each from the runs it contains.
   static func sentences(in text: AttributedString, channel: AudioChannel, epoch: Date) -> [RecognizedSentence] {
-    let enders: Set<Character> = ["。", "？", "！", "?", "!", "；", ";"]
-    var sentences: [RecognizedSentence] = []
-    var current = ""
-    var start: Double?
-    var end: Double?
-
-    func flush() {
-      let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !trimmed.isEmpty, let start {
-        sentences.append(RecognizedSentence(
-          channel: channel,
-          start: epoch.addingTimeInterval(start),
-          end: epoch.addingTimeInterval(max(start, end ?? start)),
-          text: trimmed))
-      }
-      current = ""
-      start = nil
-      end = nil
+    let pieces = text.runs.map { run in
+      SentenceSplitter.Piece(
+        text: String(text[run.range].characters),
+        start: run.audioTimeRange?.start.seconds, end: run.audioTimeRange?.end.seconds)
     }
-
-    for run in text.runs {
-      let piece = String(text[run.range].characters)
-      if let range = run.audioTimeRange {
-        if start == nil { start = range.start.seconds }
-        end = range.end.seconds
-      }
-      for character in piece {
-        current.append(character)
-        if enders.contains(character) { flush() }
-      }
+    return SentenceSplitter.split(pieces).map {
+      RecognizedSentence(channel: channel, start: epoch.addingTimeInterval($0.start), end: epoch.addingTimeInterval($0.end), text: $0.text)
     }
-    flush()
-    return sentences.filter { !$0.text.allSatisfy { enders.contains($0) || $0 == "，" || $0 == "," } }
   }
 }
 
