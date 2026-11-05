@@ -86,6 +86,7 @@ final class Recorder {
     if let until = preferences.pausedUntil, until > .now {
       state = .paused(until: until)
       pausedSince = store.marks(overlapping: DateInterval(start: .now, duration: 1)).first { $0.kind == .paused }?.start ?? .now
+      if until == .distantFuture { Self.requestNotificationPermission() }
       startTicker()
       return
     }
@@ -366,11 +367,20 @@ final class Recorder {
     return pausedFor >= next * 3_600
   }
 
+  /// How many reminders are due after this long a pause.
+  nonisolated static func remindersDue(pausedFor: TimeInterval) -> Int {
+    var count = 0
+    while pauseReminderDue(pausedFor: pausedFor, alreadySent: count) { count += 1 }
+    return count
+  }
+
   private func remindIfPausedLong() {
     guard let pausedSince else { return }
     let pausedFor = Date.now.timeIntervalSince(pausedSince)
     guard Self.pauseReminderDue(pausedFor: pausedFor, alreadySent: pauseRemindersSent) else { return }
-    pauseRemindersSent += 1
+    // One reminder, even when several are due at once (a pause carried over from before a
+    // relaunch); otherwise they would follow each other every few seconds.
+    pauseRemindersSent = Self.remindersDue(pausedFor: pausedFor)
     let content = UNMutableNotificationContent()
     content.title = "录音已暂停 \(Int(pausedFor / 3_600)) 小时"
     content.body = "全天录音要手动继续。点菜单栏的 WakeOnCue，或按 ⌃⌥P 继续录音。"
