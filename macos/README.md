@@ -55,7 +55,12 @@ wakeoncue transcript 11-03 --from 14:30 --to 15:00
 wakeoncue search 告警 灰度 --days 7 --speaker 会议对方
 wakeoncue meetings
 wakeoncue meeting 3
+wakeoncue export 昨天 > 昨天.md     # 整天：当天总结、重点事件、每小时总结和全部转录
+wakeoncue export --hour 10 --format srt > 10点.srt   # 字幕时间从 10:00 算起
+wakeoncue export --meeting 3 --format txt            # 一场会议的纯转录
 ```
+
+`export` 输出的内容和 App 里「导出…」（工具栏、文件 › 导出这一天… ⌘E、小时的「…」菜单、会议面板）保存的文件完全一样，格式化代码在 `Export/Export.swift`，单元测试在 `WakeOnCueTests/`（`xcodebuild … test`，不启动 App）。格式：`md`（默认，带总结、时间和说话人）、`txt`（纯转录）、`srt`（时间相对所选范围的起点）。
 
 所有命令都可以加 `--json`，方便脚本和 Claude 等 AI 工具使用。标为私人或已删除的时段不会出现在任何结果里。它只读打开数据库，App 运行时也可以用。
 

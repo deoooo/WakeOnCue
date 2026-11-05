@@ -14,6 +14,8 @@ let usage = """
                                    全文搜索，多个词同时命中的排在前面
     meetings [日期]                 会议列表
     meeting <编号>                  一场会议的要点和完整转录
+    export [日期] [--hour HH | --meeting 编号] [--format md|txt|srt]
+                                   导出成文件内容，输出到标准输出；默认导出整天的 Markdown
     help                           显示这段说明
 
   日期：今天（默认）、昨天、2026-11-04 或 11-04。
@@ -286,6 +288,30 @@ func run(_ raw: [String]) throws {
     for point in out.points ?? [] { print("· \(point.text)\(cites(point))") }
     print("\n完整转录")
     for sentence in out.transcript ?? [] { print(sentence.line) }
+
+  case "export":
+    let reader = try Reader()
+    let formatText = args.options["format"] ?? "md"
+    guard let format = ExportFormat(rawValue: formatText.lowercased()) else {
+      throw UsageError(message: "不支持的格式：\(formatText)，可选 md、txt、srt")
+    }
+    let source: ExportSource
+    if let text = args.options["meeting"] {
+      guard let id = Int64(text), let meeting = reader.store.meeting(id: id), reader.visible(meeting.start) else {
+        throw UsageError(message: "没有编号为 \(text) 的会议")
+      }
+      source = .meeting(meeting, store: reader.store)
+    } else {
+      let day = try Dates.day(args.positionals.first)
+      if let text = args.options["hour"] {
+        guard let hour = Int(text), (0..<24).contains(hour) else { throw UsageError(message: "--hour 要在 0 到 23 之间") }
+        source = .hour(Calendar.current.date(byAdding: .hour, value: hour, to: day)!, store: reader.store)
+      } else {
+        source = .day(day, store: reader.store)
+      }
+    }
+    if args.json { throw UsageError(message: "export 不支持 --json，请用 --format 选择格式") }
+    FileHandle.standardOutput.write(Data(Exporter.render(source, as: format).utf8))
 
   default:
     throw UsageError(message: "不认识的命令：\(command)\n\n\(usage)")

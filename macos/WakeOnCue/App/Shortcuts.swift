@@ -47,6 +47,13 @@ struct DayCommands: Commands {
   @Environment(\.openWindow) private var openWindow
 
   var body: some Commands {
+    CommandGroup(replacing: .importExport) {
+      Button("导出这一天…") {
+        openWindow(id: "main")
+        model.exportDay()
+      }
+      .keyboardShortcut("e")
+    }
     CommandGroup(after: .textEditing) {
       Button("搜索全部录音") {
         openWindow(id: "main")

@@ -21,6 +21,20 @@
                ReferencedContainer = "container:WakeOnCue.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7AF0B4AF86BD6DF4524967DE"
+               BuildableName = "WakeOnCueTests.xctest"
+               BlueprintName = "WakeOnCueTests"
+               ReferencedContainer = "container:WakeOnCue.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -39,7 +53,20 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7AF0B4AF86BD6DF4524967DE"
+               BuildableName = "WakeOnCueTests.xctest"
+               BlueprintName = "WakeOnCueTests"
+               ReferencedContainer = "container:WakeOnCue.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

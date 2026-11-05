@@ -46,6 +46,30 @@
             model.ui.expandedHours.insert(start)
             model.ui.fullHours.insert(start)
           }
+        // "export day md", "export 9 srt", "export meeting txt": writes what 导出 would save to
+        // <path>.export.<format>, without the save panel.
+        case "export":
+          let words = argument.split(separator: " ").map(String.init)
+          let format = ExportFormat(rawValue: words.last ?? "") ?? .markdown
+          let day = Calendar.current.startOfDay(for: model.ui.day)
+          let source: ExportSource? =
+            switch words.first {
+            case "day": .day(day, store: model.store)
+            case "meeting": model.ui.meetingID.flatMap(model.store.meeting(id:)).map { .meeting($0, store: model.store) }
+            default: .hour(day.addingTimeInterval(Double(Int(words.first ?? "") ?? 0) * 3_600), store: model.store)
+            }
+          if let source {
+            try? Exporter.render(source, as: format).write(toFile: path + ".export." + format.rawValue, atomically: true, encoding: .utf8)
+          }
+        case "exportpanel": model.exportDay()
+        // The menu bar's commands and their shortcuts, one per line, into <path>.menus.
+        case "menus":
+          let lines = (NSApp.mainMenu?.items ?? []).flatMap { top in
+            (top.submenu?.items ?? []).filter { !$0.isSeparatorItem }.map { item in
+              "\(top.title) › \(item.title)" + (item.keyEquivalent.isEmpty ? "" : " ⌘\(item.keyEquivalent)")
+            }
+          }
+          try? lines.joined(separator: "\n").write(toFile: path + ".menus", atomically: true, encoding: .utf8)
         case "pause": model.player.pause()
         case "tracks": model.ui.showTracks.toggle()
         case "meeting": model.openMeeting(Int64(argument) ?? 0)
