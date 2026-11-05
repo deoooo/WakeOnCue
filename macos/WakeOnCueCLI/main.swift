@@ -7,7 +7,7 @@ let usage = """
   用法：wakeoncue <命令> [选项]
 
   命令：
-    day [日期]                      当天总结、重点事件和每小时总结
+    day [日期]                      当天总结、重点事件、手表标记和每小时总结
     transcript [日期] [--hour HH | --from HH:MM --to HH:MM]
                                    转录原文
     search <词>... [--days N] [--speaker 我|会议对方|他人]
@@ -193,7 +193,16 @@ func run(_ raw: [String]) throws {
       let headline: CitedOut?
       let details: [CitedOut]
       let meetings: [MeetingOut]
+      let marks: [MarkOut]
       let hours: [HourOut]
+    }
+    /// A Watch or iPhone mark ("记下刚才"), on the Mac's clock.
+    struct MarkOut: Encodable {
+      let start: String
+      let end: String?
+      let tag: String?
+      let title: String?
+      let source: String
     }
     struct HourOut: Encodable {
       let hour: String
@@ -205,6 +214,11 @@ func run(_ raw: [String]) throws {
       headline: summary.flatMap { reader.cited($0.headline) },
       details: summary?.details.compactMap(reader.cited) ?? [],
       meetings: meetings.map { reader.meeting($0, transcript: false) },
+      marks: reader.store.deviceMarks(overlapping: interval).filter { reader.visible($0.start) }.map { mark in
+        MarkOut(
+          start: Dates.iso.string(from: mark.start), end: mark.end.map { Dates.iso.string(from: $0) },
+          tag: mark.tag?.label, title: mark.title, source: mark.sourceLabel)
+      },
       hours: hours.map { hour in
         HourOut(
           hour: TimeText.clock(hour.hourStart), summary: hour.summary,
@@ -221,6 +235,14 @@ func run(_ raw: [String]) throws {
       print("\n重点事件")
       for meeting in out.meetings {
         print("· #\(meeting.id) \(meeting.start.dropFirst(11).prefix(5))–\(meeting.end.dropFirst(11).prefix(5)) \(meeting.title)")
+      }
+    }
+    if !out.marks.isEmpty {
+      print("\n标记")
+      for mark in out.marks {
+        let time = String(mark.start.dropFirst(11).prefix(5)) + (mark.end.map { "–" + String($0.dropFirst(11).prefix(5)) } ?? "")
+        let label = [mark.tag, mark.title].compactMap { $0 }.joined(separator: " ")
+        print("· \(time) \(label.isEmpty ? "标记" : label) · \(mark.source)")
       }
     }
     if !out.hours.isEmpty {

@@ -74,7 +74,19 @@ final class AppModel {
     for meeting in store.meetings(overlapping: interval) { summaries.regenerateMeeting(meeting.id) }
   }
 
+  /// Development aid: `WAKEONCUE_VIEW_ONLY` (with `WAKEONCUE_DATA_DIR`) opens a library to look
+  /// at, without recording, summarizing (nothing is sent to a gateway), or taking a paired
+  /// phone's audio away from the installed app. Always false in release builds.
+  nonisolated static var viewOnly: Bool {
+    #if DEBUG
+      ProcessInfo.processInfo.environment["WAKEONCUE_VIEW_ONLY"] != nil
+    #else
+      false
+    #endif
+  }
+
   func launch() async {
+    if Self.viewOnly { return }
     await recorder.startIfAllowed()
     refiner.use(models.active, service: preferences.transcriptionService)
     await transcription.start()
@@ -82,6 +94,10 @@ final class AppModel {
     meetings.start()
     startHousekeeping()
     sync.onSegment = { [weak merger] _, _ in Task { await merger?.mergePending() } }
+    // Important and to-do marks steer the day summary, so the days they fall on are redone.
+    sync.onMarks = { [weak summaries] marks in
+      for day in Set(marks.map { Calendar.current.startOfDay(for: $0.start) }) { summaries?.redoDay(containing: day) }
+    }
     sync.start()
     Task { await merger.mergePending() }
   }

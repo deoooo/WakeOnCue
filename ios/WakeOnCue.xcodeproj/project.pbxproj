@@ -33,7 +33,6 @@
 		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
 		31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */; };
 		33438C5A1D871E0E6A4EA101 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50518C75DBA05FB9CA7481EF /* SegmentWriter.swift */; };
-		36C05D373D6D0F6000957558 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */; };
 		3AE9B935CA1890C7062EF162 /* WatchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */; };
 		3D6088080012CF83F5AF8A3F /* AudioFileImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65E1A987A93274405990977 /* AudioFileImporter.swift */; };
 		3DD22E6C84FA5BA69FE68A0C /* MeetingRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594CC2666FFD10327B58885 /* MeetingRecorder.swift */; };
@@ -123,7 +122,9 @@
 		E10895DDCDD3F71090339392 /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */; };
 		E11207234680367BA55DE186 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 53209C740FCB8627BF279F63 /* InfoPlist.strings */; };
 		E2A2EE9447304283057E7345 /* WakeOnCueMacTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */; };
+		E5875F5696F165E9D2480743 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88918F9766DC95400816C9EC /* SyncProtocol.swift */; };
 		E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */; };
+		E9355C0DC49CC752DCC62098 /* MacOutboxMarksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */; };
 		EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */; };
 		EBD66C251B633A70DE738E31 /* RecordingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */; };
 		ED080307416FFB108965D5FA /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
@@ -226,6 +227,7 @@
 		0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyAITests.swift; sourceTree = "<group>"; };
 		04D9900A160821CAA581F681 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioFileProvider.swift; sourceTree = "<group>"; };
+		0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOutboxMarksTests.swift; sourceTree = "<group>"; };
 		0D617E1495504C52549F0C12 /* PlaceAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceAutomation.swift; sourceTree = "<group>"; };
 		0FB107982BDA9DC3F38164F4 /* WakeOnCueWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatch.entitlements; sourceTree = "<group>"; };
 		1707596316FD6E39E0CAF37E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -286,6 +288,7 @@
 		7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageStatus.swift; sourceTree = "<group>"; };
 		7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StorageClient.swift; sourceTree = "<group>"; };
 		8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWidgets.swift; sourceTree = "<group>"; };
+		88918F9766DC95400816C9EC /* SyncProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProtocol.swift; sourceTree = "<group>"; };
 		88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindow.swift; sourceTree = "<group>"; };
 		8B804F0E376CE6B89B8E6699 /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
 		8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingShortcuts.swift; sourceTree = "<group>"; };
@@ -301,7 +304,6 @@
 		9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureFeedback.swift; sourceTree = "<group>"; };
 		A01ED94A406F296B5E9C800E /* GatewayToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayToken.swift; sourceTree = "<group>"; };
 		A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayout.swift; sourceTree = "<group>"; };
-		A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProtocol.swift; sourceTree = "<group>"; };
 		A1ADBD56EE417C63D3FCA1F5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A594CC2666FFD10327B58885 /* MeetingRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorder.swift; sourceTree = "<group>"; };
@@ -492,6 +494,15 @@
 			path = WakeOnCueWatch;
 			sourceTree = "<group>";
 		};
+		5B95008EFC810B0E935A3EBE /* product-optimization-suggestions-1ec6d3 */ = {
+			isa = PBXGroup;
+			children = (
+				AF6C914E280E0AAE31CF0CC4 /* macos */,
+			);
+			name = "product-optimization-suggestions-1ec6d3";
+			path = ..;
+			sourceTree = "<group>";
+		};
 		62185A30AD230562C842AEB6 /* WakeOnCueUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -500,14 +511,6 @@
 				BB40A4A34EDA59047776592D /* WatchCompanionUITests.swift */,
 			);
 			path = WakeOnCueUITests;
-			sourceTree = "<group>";
-		};
-		63A3A84D03ADF3BEE2E79C39 /* WakeOnCue */ = {
-			isa = PBXGroup;
-			children = (
-				B1AF4DFD2990B74726B89E66 /* Sync */,
-			);
-			path = WakeOnCue;
 			sourceTree = "<group>";
 		};
 		66FDD7F8FE6F23433EEB2485 /* WakeOnCueMacTests */ = {
@@ -530,12 +533,12 @@
 			path = Recording;
 			sourceTree = "<group>";
 		};
-		7ADF0413DF75AC0A5D713E2F /* macos */ = {
+		8DC65BD886BA9F7A33950352 /* Sync */ = {
 			isa = PBXGroup;
 			children = (
-				63A3A84D03ADF3BEE2E79C39 /* WakeOnCue */,
+				88918F9766DC95400816C9EC /* SyncProtocol.swift */,
 			);
-			path = macos;
+			path = Sync;
 			sourceTree = "<group>";
 		};
 		8FBC44E08F79949555631107 /* WakeOnCueWidgets */ = {
@@ -597,11 +600,19 @@
 			path = Capture;
 			sourceTree = "<group>";
 		};
+		AF6C914E280E0AAE31CF0CC4 /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				E0FD9DA14A5F7B84B31E7384 /* WakeOnCue */,
+			);
+			path = macos;
+			sourceTree = "<group>";
+		};
 		B0C51E219CC93560234F89EB = {
 			isa = PBXGroup;
 			children = (
-				CC2754B581B40F983857C64F /* macos-app-phase1-982296 */,
 				F24B1B3357D9837560525D4A /* Packages */,
+				5B95008EFC810B0E935A3EBE /* product-optimization-suggestions-1ec6d3 */,
 				BC6C8F3D769236CE92111178 /* Shared */,
 				BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */,
 				92C6CF7D9F48F72BCE28CDE8 /* WakeOnCueMac */,
@@ -616,14 +627,6 @@
 				95EC5C3F1BF3BD8EE9B8C1BD /* WatchShared */,
 				D05533EED996F08D17279212 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		B1AF4DFD2990B74726B89E66 /* Sync */ = {
-			isa = PBXGroup;
-			children = (
-				A19D7C99C7EA4AC06EF5FC0F /* SyncProtocol.swift */,
-			);
-			path = Sync;
 			sourceTree = "<group>";
 		};
 		BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */ = {
@@ -662,15 +665,6 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		CC2754B581B40F983857C64F /* macos-app-phase1-982296 */ = {
-			isa = PBXGroup;
-			children = (
-				7ADF0413DF75AC0A5D713E2F /* macos */,
-			);
-			name = "macos-app-phase1-982296";
-			path = ..;
-			sourceTree = "<group>";
-		};
 		D05533EED996F08D17279212 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -705,6 +699,14 @@
 			path = LiveActivity;
 			sourceTree = "<group>";
 		};
+		E0FD9DA14A5F7B84B31E7384 /* WakeOnCue */ = {
+			isa = PBXGroup;
+			children = (
+				8DC65BD886BA9F7A33950352 /* Sync */,
+			);
+			path = WakeOnCue;
+			sourceTree = "<group>";
+		};
 		EA99173F170291CF0B9F5E68 /* UI */ = {
 			isa = PBXGroup;
 			children = (
@@ -729,6 +731,7 @@
 			children = (
 				376919AF2F6C0950FFD37186 /* AIProviderSettingsTests.swift */,
 				B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */,
+				0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */,
 				716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */,
 				FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */,
 				925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */,
@@ -1121,7 +1124,7 @@
 				D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */,
 				77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */,
 				B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */,
-				36C05D373D6D0F6000957558 /* SyncProtocol.swift in Sources */,
+				E5875F5696F165E9D2480743 /* SyncProtocol.swift in Sources */,
 				96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */,
 				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
 				50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */,
@@ -1136,6 +1139,7 @@
 			files = (
 				49D23430125DD0262614CD4A /* AIProviderSettingsTests.swift in Sources */,
 				1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */,
+				E9355C0DC49CC752DCC62098 /* MacOutboxMarksTests.swift in Sources */,
 				1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */,
 				8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */,
 				0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */,

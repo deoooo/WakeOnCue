@@ -132,6 +132,11 @@ final class Summaries {
     enqueue(.day(calendar.startOfDay(for: interval.start)))
   }
 
+  /// Only the day summary again, e.g. after Watch marks arrived: the hours do not use them.
+  func redoDay(containing date: Date) {
+    enqueue(.day(Calendar.current.startOfDay(for: date)))
+  }
+
   /// Writes the day summaries held back during a re-transcription.
   func releaseDays() {
     guard !holdsDays() else { return }
@@ -182,7 +187,7 @@ final class Summaries {
   }
 
   private func enqueue(_ job: Job) {
-    guard !queue.contains(job) else { return }
+    guard !queue.contains(job), !AppModel.viewOnly else { return }
     queue.append(job)
     guard !running else { return }
     running = true
@@ -313,7 +318,23 @@ final class Summaries {
       }
     }
     let meetingLines = meetings.map { "\(TimeText.range($0.start, $0.end)) \($0.title)" }.joined(separator: "\n")
-    let material = lines.joined(separator: "\n").prefix(engine.partCharacters * 2)
+    // What the user marked on the Watch or iPhone, important and to-do first, with what was said.
+    let marks = store.deviceMarks(overlapping: interval).filter { m in !hidden.contains { $0.covers(m.start) } }
+      .sorted { ($0.isPriority ? 0 : 1, $0.start) < ($1.isPriority ? 0 : 1, $1.start) }
+    var markLines: [String] = []
+    for mark in marks.prefix(8) {
+      let range = mark.end.map { TimeText.range(mark.start, $0) } ?? TimeText.clock(mark.start)
+      markLines.append("\(range) 标为「\(mark.label)」")
+      // A point mark looks at the minute before it, like "记下刚才".
+      let span = mark.interval.duration >= 1 ? mark.interval : DateInterval(start: mark.start.addingTimeInterval(-60), end: mark.start.addingTimeInterval(15))
+      for sentence in visibleSentences(in: span).prefix(mark.isPriority ? 3 : 1) {
+        sources.append(sentence)
+        markLines.append("  [\(sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)")
+      }
+    }
+    // Marked stretches go first, so cutting the material to size keeps them.
+    let marked = markLines.isEmpty ? "" : "主人在手表或 iPhone 上标记的时段（标为「重要」「待办」的必须写进要点，待办写成要做的事）：\n" + markLines.joined(separator: "\n") + "\n\n"
+    let material = (marked + lines.joined(separator: "\n")).prefix(engine.partCharacters * 2)
     let result = try await engine.day("""
       这是一天里每小时的总结和其中的原话，原话前有编号。写出今天最重要的一句话，以及当天的要点，每条都注明依据的原话编号。
       \(meetingLines.isEmpty ? "" : "当天的会议：\n\(meetingLines)\n")

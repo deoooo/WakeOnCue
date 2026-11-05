@@ -151,7 +151,11 @@ struct HourRow: View {
           .foregroundStyle(hour.state == .speech ? .primary : .secondary)
           .frame(width: 64, alignment: .leading)
           .padding(.top, 1)
-        content.frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 8) {
+          content
+          if !hour.deviceMarks.isEmpty { DeviceMarkList(marks: hour.deviceMarks) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         menu
       }
       .padding(.vertical, 12)

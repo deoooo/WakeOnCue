@@ -94,6 +94,14 @@ final class Store {
     if !sentenceColumns.contains("speaker_name") {
       try db.execute("ALTER TABLE sentence ADD COLUMN speaker_name TEXT")
     }
+    // Watch and iPhone marks, in the device's clock; `clock_offset` moves them onto the Mac's.
+    try db.execute("""
+      CREATE TABLE IF NOT EXISTS device_mark (
+        id TEXT PRIMARY KEY, device TEXT NOT NULL, source TEXT NOT NULL, recording TEXT NOT NULL,
+        start REAL NOT NULL, end REAL, tag TEXT, title TEXT, clock_offset REAL NOT NULL DEFAULT 0,
+        received REAL NOT NULL)
+      """)
+    try db.execute("CREATE INDEX IF NOT EXISTS device_mark_start ON device_mark(start)")
     for table in ["hour_summary", "day_summary", "meeting"] {
       let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
       if !columns.contains("engine") { try db.execute("ALTER TABLE \(table) ADD COLUMN engine TEXT") }
@@ -291,6 +299,8 @@ final class Store {
     }
     run("DELETE FROM sentence WHERE start >= ? AND start < ?", [.date(interval.start), .date(interval.end)])
     run("DELETE FROM hour_summary WHERE hour >= ? AND hour < ?", [.date(interval.start), .date(interval.end)])
+    run("DELETE FROM device_mark WHERE start + clock_offset >= ? AND start + clock_offset < ?",
+        [.date(interval.start), .date(interval.end)])
     changed()
   }
 
@@ -464,6 +474,13 @@ final class Store {
   func finishRemoteSegment(id: String, outcome: String, clockOffset: TimeInterval?) {
     run("UPDATE remote_segment SET merged = 1, outcome = ?, clock_offset = ? WHERE id = ?",
         [.text(outcome), clockOffset.map { .double($0) } ?? .null, .text(id)])
+    // Marks of the same recording follow the offset its audio was placed with.
+    if let clockOffset {
+      run("""
+        UPDATE device_mark SET clock_offset = ?
+        WHERE (device, recording) IN (SELECT device, recording FROM remote_segment WHERE id = ?)
+        """, [.double(clockOffset), .text(id)])
+    }
     changed()
   }
 
@@ -477,6 +494,53 @@ final class Store {
       (row.text(0), Int(row.int(1)), Int(row.int(2)), row.optionalDate(3))
     }
     return Dictionary(rows.map { ($0.0, (total: $0.1, waiting: $0.2, latest: $0.3)) }, uniquingKeysWith: { a, _ in a })
+  }
+
+  // MARK: Watch and iPhone marks
+
+  /// Stores or updates marks from a phone and returns them on the Mac's timeline. Each takes the
+  /// clock offset its recording's audio was merged with, or `clockOffset` (the device's) when
+  /// none of that audio is merged yet.
+  @discardableResult
+  func saveDeviceMarks(_ marks: [SyncProtocol.MarkInfo], device: String, clockOffset: TimeInterval) -> [DeviceMark] {
+    guard !marks.isEmpty else { return [] }
+    for mark in marks {
+      let merged = fetch(
+        "SELECT clock_offset FROM remote_segment WHERE device = ? AND recording = ? AND clock_offset IS NOT NULL ORDER BY start DESC LIMIT 1",
+        [.text(device), .text(mark.recordingID)]) { $0.double(0) }.first
+      run(
+        "INSERT OR REPLACE INTO device_mark (id, device, source, recording, start, end, tag, title, clock_offset, received) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [.text(mark.id), .text(device), .text(mark.source), .text(mark.recordingID), .date(mark.start),
+         .optionalDate(mark.end), mark.tag.map { .text($0) } ?? .null, mark.title.map { .text($0) } ?? .null,
+         .double(merged ?? clockOffset), .date(.now)])
+    }
+    changed()
+    return deviceMarks(ids: marks.map(\.id))
+  }
+
+  private static let deviceMarkColumns =
+    "id, source, recording, start + clock_offset, CASE WHEN end IS NULL THEN NULL ELSE end + clock_offset END, tag, title"
+
+  private static func deviceMark(_ row: SQLiteDatabase.Row) -> DeviceMark? {
+    DeviceMark(
+      id: row.text(0), source: row.text(1), recordingID: row.text(2), start: row.date(3), end: row.optionalDate(4),
+      tag: row.isNull(5) ? nil : DeviceMark.Tag(rawValue: row.text(5)), title: row.isNull(6) ? nil : row.text(6))
+  }
+
+  /// Marks that touch the interval, on the Mac's timeline, including those in private and
+  /// deleted ranges: the caller hides those.
+  func deviceMarks(overlapping interval: DateInterval) -> [DeviceMark] {
+    fetch(
+      "SELECT \(Self.deviceMarkColumns) FROM device_mark WHERE start + clock_offset < ? AND COALESCE(end, start) + clock_offset >= ? ORDER BY start + clock_offset",
+      [.date(interval.end), .date(interval.start)], map: Self.deviceMark)
+  }
+
+  func deviceMarks(ids: [String]) -> [DeviceMark] {
+    guard !ids.isEmpty else { return [] }
+    let marks = ids.map { _ in "?" }.joined(separator: ",")
+    return fetch(
+      "SELECT \(Self.deviceMarkColumns) FROM device_mark WHERE id IN (\(marks)) ORDER BY start + clock_offset",
+      ids.map { .text($0) }, map: Self.deviceMark)
   }
 
   // MARK: Storage use
