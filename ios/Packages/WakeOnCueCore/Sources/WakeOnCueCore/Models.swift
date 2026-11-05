@@ -63,6 +63,7 @@ public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
   public static let automaticTitleMetadataKey = "automatic_title"
   public static let overviewMetadataKey = "summary_overview"
   public static let deletedAtMetadataKey = "deleted_at"
+  public static let trashExpirySeenAtMetadataKey = "trash_expiry_seen_at"
 
   public let id: String
   public let createdAt: Date
@@ -129,9 +130,27 @@ public struct RecordingRecord: Identifiable, Codable, Equatable, Sendable {
     trimmedMetadata(Self.overviewMetadataKey)
   }
 
-  /// When the recording moved to Recently Deleted; nil while it is in the library.
+  /// Whether the recording is in Recently Deleted. Matches the store's filter: the key decides,
+  /// even when its date cannot be read.
+  public var isDeleted: Bool {
+    metadata[Self.deletedAtMetadataKey] != nil
+  }
+
+  /// When the recording moved to Recently Deleted; nil in the library or if the date is unreadable.
   public var deletedAt: Date? {
-    metadata[Self.deletedAtMetadataKey].flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
+    metadataDate(Self.deletedAtMetadataKey)
+  }
+
+  /// When a purge first found this recording past its retention period.
+  public var trashExpirySeenAt: Date? {
+    metadataDate(Self.trashExpirySeenAtMetadataKey)
+  }
+
+  private func metadataDate(_ key: String) -> Date? {
+    guard let seconds = metadata[key].flatMap(TimeInterval.init), seconds.isFinite else {
+      return nil
+    }
+    return Date(timeIntervalSince1970: seconds)
   }
 
   private func trimmedMetadata(_ key: String) -> String? {

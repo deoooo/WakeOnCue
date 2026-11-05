@@ -10,6 +10,7 @@ import WidgetKit
 struct RecordingProcessingServices {
   var canTranscribe: () -> Bool
   var transcribe: (_ audioURL: URL, _ recordingID: String) async throws -> [RealtimeTranscriptEvent]
+  var supportsSpokenLanguage: () async -> Bool = { true }
   var canSummarize: () -> Bool
   var summarize: (_ transcript: [RealtimeTranscriptEvent], _ title: String?) async throws
     -> RecordingSummary
@@ -32,6 +33,10 @@ struct RecordingProcessingServices {
           recordingID: recordingID,
           spokenLanguage: settings.spokenLanguage
         )
+      },
+      supportsSpokenLanguage: {
+        guard settings.activeSpeechEndpoint == nil else { return true }
+        return await OnDeviceIntelligence.supports(spokenLanguage: settings.spokenLanguage)
       },
       canSummarize: {
         settings.activeLanguageModelProvider != nil || OnDeviceIntelligence.canSummarize
@@ -72,7 +77,18 @@ final class AppModel {
   private(set) var isSavingSettings = false
   private(set) var settingsStatusMessage: String?
   private(set) var settingsStatusIsError = false
-  private(set) var audioBusyRecordingID: String?
+  /// Recordings whose audio is being prepared, played, shared or transcribed, with how many
+  /// such jobs each has; several can overlap.
+  private var audioJobs: [String: Int] = [:]
+
+  func isAudioBusy(_ recordingID: String) -> Bool { audioJobs[recordingID] != nil }
+
+  private func beginAudioJob(_ recordingID: String) { audioJobs[recordingID, default: 0] += 1 }
+
+  private func endAudioJob(_ recordingID: String) {
+    guard let count = audioJobs[recordingID] else { return }
+    audioJobs[recordingID] = count > 1 ? count - 1 : nil
+  }
   private(set) var playingRecordingID: String?
   private(set) var playbackIsPlaying = false
   private(set) var playbackPosition: TimeInterval = 0
@@ -129,6 +145,10 @@ final class AppModel {
     let store = try RecordingStore(databaseURL: fileLayout.databaseURL)
     self.store = store
     library = RecordingLibraryService(layout: fileLayout, store: store)
+    // Recently Deleted and permanently deleted recordings never go to the Mac.
+    macUploader.disposition = { [library] recordingID in
+      await library.macForwardingDisposition(recordingID: recordingID)
+    }
     RecordingIntentDispatcher.shared.install { [weak self] command in
       guard let self else { return }
       await self.start()
@@ -216,9 +236,6 @@ final class AppModel {
         errorMessage = String(format: AppLanguage.localized("Recovery failed: %@"), failure)
       }
       await importWatchRecordings()
-      // Both run again on the next launch, so a failure here need not interrupt opening the app.
-      try? await library.purgeExpiredRecordings()
-      try? await library.backfillSummaryDetails()
       await refresh()
       await liveActivity.removeStaleActivities(activeRecordingID: currentRecording?.id)
     } catch {
@@ -227,6 +244,20 @@ final class AppModel {
     }
     startTimer()
     await processPendingCommand()
+    // Callers of `start` often have a command of their own, such as a shortcut starting a recording.
+    Task { [weak self] in await self?.runLibraryUpkeep() }
+  }
+
+  /// Never holds up a command, because starting a recording comes first. All of it runs again
+  /// on the next launch, so a failure here need not interrupt opening the app.
+  private func runLibraryUpkeep() async {
+    try? await library.removeFilesOfDeletedRecordings()
+    for recordingID in (try? await library.purgeExpiredRecordings()) ?? [] {
+      RecordingAnnotationsService.shared.removeCachedAnnotations(recordingID: recordingID)
+    }
+    try? await library.backfillSummaryDetails()
+    await refresh()
+    libraryVersion += 1
   }
 
   func requestMicrophonePermission() async -> Bool {
@@ -612,8 +643,8 @@ final class AppModel {
         "Finish the current recording before playing another one.")
       return
     }
-    audioBusyRecordingID = recording.id
-    defer { audioBusyRecordingID = nil }
+    beginAudioJob(recording.id)
+    defer { endAudioJob(recording.id) }
     do {
       let chunks = try await store.chunks(recordingID: recording.id)
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
@@ -621,6 +652,8 @@ final class AppModel {
         chunks: chunks,
         s3Configuration: await s3Configuration(for: recording)
       )
+      // Preparing can take a while, and a download can outlast the screen that asked for it.
+      guard await !isRecordingDeleted(recording.id) else { return }
       guard capture == nil else { return }
       stopPlayback()
       let session = AVAudioSession.sharedInstance()
@@ -662,8 +695,8 @@ final class AppModel {
   }
 
   func share(recording: RecordingRecord) async {
-    audioBusyRecordingID = recording.id
-    defer { audioBusyRecordingID = nil }
+    beginAudioJob(recording.id)
+    defer { endAudioJob(recording.id) }
     do {
       let chunks = try await store.chunks(recordingID: recording.id)
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
@@ -671,6 +704,7 @@ final class AppModel {
         chunks: chunks,
         s3Configuration: await s3Configuration(for: recording)
       )
+      guard await !isRecordingDeleted(recording.id) else { return }
       shareItem = RecordingShareItem(url: file)
     } catch {
       errorMessage = String(
@@ -718,11 +752,11 @@ final class AppModel {
     retranscribingRecordingID = recording.id
     retranscriptionProgress = 0
     retranscriptionStatusMessage = AppLanguage.localized("Transcribing…")
-    audioBusyRecordingID = recording.id
+    beginAudioJob(recording.id)
     defer {
       retranscribingRecordingID = nil
       retranscriptionStatusMessage = nil
-      audioBusyRecordingID = nil
+      endAudioJob(recording.id)
     }
     do {
       try await runStoppableByDeletion(recordingID: recording.id) { [self] in
@@ -769,7 +803,40 @@ final class AppModel {
   }
 
   private func isRecordingDeleted(_ recordingID: String) async -> Bool {
-    (try? await store.recording(id: recordingID))?.deletedAt != nil
+    do {
+      return try await store.recording(id: recordingID).isDeleted
+    } catch RecordingStoreError.notFound {
+      return (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true
+    } catch {
+      return false
+    }
+  }
+
+  /// Which of these recordings were deleted, so that an answer stops linking to them.
+  func deletedRecordingIDs(among recordingIDs: Set<String>) async -> Set<String> {
+    var deleted: Set<String> = []
+    for recordingID in recordingIDs where await isRecordingDeleted(recordingID) {
+      deleted.insert(recordingID)
+    }
+    return deleted
+  }
+
+  func transcriptionSupportsSpokenLanguage() async -> Bool {
+    await processingServices.supportsSpokenLanguage()
+  }
+
+  /// The store's errors are in English. These can reach the user when a screen is out of date.
+  private func deletionFailureReason(_ error: Error) -> String {
+    switch error {
+    case RecordingStoreError.recordingInProgress:
+      AppLanguage.localized("This recording is still being recorded or finished.")
+    case RecordingStoreError.notInRecentlyDeleted:
+      AppLanguage.localized("This recording is no longer in Recently Deleted.")
+    case RecordingStoreError.notFound:
+      AppLanguage.localized("This recording no longer exists.")
+    default:
+      error.localizedDescription
+    }
   }
 
   /// A cancelled service can report its own error, which the user should not see as a failure.
@@ -811,7 +878,7 @@ final class AppModel {
     } catch {
       errorMessage = String(
         format: AppLanguage.localized("Could not delete this recording: %@"),
-        error.localizedDescription
+        deletionFailureReason(error)
       )
       return false
     }
@@ -827,7 +894,7 @@ final class AppModel {
     do {
       try await library.restore(recordingID: recording.id)
     } catch {
-      errorMessage = error.localizedDescription
+      errorMessage = deletionFailureReason(error)
     }
     await refresh()
     libraryVersion += 1
@@ -840,9 +907,10 @@ final class AppModel {
   func deletePermanently(_ recordings: [RecordingRecord]) async {
     var failure: String?
     for recording in recordings {
-      // Processing writes into the recording's folder, which would bring it back.
+      // Processing and preparing audio write into the recording's folder, bringing it back.
       guard !onDeviceProcessingRecordingIDs.contains(recording.id),
-        retranscribingRecordingID != recording.id
+        retranscribingRecordingID != recording.id,
+        !isAudioBusy(recording.id)
       else {
         failure = AppLanguage.localized(
           "This recording is still being processed. Try again when it finishes.")
@@ -854,7 +922,7 @@ final class AppModel {
       } catch {
         failure = String(
           format: AppLanguage.localized("Could not delete this recording: %@"),
-          error.localizedDescription
+          deletionFailureReason(error)
         )
       }
     }

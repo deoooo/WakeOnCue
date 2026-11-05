@@ -5,11 +5,15 @@ public enum RecordingStoreError: Error, LocalizedError, Sendable {
   case sqlite(String)
   case notFound(String)
   case invalidData(String)
+  case recordingInProgress(String)
+  case notInRecentlyDeleted(String)
 
   public var errorDescription: String? {
     switch self {
     case .sqlite(let message), .invalidData(let message): message
     case .notFound(let identifier): "Record not found: \(identifier)"
+    case .recordingInProgress(let identifier): "Recording is still in progress: \(identifier)"
+    case .notInRecentlyDeleted(let identifier): "Recording is not in Recently Deleted: \(identifier)"
     }
   }
 }
@@ -18,7 +22,12 @@ public actor RecordingStore {
   public static let cloudSyncAbandonedMetadataKey = "cloud_sync_abandoned"
   /// How long a deleted recording can still be recovered.
   public static let trashRetention: TimeInterval = 30 * 24 * 60 * 60
+  /// A purge waits this long after first finding a recording expired, so that setting the
+  /// date forward cannot delete Recently Deleted in one launch.
+  public static let trashPurgeConfirmationDelay: TimeInterval = 24 * 60 * 60
   private static let notDeleted = "json_extract(metadata_json, '$.deleted_at') IS NULL"
+  /// How long a write waits for another connection before reporting the database as locked.
+  private static let busyTimeoutMilliseconds: Int32 = 5_000
 
   private let connection: SQLiteConnection
   private var database: OpaquePointer { connection.pointer }
@@ -42,6 +51,7 @@ public actor RecordingStore {
       throw RecordingStoreError.sqlite(message)
     }
     do {
+      sqlite3_busy_timeout(connection, Self.busyTimeoutMilliseconds)
       try Self.execute(connection, "PRAGMA journal_mode = WAL")
       try Self.execute(connection, "PRAGMA synchronous = FULL")
       try Self.execute(connection, "PRAGMA foreign_keys = ON")
@@ -121,25 +131,27 @@ public actor RecordingStore {
   }
 
   /// Moves a recording to Recently Deleted without touching its files. A recording still
-  /// being captured or finished cannot be deleted.
+  /// being captured or finished cannot be deleted. Deleting it again keeps the original date,
+  /// so the retention period cannot restart.
   @discardableResult
   public func moveRecordingToTrash(
     recordingID: String,
     now: Date = Date()
   ) throws -> RecordingRecord {
-    let current = try recording(id: recordingID)
-    guard ![.recording, .paused, .finishing].contains(current.status) else {
-      throw RecordingStoreError.invalidData(
-        "Recording cannot be deleted from \(current.status.rawValue)"
+    try transaction {
+      let current = try recording(id: recordingID)
+      guard ![.recording, .paused, .finishing].contains(current.status) else {
+        throw RecordingStoreError.recordingInProgress(recordingID)
+      }
+      guard !current.isDeleted else { return }
+      try run(
+        "UPDATE recordings SET metadata_json = json_remove(json_set(metadata_json, '$.deleted_at', ?), '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ?",
+        [
+          .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
+          .text(recordingID),
+        ]
       )
     }
-    try run(
-      "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.deleted_at', ?), updated_at = ? WHERE id = ?",
-      [
-        .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
-        .text(recordingID),
-      ]
-    )
     return try recording(id: recordingID)
   }
 
@@ -150,10 +162,40 @@ public actor RecordingStore {
   ) throws -> RecordingRecord {
     _ = try recording(id: recordingID)
     try run(
-      "UPDATE recordings SET metadata_json = json_remove(metadata_json, '$.deleted_at'), updated_at = ? WHERE id = ?",
+      "UPDATE recordings SET metadata_json = json_remove(metadata_json, '$.deleted_at', '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ?",
       [.double(now.timeIntervalSince1970), .text(recordingID)]
     )
     return try recording(id: recordingID)
+  }
+
+  /// Starts the retention period again, for a date that is unreadable or in the future.
+  /// Like `setTrashExpirySeen`, does nothing if the recording was recovered in the meantime.
+  public func restartTrashRetention(recordingID: String, now: Date = Date()) throws {
+    try run(
+      "UPDATE recordings SET metadata_json = json_remove(json_set(metadata_json, '$.deleted_at', ?), '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ? AND NOT (\(Self.notDeleted))",
+      [
+        .text(String(now.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
+        .text(recordingID),
+      ]
+    )
+  }
+
+  /// Records when a purge first found the recording expired; nil clears it.
+  public func setTrashExpirySeen(recordingID: String, at date: Date?, now: Date = Date()) throws {
+    if let date {
+      try run(
+        "UPDATE recordings SET metadata_json = json_set(metadata_json, '$.trash_expiry_seen_at', ?), updated_at = ? WHERE id = ? AND NOT (\(Self.notDeleted))",
+        [
+          .text(String(date.timeIntervalSince1970)), .double(now.timeIntervalSince1970),
+          .text(recordingID),
+        ]
+      )
+    } else {
+      try run(
+        "UPDATE recordings SET metadata_json = json_remove(metadata_json, '$.trash_expiry_seen_at'), updated_at = ? WHERE id = ?",
+        [.double(now.timeIntervalSince1970), .text(recordingID)]
+      )
+    }
   }
 
   /// Recordings in Recently Deleted, most recently deleted first.
@@ -166,16 +208,24 @@ public actor RecordingStore {
   /// Removes a recording's rows. Only a recording already in Recently Deleted can be removed.
   /// Keeps its identifier so a source that sends it again, such as the Watch, cannot bring it back.
   public func removeDeletedRecording(recordingID: String, now: Date = Date()) throws {
-    guard try recording(id: recordingID).deletedAt != nil else {
-      throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
-    }
     try transaction {
+      guard try recording(id: recordingID).isDeleted else {
+        throw RecordingStoreError.notInRecentlyDeleted(recordingID)
+      }
       try run(
         "INSERT OR REPLACE INTO permanently_deleted_recordings (recording_id, deleted_at) VALUES (?, ?)",
         [.text(recordingID), .double(now.timeIntervalSince1970)]
       )
       try run("DELETE FROM recordings WHERE id = ?", [.text(recordingID)])
     }
+  }
+
+  /// Permanently deleted recordings whose identifier is not in use again.
+  public func permanentlyDeletedRecordingIDs() throws -> [String] {
+    try query(
+      "SELECT recording_id FROM permanently_deleted_recordings WHERE recording_id NOT IN (SELECT id FROM recordings)",
+      []
+    ) { Self.text($0, 0) ?? "" }
   }
 
   public func wasPermanentlyDeleted(recordingID: String) throws -> Bool {
@@ -210,21 +260,29 @@ public actor RecordingStore {
   }
 
   /// Merges values into the recording's durable metadata, replacing keys that already exist.
+  /// Recently Deleted has its own methods, because a bad date there would hide a recording.
   @discardableResult
   public func updateRecordingMetadata(
     recordingID: String,
     values: [String: String],
     now: Date = Date()
   ) throws -> RecordingRecord {
-    var metadata = try recording(id: recordingID).metadata
-    metadata.merge(values) { _, new in new }
-    try run(
-      "UPDATE recordings SET metadata_json = ?, updated_at = ? WHERE id = ?",
-      [
-        .text(Self.encodeMetadata(metadata)), .double(now.timeIntervalSince1970),
-        .text(recordingID),
-      ]
-    )
+    guard values[RecordingRecord.deletedAtMetadataKey] == nil,
+      values[RecordingRecord.trashExpirySeenAtMetadataKey] == nil
+    else {
+      throw RecordingStoreError.invalidData("Metadata key is reserved for Recently Deleted")
+    }
+    try transaction {
+      var metadata = try recording(id: recordingID).metadata
+      metadata.merge(values) { _, new in new }
+      try run(
+        "UPDATE recordings SET metadata_json = ?, updated_at = ? WHERE id = ?",
+        [
+          .text(Self.encodeMetadata(metadata)), .double(now.timeIntervalSince1970),
+          .text(recordingID),
+        ]
+      )
+    }
     return try recording(id: recordingID)
   }
 

@@ -190,7 +190,9 @@ public struct WatchSessionSummary: Codable, Equatable, Sendable {
     self.endReason = endReason
   }
 
-  public var recordingID: String {
+  public var recordingID: String { Self.recordingID(for: sessionID) }
+
+  public static func recordingID(for sessionID: UUID) -> String {
     "rec_watchrec_\(sessionID.uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
   }
 }
