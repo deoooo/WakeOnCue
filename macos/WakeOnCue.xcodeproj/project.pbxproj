@@ -54,6 +54,7 @@
 		72D5742CC06D76D103CC9AD7 /* Summaries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9BC7FC69A9BD7B4FFEE3FD /* Summaries.swift */; };
 		75F60B7F503CED22E165417C /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225496F6B2D93CA4BF67B855 /* SyncProtocol.swift */; };
 		7610503FB57D2EBF1B700601 /* DayData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E266453666E0C95A7FA1E1 /* DayData.swift */; };
+		77C640CF34E1F08228340C6A /* LiveLatency.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB06B943002AB20B0D651094 /* LiveLatency.swift */; };
 		789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */; };
 		7A6A162FB8C2E506E0DC513B /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604618984DEE22DF2306A61D /* MicrophoneCapture.swift */; };
 		7E7BB11820B6FB793FDF975E /* Transcription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE52C883D540F795D9651B6 /* Transcription.swift */; };
@@ -64,6 +65,7 @@
 		902F4D218B78FA44D304C360 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A022333EA6F9C747D9F302F0 /* OnboardingView.swift */; };
 		923D7D41CB8B1FB62807B8A0 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB26335672FB5FEDF4193D27 /* Player.swift */; };
 		950A73F4C2C53DA80639729E /* MeetingAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EB531DE9A1C7E5DD638A36 /* MeetingAudioCapture.swift */; };
+		9707B4B1CFBDE20AC08BDA03 /* LiveLatency.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB06B943002AB20B0D651094 /* LiveLatency.swift */; };
 		983B7DFF9506D01318D09B82 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
 		9E36CA822E4797E1234EA4C1 /* SummaryMaterialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6604BBDBCE3B86A7DBBCE085 /* SummaryMaterialTests.swift */; };
 		A2D201B98494AE0F5B7B56A1 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE068CA12358B2AAD7D8040 /* Store.swift */; };
@@ -95,6 +97,7 @@
 		E346E0F0CF791B53F5B0440B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
 		E4989DF3DE2102C13C19B233 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225496F6B2D93CA4BF67B855 /* SyncProtocol.swift */; };
 		E4B89798BEA9A7EFFEF4891C /* ASRModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28941DA64DCB881E51ED3167 /* ASRModels.swift */; };
+		E4D35B1C73B98BB387162D14 /* LiveLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69AFDD8A064496D39C30EAA8 /* LiveLatencyTests.swift */; };
 		E8036FF665374E69B8BDAB35 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8991E7CA10CFCAAC0F59D843 /* MainWindow.swift */; };
 		EA3C518BA6DAB72E4CE20EDD /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D162AE2275D6AFD63D9C3D1 /* Recorder.swift */; };
 		EB72C4321B5FA1AE249E908A /* HourViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FFAC588258A3CA40337869C /* HourViews.swift */; };
@@ -162,6 +165,7 @@
 		6604BBDBCE3B86A7DBBCE085 /* SummaryMaterialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryMaterialTests.swift; sourceTree = "<group>"; };
 		6946DDC3A37A77ED7B442F08 /* TimeText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeText.swift; sourceTree = "<group>"; };
 		6955E612737EADC4F7F5D3E2 /* AudioAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAlignment.swift; sourceTree = "<group>"; };
+		69AFDD8A064496D39C30EAA8 /* LiveLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLatencyTests.swift; sourceTree = "<group>"; };
 		6A5BD17ED969464ED17E7A48 /* ExportSource+Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ExportSource+Store.swift"; sourceTree = "<group>"; };
 		6CBEB0FA5F578C028F2C1AB5 /* MainState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainState.swift; sourceTree = "<group>"; };
 		6D162AE2275D6AFD63D9C3D1 /* Recorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recorder.swift; sourceTree = "<group>"; };
@@ -210,8 +214,9 @@
 		F3C1319CE831B4E9AF2684B7 /* Voices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voices.swift; sourceTree = "<group>"; };
 		F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB06B943002AB20B0D651094 /* LiveLatency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLatency.swift; sourceTree = "<group>"; };
 		FB49761AE06E6F71E338FCA1 /* SentenceSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceSplitterTests.swift; sourceTree = "<group>"; };
-		"TEMP_ACF87F13-3792-4589-B1B5-2F89836FC281" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -241,6 +246,7 @@
 			isa = PBXGroup;
 			children = (
 				28941DA64DCB881E51ED3167 /* ASRModels.swift */,
+				FB06B943002AB20B0D651094 /* LiveLatency.swift */,
 				F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */,
 				49DCEF7CD2B1CB054D5A4D01 /* Refiner.swift */,
 				3D545CE67F1BE080ECD1C10A /* RemoteTranscriber.swift */,
@@ -437,6 +443,7 @@
 			children = (
 				8C60D6EB216CC966CC14EF01 /* DeviceMarkTests.swift */,
 				4C19587273510560E66BA295 /* ExportTests.swift */,
+				69AFDD8A064496D39C30EAA8 /* LiveLatencyTests.swift */,
 				FB49761AE06E6F71E338FCA1 /* SentenceSplitterTests.swift */,
 				6604BBDBCE3B86A7DBBCE085 /* SummaryMaterialTests.swift */,
 				1E060F9B0606E8F1D4577829 /* TranscriptFilterTests.swift */,
@@ -454,10 +461,10 @@
 			path = Export;
 			sourceTree = "<group>";
 		};
-		"TEMP_955D4D2B-2A4C-47D1-909E-3E2CD301441E" /* macos */ = {
+		"TEMP_E7B6662D-2F8F-4B4E-9C48-27C654DC64B9" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_ACF87F13-3792-4589-B1B5-2F89836FC281" /* Signing.xcconfig */,
+				"TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -623,6 +630,7 @@
 				1B19493A3D03387CF53D146B /* GatewayEngine.swift in Sources */,
 				EB72C4321B5FA1AE249E908A /* HourViews.swift in Sources */,
 				43CAEB14CC72A67E3A8572AB /* Housekeeping.swift in Sources */,
+				9707B4B1CFBDE20AC08BDA03 /* LiveLatency.swift in Sources */,
 				304330D373267287F20FA7F9 /* LiveTranscriber.swift in Sources */,
 				04B8DF58B001AD0A4BA1AB85 /* MainState.swift in Sources */,
 				E8036FF665374E69B8BDAB35 /* MainWindow.swift in Sources */,
@@ -680,6 +688,8 @@
 				BDCFA76D4AB6E89F32A656FD /* Export.swift in Sources */,
 				1E5D46E231960422B3B42A6E /* ExportTests.swift in Sources */,
 				FAC8CA93B51B3959804B25EA /* GatewayEngine.swift in Sources */,
+				77C640CF34E1F08228340C6A /* LiveLatency.swift in Sources */,
+				E4D35B1C73B98BB387162D14 /* LiveLatencyTests.swift in Sources */,
 				E346E0F0CF791B53F5B0440B /* Models.swift in Sources */,
 				89594A486C3C1CBD4FC078F1 /* SQLite.swift in Sources */,
 				4665CC9813B8519B244209E8 /* SentenceSplitter.swift in Sources */,
@@ -842,7 +852,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_ACF87F13-3792-4589-B1B5-2F89836FC281" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -906,7 +916,7 @@
 		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_ACF87F13-3792-4589-B1B5-2F89836FC281" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;

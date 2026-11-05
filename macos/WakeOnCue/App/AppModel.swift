@@ -44,7 +44,11 @@ final class AppModel {
     asking = Asking(store: store, summaries: summaries)
     models = ASRModels(preferences: preferences)
     let preferences = preferences
-    models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
+    models.onActiveChange = { [weak refiner, weak transcription] in
+      refiner?.use($0, service: preferences.transcriptionService)
+      // Live sentences come out sooner when a model re-transcribes them anyway.
+      transcription?.setSentencesRetranscribed($0 != nil)
+    }
     voices = Voices(store: store, preferences: preferences, models: models, recorder: recorder)
     summaries.knowsMyVoice = { [weak voices] in voices?.knowsMyVoice ?? false }
     // Once the user's voice is known, the hours whose speakers changed are summarized again.
@@ -95,6 +99,7 @@ final class AppModel {
     if Self.viewOnly { return }
     await recorder.startIfAllowed()
     refiner.use(models.active, service: preferences.transcriptionService)
+    transcription.setSentencesRetranscribed(models.active != nil)
     await transcription.start()
     summaries.start()
     meetings.start()

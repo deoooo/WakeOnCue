@@ -61,10 +61,20 @@ final class Transcription {
         onSentence: { [weak self] sentence in Task { @MainActor in self?.save(sentence) } },
         onVolatile: { [weak self] text in Task { @MainActor in self?.live[channel] = text } })
     }
+    for transcriber in transcribers.values { transcriber.setFastResults(fastResults) }
     let transcribers = transcribers
     recorder.audioOut.connect { channel, buffer in
       transcribers[channel]?.feed(buffer)
     }
+  }
+
+  /// Whether a downloaded model or transcription service re-transcribes every sentence; then
+  /// live results come out sooner, since their words are replaced anyway.
+  @ObservationIgnored private var fastResults = false
+
+  func setSentencesRetranscribed(_ on: Bool) {
+    fastResults = LiveLatency.fastResults(sentencesAreRetranscribed: on)
+    for transcriber in transcribers.values { transcriber.setFastResults(fastResults) }
   }
 
   /// Finalizes what has been heard so far, e.g. when recording pauses.
