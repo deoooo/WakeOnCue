@@ -182,7 +182,7 @@ func run(_ raw: [String]) throws {
     let interval = DateInterval(start: day, duration: 86_400)
     let summary = reader.store.daySummary(for: day)
     let hours = reader.store.hourSummaries(in: interval).values
-      .filter { reader.visible($0.hourStart) }.sorted { $0.hourStart < $1.hourStart }
+      .filter { reader.visible($0.hourStart) && !$0.summary.isEmpty }.sorted { $0.hourStart < $1.hourStart }
     let meetings = reader.store.meetings(overlapping: interval).filter { reader.visible($0.start) }
     struct DayOut: Encodable {
       let date: String
