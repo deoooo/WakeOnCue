@@ -54,11 +54,6 @@ struct DayPage: View {
       HStack {
         Text(model.ui.isToday ? "今天一句话" : "这一天一句话").fontWeight(.semibold)
         Spacer()
-        if let summary = data.summary {
-          let local = summary.engine == nil || summary.engine == AppleIntelligenceEngine().name
-          Text(Summaries.credit(engine: summary.engine, at: summary.generatedAt))
-            .help(local ? "总结在这台 Mac 上生成，没有上传" : "总结由网关生成，转录文字发送到了该网关")
-        }
         redoMenu
       }
       .font(.caption)
@@ -103,7 +98,7 @@ struct DayPage: View {
       Button("只重新总结整天") { model.regenerateSummaries(in: dayInterval) }
         .disabled(model.summaries.engineName == nil)
     } label: {
-      Label("重新转录并总结整天", systemImage: "arrow.clockwise")
+      Image(systemName: "arrow.clockwise")
     } primaryAction: {
       model.refiner.retranscribe(dayInterval, summarizeAll: true)
     }
@@ -112,6 +107,7 @@ struct DayPage: View {
     .fixedSize()
     .disabled(silent || model.refiner.isRetranscribing(dayInterval))
     .help("整天的每一小时重新转录，完成后重新生成每小时总结、当天总结和会议要点")
+    .accessibilityLabel("重新转录并总结整天")
   }
 
   @ViewBuilder private var details: some View {

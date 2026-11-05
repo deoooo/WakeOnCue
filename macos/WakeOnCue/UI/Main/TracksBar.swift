@@ -49,9 +49,15 @@ struct TracksBar: View {
           .monospacedDigit()
           .foregroundStyle(.secondary)
         }
-        lane("Mac 麦克风", channel: .microphone, color: .sourceMac, height: 14)
-        lane("会议声音", channel: .meeting, color: .sourceMeeting, height: 8)
-        if data.segments.contains(where: { $0.channel == .remote }) {
+        // Only show a lane when this day actually has audio from that source; a microphone-only
+        // day has no "会议声音" track, so an empty lane would just be noise.
+        if hasAudio(.microphone) {
+          lane("Mac 麦克风", channel: .microphone, color: .sourceMac, height: 14)
+        }
+        if hasAudio(.meeting) {
+          lane("会议声音", channel: .meeting, color: .sourceMeeting, height: 8)
+        }
+        if hasAudio(.remote) {
           lane("手表 / iPhone", channel: .remote, color: .sourceWatch, height: 8)
         }
       }
@@ -60,6 +66,11 @@ struct TracksBar: View {
     .padding(.top, 10)
     .padding(.bottom, 12)
     .background(.bar)
+  }
+
+  /// True when the day has any segment on `channel`, so the lane is worth showing.
+  private func hasAudio(_ channel: AudioChannel) -> Bool {
+    data.segments.contains { $0.channel == channel }
   }
 
   private func lane(_ name: String, channel: AudioChannel, color: Color, height: CGFloat) -> some View {
