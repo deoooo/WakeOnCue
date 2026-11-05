@@ -42,6 +42,8 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
   private var lastFed: Date?
   /// Analyzer timeline position of the next sample; input must never step back.
   private var nextSample: Int64 = 0
+  /// Finalize sooner at some cost in accuracy; see `LiveLatency`.
+  private var fastResults = false
 
   init(
     channel: AudioChannel,
@@ -102,6 +104,16 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
     continuation.yield(AnalyzerInput(buffer: buffer, bufferStartTime: offset))
   }
 
+  /// Switches between fast and accurate results. The running session finalizes what it heard
+  /// and the next audio starts a session with the new setting.
+  func setFastResults(_ on: Bool) {
+    lock.withLock {
+      guard fastResults != on else { return }
+      fastResults = on
+      finishLocked()
+    }
+  }
+
   /// Ends the session; the analyzer finalizes what it already heard.
   func finish() {
     lock.withLock { finishLocked() }
@@ -132,7 +144,7 @@ nonisolated final class LiveTranscriber: @unchecked Sendable {
     let transcriber = SpeechTranscriber(
       locale: Self.locale,
       transcriptionOptions: [],
-      reportingOptions: [.volatileResults],
+      reportingOptions: fastResults ? [.volatileResults, .fastResults] : [.volatileResults],
       attributeOptions: [.audioTimeRange])
     analyzerFormat = Self.preferredFormat
       ?? AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)
