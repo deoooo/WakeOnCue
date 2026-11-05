@@ -100,6 +100,9 @@ targets:
       - path: WakeOnCue/App/TimeText.swift
       # Store records received segments with the sync protocol's types.
       - path: WakeOnCue/Sync/SyncProtocol.swift
+      # `wakeoncue export` writes the same files as the app's 导出.
+      - path: WakeOnCue/Export/Export.swift
+      - path: WakeOnCue/Export/ExportSource+Store.swift
     settings:
       base:
         PRODUCT_NAME: wakeoncue
@@ -109,14 +112,15 @@ targets:
         OTHER_LDFLAGS: -lsqlite3
         SKIP_INSTALL: YES
 
-  # Unit tests compile the storage, sync protocol and day data directly, so they never start the
-  # recorder or touch the real library.
-  WakeOnCueMacTests:
+  # Logic tests without a host app, so running them never starts the recorder or touches the real
+  # library. They compile the code they cover directly.
+  WakeOnCueTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: Tests
+      - path: WakeOnCueTests
       - path: WakeOnCue/Storage
+      - path: WakeOnCue/Export/Export.swift
       - path: WakeOnCue/App/TimeText.swift
       - path: WakeOnCue/Sync/SyncProtocol.swift
       - path: WakeOnCue/UI/Main/DayData.swift
@@ -131,9 +135,9 @@ schemes:
     build:
       targets:
         WakeOnCue: all
-        WakeOnCueMacTests: [test]
+        WakeOnCueTests: [test]
     run:
       config: Debug
     test:
       targets:
-        - WakeOnCueMacTests
+        - WakeOnCueTests

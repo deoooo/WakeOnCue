@@ -269,6 +269,44 @@ final class RecordingRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testPlayAndShareDoNothingOnceTheRecordingIsDeleted() async throws {
+    let model = try AppModel()
+    let (recording, _, _) = try await makeProcessableRecording()
+    _ = await model.moveToTrash(recording)
+
+    await model.togglePlayback(for: recording)
+    await model.share(recording: recording)
+
+    XCTAssertNil(model.playingRecordingID, "A screen left open must not start the audio")
+    XCTAssertNil(model.shareItem)
+  }
+
+  @MainActor
+  func testDeletingARecordingInProgressGivesATranslatedReason() async throws {
+    let model = try AppModel()
+    let layout = try RecordingFileLayout()
+    let store = try RecordingStore(databaseURL: layout.databaseURL)
+    let id = "rec_in_progress_\(UUID().uuidString)"
+    let recording = RecordingRecord(
+      id: id, createdAt: Date(), startedAt: Date(), status: .recording,
+      localAudioPath: try layout.sourceAudioURL(recordingID: id).path,
+      deviceModel: "test", appVersion: "test"
+    )
+    try await store.createRecording(recording, createPayloadPath: "", enqueueUpload: false)
+
+    let moved = await model.moveToTrash(recording)
+
+    XCTAssertFalse(moved)
+    XCTAssertTrue(
+      model.errorMessage?.contains(
+        AppLanguage.localized("This recording is still being recorded or finished.")) == true)
+    try await store.completeLocally(recordingID: id, duration: 1)
+    try await store.moveRecordingToTrash(recordingID: id)
+    try await store.removeDeletedRecording(recordingID: id)
+    try layout.removeFiles(recordingID: id)
+  }
+
+  @MainActor
   func testDeletingCancelsARequestAlreadyInFlight() async throws {
     let model = try AppModel()
     let (recording, layout, _) = try await makeProcessableRecording()

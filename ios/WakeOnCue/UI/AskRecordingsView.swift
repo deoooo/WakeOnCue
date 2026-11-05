@@ -10,6 +10,7 @@ struct AskRecordingsView: View {
   @State private var answer: RecordingAnswer?
   @State private var isAnswering = false
   @State private var errorMessage: String?
+  @State private var deletedRecordingIDs: Set<String> = []
   @FocusState private var isQuestionFocused: Bool
 
   var body: some View {
@@ -47,9 +48,10 @@ struct AskRecordingsView: View {
           .foregroundStyle(.orange)
       } else if let answer {
         answerSection(answer)
-        if !answer.sources.isEmpty {
+        let sources = answer.sources.filter { !deletedRecordingIDs.contains($0.recording.id) }
+        if !sources.isEmpty {
           Section(answer.text == nil ? "Matching passages" : "Sources") {
-            ForEach(answer.sources) { citation in
+            ForEach(sources) { citation in
               sourceRow(citation)
             }
           }
@@ -60,6 +62,10 @@ struct AskRecordingsView: View {
     .navigationBarTitleDisplayMode(.inline)
     .toolbar(.visible, for: .navigationBar)
     .accessibilityIdentifier("ask-recordings")
+    .task(id: "\(model.libraryVersion)-\(answer?.sources.map(\.id) ?? [])") {
+      let recordingIDs = Set(answer?.sources.map(\.recording.id) ?? [])
+      deletedRecordingIDs = await model.deletedRecordingIDs(among: recordingIDs)
+    }
     .onAppear { if answer == nil { isQuestionFocused = true } }
   }
 

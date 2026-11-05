@@ -103,6 +103,11 @@ struct MainWindow: View {
     }
     ToolbarItem(placement: .primaryAction) { StatusPill() }
     ToolbarItem(placement: .primaryAction) {
+      Button { model.exportDay() } label: { Label("导出…", systemImage: "square.and.arrow.up") }
+        .help("导出这一天的总结和转录（⌘E）")
+        .disabled(model.ui.page != .day)
+    }
+    ToolbarItem(placement: .primaryAction) {
       Button(model.recorder.isRecording ? "暂停" : "继续") {
         Task { await model.recorder.togglePause() }
       }

@@ -29,9 +29,9 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E38D67650FB0B7AA0510CCE9"
-               BuildableName = "WakeOnCueMacTests.xctest"
-               BlueprintName = "WakeOnCueMacTests"
+               BlueprintIdentifier = "7AF0B4AF86BD6DF4524967DE"
+               BuildableName = "WakeOnCueTests.xctest"
+               BlueprintName = "WakeOnCueTests"
                ReferencedContainer = "container:WakeOnCue.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -58,9 +58,9 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E38D67650FB0B7AA0510CCE9"
-               BuildableName = "WakeOnCueMacTests.xctest"
-               BlueprintName = "WakeOnCueMacTests"
+               BlueprintIdentifier = "7AF0B4AF86BD6DF4524967DE"
+               BuildableName = "WakeOnCueTests.xctest"
+               BlueprintName = "WakeOnCueTests"
                ReferencedContainer = "container:WakeOnCue.xcodeproj">
             </BuildableReference>
          </TestableReference>

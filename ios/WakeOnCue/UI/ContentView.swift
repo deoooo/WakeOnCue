@@ -565,7 +565,7 @@ struct ContentView: View {
         Button {
           Task { await model.togglePlayback(for: recording) }
         } label: {
-          if model.audioBusyRecordingID == recording.id {
+          if model.isAudioBusy(recording.id) {
             ProgressView().controlSize(.small)
           } else {
             Image(
