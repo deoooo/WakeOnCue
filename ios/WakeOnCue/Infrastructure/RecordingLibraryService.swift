@@ -11,15 +11,26 @@ struct RecordingLibrarySearchResult: Sendable {
 actor RecordingLibraryService {
   private let layout: RecordingFileLayout
   private let store: RecordingStore
+  /// Where audio waits for the paired Mac; nil for the app's own outbox.
+  private let macOutboxRoot: URL?
+  /// Where Watch audio arrives; nil for the app's own inbox.
+  private let watchInboxRoot: URL?
 
-  init(layout: RecordingFileLayout) throws {
+  init(layout: RecordingFileLayout, macOutboxRoot: URL? = nil, watchInboxRoot: URL? = nil) throws {
     self.layout = layout
+    self.macOutboxRoot = macOutboxRoot
+    self.watchInboxRoot = watchInboxRoot
     store = try RecordingStore(databaseURL: layout.databaseURL)
   }
 
-  init(layout: RecordingFileLayout, store: RecordingStore) {
+  init(
+    layout: RecordingFileLayout, store: RecordingStore, macOutboxRoot: URL? = nil,
+    watchInboxRoot: URL? = nil
+  ) {
     self.layout = layout
     self.store = store
+    self.macOutboxRoot = macOutboxRoot
+    self.watchInboxRoot = watchInboxRoot
   }
 
   func page(limit: Int, offset: Int) async throws -> [RecordingRecord] {
@@ -55,13 +66,38 @@ actor RecordingLibraryService {
   func deletePermanently(recordingID: String) async throws {
     try await store.removeDeletedRecording(recordingID: recordingID)
     try? layout.removeFiles(recordingID: recordingID)
+    // The outbox holds its own link to the audio, which would otherwise still reach the Mac.
+    MacOutbox.remove(appRecordingID: recordingID, root: macOutboxRoot)
+    // Late Watch segments of this recording would otherwise wait for the next import.
+    WatchSessionInbox.removeFolders(ofRecordings: [recordingID], root: watchInboxRoot)
+  }
+
+  /// Whether a recording's audio may go to the paired Mac. A Watch segment can be queued
+  /// before its recording exists, so an unknown recording is sent.
+  func macForwardingDisposition(recordingID: String) async -> MacOutbox.Disposition {
+    do {
+      return try await store.recording(id: recordingID).isDeleted ? .hold : .send
+    } catch RecordingStoreError.notFound {
+      return (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true ? .discard : .send
+    } catch {
+      // Unsure is not a reason to send audio the user may have deleted; the next sync decides.
+      return .hold
+    }
   }
 
   /// Removes what remains of permanently deleted recordings: files that failed to go, and
   /// folders that late writes, such as a bookmark tag from the Watch, created again.
   func removeFilesOfDeletedRecordings() async throws {
-    for recordingID in try await store.permanentlyDeletedRecordingIDs() {
+    let recordingIDs = try await store.permanentlyDeletedRecordingIDs()
+    for recordingID in recordingIDs {
       try? layout.removeFiles(recordingID: recordingID)
+    }
+    // Late Watch segments are queued for the Mac as they arrive, before anything can check them.
+    let deleted = Set(recordingIDs)
+    WatchSessionInbox.removeFolders(ofRecordings: deleted, root: watchInboxRoot)
+    for item in MacOutbox.items(root: macOutboxRoot)
+    where deleted.contains(MacOutbox.appRecordingID(for: item.info)) {
+      MacOutbox.remove(item)
     }
   }
 
