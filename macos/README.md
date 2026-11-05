@@ -55,6 +55,7 @@ wakeoncue transcript 11-03 --from 14:30 --to 15:00
 wakeoncue search 告警 灰度 --days 7 --speaker 会议对方
 wakeoncue meetings
 wakeoncue meeting 3
+wakeoncue health --days 3          # 全天录音体检：没有原因的空档、有转录没总结、回传进度
 ```
 
 所有命令都可以加 `--json`，方便脚本和 Claude 等 AI 工具使用。标为私人或已删除的时段不会出现在任何结果里。它只读打开数据库，App 运行时也可以用。

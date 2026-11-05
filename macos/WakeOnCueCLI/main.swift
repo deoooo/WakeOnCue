@@ -14,6 +14,8 @@ let usage = """
                                    全文搜索，多个词同时命中的排在前面
     meetings [日期]                 会议列表
     meeting <编号>                  一场会议的要点和完整转录
+    health [--days N]               检查最近 N 天（默认 3）的全天录音：没有原因的空档、
+                                   有音频没转录、有转录没总结、回传进度
     help                           显示这段说明
 
   日期：今天（默认）、昨天、2026-11-04 或 11-04。
@@ -286,6 +288,13 @@ func run(_ raw: [String]) throws {
     for point in out.points ?? [] { print("· \(point.text)\(cites(point))") }
     print("\n完整转录")
     for sentence in out.transcript ?? [] { print(sentence.line) }
+
+  case "health":
+    let reader = try Reader()
+    let days = max(1, args.options["days"].flatMap(Int.init) ?? 3)
+    let out = healthReport(store: reader.store, days: days)
+    if args.json { return try printJSON(out) }
+    printHealth(out, remote: reader.store.remoteSegmentCounts())
 
   default:
     throw UsageError(message: "不认识的命令：\(command)\n\n\(usage)")
