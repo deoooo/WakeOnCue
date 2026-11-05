@@ -21,6 +21,8 @@ nonisolated enum SentenceSplitter {
   private static let commas: Set<Character> = ["，", ",", "、"]
   /// Silence between two words that ends a sentence.
   static let pause: Double = 0.8
+  /// About how long a Chinese character takes to say; a word lasting much longer held a pause.
+  static let secondsPerCharacter: Double = 0.35
   /// From this long on, a comma ends the sentence too.
   static let longSentence: Double = 8
   /// A pause after fewer characters than this ("嗯", "对对") does not split; the reply stays
@@ -48,12 +50,21 @@ nonisolated enum SentenceSplitter {
     }
 
     for piece in pieces {
-      if let pieceStart = piece.start, let end, pieceStart - end >= pause, spoken(current) >= minimumCharacters {
-        flush()
+      // Apple speech's word times touch each other: a silence shows up as a gap, or as a word
+      // that lasts far longer than it takes to say. Either way the words start after it.
+      var wordStart = piece.start
+      if let pieceStart = piece.start, let pieceEnd = piece.end {
+        let words = max(spoken(piece.text), 1)
+        let said = min(pieceEnd - pieceStart, secondsPerCharacter * Double(words))
+        let silence = max(pieceStart - (end ?? pieceStart), pieceEnd - pieceStart - said)
+        if silence >= pause {
+          wordStart = pieceEnd - said
+          if spoken(current) >= minimumCharacters { flush() }
+        }
       }
       for character in piece.text {
         if !character.isPunctuation, !character.isWhitespace {
-          if start == nil { start = piece.start }
+          if start == nil { start = wordStart }
           if let pieceEnd = piece.end { end = pieceEnd }
         }
         current.append(character)

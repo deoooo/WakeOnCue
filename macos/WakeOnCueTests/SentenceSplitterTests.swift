@@ -19,6 +19,18 @@ struct SentenceSplitterTests {
     #expect(spans.last?.start == 4.2)
   }
 
+  /// Apple speech's word times touch; the silence is inside the next word (real case: 「这」 1.44 s).
+  @Test func aSilenceInsideAWordEndsTheSentence() {
+    let words: [(String, Double, Double)] = [
+      ("继", 13.74, 13.98), ("续", 13.98, 14.1), ("跟", 14.1, 14.22), ("进", 14.22, 14.4), ("吧", 14.4, 14.58),
+      ("这", 14.58, 17.1), ("个", 17.1, 17.22), ("呢", 17.22, 17.4),
+    ]
+    let pieces = words.map { Piece(text: $0.0, start: $0.1, end: $0.2) }
+    let spans = SentenceSplitter.split(pieces)
+    #expect(spans.map(\.text) == ["继续跟进吧", "这个呢"])
+    #expect(abs(spans[1].start - (17.1 - 0.35)) < 0.01)
+  }
+
   @Test func aShortReplyStaysWithWhatFollows() {
     let spans = SentenceSplitter.split([Piece(text: "嗯", start: 0, end: 0.3), Piece(text: "这个要现在开始做吗", start: 1.5, end: 3)])
     #expect(spans.map(\.text) == ["嗯这个要现在开始做吗"])
