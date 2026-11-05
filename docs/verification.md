@@ -1,6 +1,29 @@
 # Verification Report
 
-更新时间：2026-08-27
+更新时间：2026-11-02
+
+## iPhone recording flow stutter and finish fixes (2026-11-02)
+
+iOS 26.5 Simulator (iPhone 17 Pro), Mac microphone. Timings come from a temporary main-thread
+heartbeat that has since been removed.
+
+| Check | Before | After |
+|---|---|---|
+| Main thread blocked by `capture.start` | 358 ms | Below the 50 ms reporting threshold; the audio session work runs off the main thread (up to 89 ms blocked just after start, cause not isolated) |
+| Main thread blocked by `capture.stop` | 58–155 ms | Not reported |
+| Main thread blocked by the M4A playback check | 115 ms | Not reported |
+| Finish before any audio arrives | Stuck on Finishing; Save to this iPhone failed the same way; only killing the app recovered | Says the recording was too short, discards it, returns to Ready |
+| Play an old recording while recording | `source.caf` stopped growing; timer froze while the screen still said Recording | Playback is refused with a message; recording continues |
+| Engine stopped mid-recording (injected) | Audio lost until the recording ended | Restarted after 3 s and `source.caf` resumed growing |
+| No audio at all (injected) | Showed Recording indefinitely | Two restarts, then shows Recording was interrupted with Resume |
+| Start → cross a chunk → Pause → Resume → Finish | — | `source.caf` and final M4A both 18.988 s; 3 chunks sum to 18.988 s; `COMPLETED` |
+
+Tests: `WakeOnCueTests` 115/115, `WakeOnCueUITests` 16 passed and 1 skipped, Core 37/37.
+
+**DEVICE NOT RUN:** a real route change (AirPods or Bluetooth connecting mid-recording), a phone
+call interruption, Finish from the Live Activity while the app is in the background, and the
+timings on real hardware. Commands waiting for a running one to finish (Watch, widgets) have no
+test of their own.
 
 ## Latest LAN direct validation (2026-08-31)
 

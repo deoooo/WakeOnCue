@@ -1,0 +1,118 @@
+name: WakeOnCue
+options:
+  bundleIdPrefix: com.deoooo
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+# Signing lives in Signing.xcconfig, which includes the untracked Local.xcconfig written by
+# scripts/setup-signing.sh. A stable identity keeps macOS privacy permissions across rebuilds.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    # Apple silicon only: SpeechAnalyzer and Apple Intelligence need it.
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+
+targets:
+  WakeOnCue:
+    type: application
+    platform: macOS
+    sources:
+      - path: WakeOnCue
+    dependencies:
+      # The command-line tool ships inside the app: WakeOnCue.app/Contents/Helpers/wakeoncue. Not in
+      # Contents/MacOS, where it would replace "WakeOnCue" on a case-insensitive disk.
+      - target: WakeOnCueCLI
+        embed: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+    preBuildScripts:
+      - name: Check signing identity
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CODE_SIGN_IDENTITY" = "-" ]; then
+            echo "warning: 正在用 ad-hoc 签名，每次重新编译后 macOS 都会再次询问麦克风等权限。运行 macos/scripts/setup-signing.sh 改用稳定的签名。"
+          fi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos
+        PRODUCT_NAME: WakeOnCue
+        # Process taps on other apps' audio and an all-day recorder; not sandboxed in phase 1.
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        # Icon PNGs come from ios/Design/make_icons.py.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_LANGUAGE: zh-Hans
+        SWIFT_EMIT_LOC_STRINGS: NO
+        OTHER_LDFLAGS: -lsqlite3
+        SWIFT_OBJC_BRIDGING_HEADER: WakeOnCue/WakeOnCue-Bridging-Header.h
+    info:
+      path: WakeOnCue/Info.plist
+      properties:
+        CFBundleDisplayName: WakeOnCue
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "26.0"
+        LSApplicationCategoryType: public.app-category.productivity
+        LSRequiresNativeExecution: true
+        NSMicrophoneUsageDescription: WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。
+        NSAudioCaptureUsageDescription: WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。
+        NSCalendarsFullAccessUsageDescription: WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。
+        NSLocalNetworkUsageDescription: WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。
+        NSBonjourServices:
+          - _wakeoncue._tcp
+        # The summary gateway may be on the local network over plain HTTP.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSSpeechRecognitionUsageDescription: WakeOnCue 用系统的语音识别在这台 Mac 上转录录音。
+    entitlements:
+      path: WakeOnCue/WakeOnCue.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.calendars: true
+        # The sherpa-onnx libraries are downloaded from its official releases (signed by their
+        # publisher, checked against the published SHA-256) and loaded with dlopen.
+        com.apple.security.cs.disable-library-validation: true
+
+  # Named apart from the app: on a case-insensitive disk "wakeoncue" and "WakeOnCue" would share
+  # build folders and module files.
+  WakeOnCueCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: WakeOnCueCLI
+      # Reads the library through the app's own storage code.
+      - path: WakeOnCue/Storage
+      - path: WakeOnCue/App/TimeText.swift
+      # Store records received segments with the sync protocol's types.
+      - path: WakeOnCue/Sync/SyncProtocol.swift
+    settings:
+      base:
+        PRODUCT_NAME: wakeoncue
+        PRODUCT_MODULE_NAME: WakeOnCueCLI
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos.cli
+        ENABLE_HARDENED_RUNTIME: true
+        OTHER_LDFLAGS: -lsqlite3
+        SKIP_INSTALL: YES
+
+schemes:
+  WakeOnCue:
+    build:
+      targets:
+        WakeOnCue: all
+    run:
+      config: Debug

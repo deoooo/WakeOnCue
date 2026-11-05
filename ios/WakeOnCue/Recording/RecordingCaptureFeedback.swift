@@ -24,6 +24,38 @@ struct RecordingCaptureFeedback: Sendable, Equatable {
   var hasSustainedSilence: Bool { sustainedSilenceDuration != nil }
 }
 
+/// Decides what to do when the microphone stops delivering audio while recording should be running.
+struct RecordingCaptureStallMonitor {
+  enum Action: Equatable {
+    case none
+    case restart
+    case giveUp
+  }
+
+  static let stallThreshold: TimeInterval = 3
+  static let maximumRestarts = 2
+
+  private var restarts = 0
+
+  mutating func evaluate(secondsSinceLastBuffer: TimeInterval) -> Action {
+    guard secondsSinceLastBuffer >= Self.stallThreshold else { return .none }
+    guard restarts < Self.maximumRestarts else {
+      restarts = 0
+      return .giveUp
+    }
+    restarts += 1
+    return .restart
+  }
+
+  mutating func noteBuffer() {
+    restarts = 0
+  }
+
+  mutating func reset() {
+    restarts = 0
+  }
+}
+
 /// Small, allocation-free state machine used by the audio tap.
 struct RecordingCaptureMeter {
   static let silenceThresholdRMS: Float = 0.003_162_277_7  // -50 dBFS

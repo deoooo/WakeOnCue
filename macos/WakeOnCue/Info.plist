@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleDisplayName</key>
+	<string>WakeOnCue</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSRequiresNativeExecution</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_wakeoncue._tcp</string>
+	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>WakeOnCue 用系统的语音识别在这台 Mac 上转录录音。</string>
+</dict>
+</plist>
