@@ -49,7 +49,7 @@ final class Voices {
 
   /// Cosine similarity needed to call a voice the user's, a remembered person's, or the same
   /// unnamed speaker as before. Checked against real recordings; see `calibrate`.
-  static var meThreshold: Float = 0.5
+  static var meThreshold: Float { VoiceReference.meThreshold }
   static var personThreshold: Float = 0.55
   static var clusterThreshold: Float = 0.6
   /// Wait this long after a sentence ends, so its audio is on disk.
@@ -82,6 +82,12 @@ final class Voices {
   private(set) var modelState: ModelState = FileManager.default.fileExists(atPath: Voices.modelFile.path) ? .ready : .missing
   private(set) var enrollment: Enrollment = .idle
   private(set) var myVoice: [Float]? = VoiceprintKeychain.read("me", as: [Float].self)
+  /// `myVoice` moved toward how this Mac's microphone hears the user; see `VoiceReference.adapted`.
+  private(set) var myVoiceAdapted: [Float]? = VoiceprintKeychain.read("me-adapted", as: [Float].self)
+  /// The user's voice learned from online meetings, when they have not enrolled.
+  private(set) var learnedVoice: LearnedVoice? = VoiceprintKeychain.read("me-learned", as: LearnedVoice.self)
+  /// Re-checking the last days' sentences after the user's voice became known.
+  private(set) var isRecheckingPast = false
   private(set) var people: [Voiceprint] = VoiceprintKeychain.read("people", as: [Voiceprint].self) ?? []
   /// After enrolling: how recent microphone sentences compare with the user's voice.
   private(set) var calibration: String?
@@ -91,7 +97,9 @@ final class Voices {
   @ObservationIgnored private let models: ASRModels
   @ObservationIgnored private let recorder: Recorder
   @ObservationIgnored private var embedder: SpeakerEmbedder?
-  @ObservationIgnored private var queue: [Sentence] = []
+  @ObservationIgnored private var queue: [(sentence: Sentence, duringMeeting: Bool)] = []
+  /// Hours whose speakers changed; the summaries of these hours are redone.
+  @ObservationIgnored var onSpeakersChanged: (([Date]) -> Void)?
   @ObservationIgnored private var running = false
   /// Unnamed speakers heard today, by label, for 区分说话人.
   @ObservationIgnored private var clusters: [(day: Date, label: String, embedding: [Float], count: Int)] = []
@@ -104,8 +112,26 @@ final class Voices {
     self.recorder = recorder
   }
 
+  /// What the user's voice is compared with: the enrolled voice (adapted when possible), else
+  /// the voice learned from online meetings once there is enough of it.
+  var reference: [Float]? {
+    if let myVoiceAdapted, myVoice != nil { return myVoiceAdapted }
+    if let myVoice { return myVoice }
+    if let learnedVoice, learnedVoice.isUsable { return learnedVoice.embedding }
+    return nil
+  }
+
+  /// "我" means the user's voice, not just whatever the microphone heard.
+  var knowsMyVoice: Bool { reference != nil }
+
+  /// Learning from online meetings needs the voice model already on this Mac; it is never
+  /// downloaded just for that.
+  private var canLearn: Bool { myVoice == nil && modelState == .ready }
+
   /// Anything to do with voices at all.
-  var isActive: Bool { myVoice != nil || preferences.splitSpeakers || (preferences.rememberVoices && !people.isEmpty) }
+  var isActive: Bool {
+    reference != nil || canLearn || preferences.splitSpeakers || (preferences.rememberVoices && !people.isEmpty)
+  }
 
   // MARK: Model
 
@@ -186,20 +212,64 @@ final class Voices {
     }
     myVoice = voice
     VoiceprintKeychain.write(voice, "me")
+    myVoiceAdapted = nil
+    VoiceprintKeychain.write([Float]?.none, "me-adapted")
     enrollment = .idle
-    Task { await calibrate() }
+    Task {
+      await recheckPast(adapting: true)
+      await calibrate()
+    }
+  }
+
+  private func recentMicrophoneSentences(days: Double, limit: Int) -> [Sentence] {
+    let interval = DateInterval(start: .now.addingTimeInterval(-days * 86_400), end: .now)
+    return Array(store.sentences(in: interval)
+      .filter { $0.channel == .microphone && $0.end.timeIntervalSince($0.start) >= VoiceReference.minimumSeconds }
+      .suffix(limit))
+  }
+
+  /// Once the user's voice is known, checks the last week's microphone sentences again, so the
+  /// summaries stop treating everyone in the room as the user. After enrolling, the voice is first
+  /// adapted to these sentences. Changed hours are summarized again.
+  func recheckPast(days: Double = 7, adapting: Bool = false) async {
+    guard reference != nil, !isRecheckingPast, await prepareModel() else { return }
+    isRecheckingPast = true
+    defer { isRecheckingPast = false }
+    let interval = DateInterval(start: .now.addingTimeInterval(-days * 86_400), end: .now.addingTimeInterval(-Self.settle))
+    let sentences = store.sentences(in: interval).filter { $0.channel == .microphone }
+    var embeddings: [Int64: [Float]] = [:]
+    for sentence in sentences {
+      if let embedding = await embedding(of: sentence) { embeddings[sentence.id] = embedding }
+    }
+    if adapting, let myVoice {
+      let candidates = sentences
+        .filter { $0.end.timeIntervalSince($0.start) >= VoiceReference.minimumSeconds }
+        .compactMap { embeddings[$0.id] }
+      if let adapted = VoiceReference.adapted(myVoice, with: candidates) {
+        myVoiceAdapted = adapted
+        VoiceprintKeychain.write(adapted, "me-adapted")
+        Self.logger.notice("Adapted the enrolled voice to \(candidates.count) sentences")
+      } else {
+        Self.logger.notice("Adapting: too few of \(candidates.count) sentences close to the enrolled voice")
+      }
+    }
+    var changed = Set<Date>()
+    for sentence in sentences {
+      guard let embedding = embeddings[sentence.id] else { continue }
+      if classify(sentence, embedding: embedding, duringMeeting: false) { changed.insert(Calendar.current.hourStart(sentence.start)) }
+    }
+    Self.logger.notice("Rechecked \(sentences.count) sentences, speakers changed in \(changed.count) hours")
+    if !changed.isEmpty { onSpeakersChanged?(changed.sorted()) }
   }
 
   /// Compares the last 200 microphone sentences of two seconds or more with the user's voice,
   /// logs the spread, and says how many would count as "我" at the current threshold.
   func calibrate() async {
-    guard let myVoice, await prepareModel() else { return }
+    guard myVoice != nil, let reference, await prepareModel() else { return }
     calibration = "正在用最近的录音检查…"
-    let interval = DateInterval(start: .now.addingTimeInterval(-2 * 86_400), end: .now)
-    let recent = store.sentences(in: interval).filter { $0.channel == .microphone && $0.end.timeIntervalSince($0.start) >= 2 }.suffix(200)
     var similarities: [Float] = []
-    for sentence in recent {
-      if let embedding = await embedding(of: sentence) { similarities.append(SpeakerEmbedder.similarity(embedding, myVoice)) }
+    for sentence in recentMicrophoneSentences(days: 2, limit: 200) {
+      if let embedding = await embedding(of: sentence) { similarities.append(VoiceReference.similarity(embedding, reference)) }
     }
     guard !similarities.isEmpty else {
       calibration = nil
@@ -220,7 +290,15 @@ final class Voices {
 
   func forgetMyVoice() {
     myVoice = nil
+    myVoiceAdapted = nil
     VoiceprintKeychain.write([Float]?.none, "me")
+    VoiceprintKeychain.write([Float]?.none, "me-adapted")
+  }
+
+  /// Forgets the voice learned from online meetings, e.g. when it learned someone else.
+  func forgetLearnedVoice() {
+    learnedVoice = nil
+    VoiceprintKeychain.write(LearnedVoice?.none, "me-learned")
   }
 
   // MARK: Remembered people
@@ -284,15 +362,16 @@ final class Voices {
   /// A new microphone sentence; its speaker is checked once its audio is on disk.
   func enqueue(_ sentence: Sentence) {
     guard sentence.channel == .microphone, isActive else { return }
-    queue.append(sentence)
+    // Whether a meeting app was playing right now; by the time the audio is on disk it may not be.
+    queue.append((sentence, !recorder.activeMeetingApps.isEmpty))
     guard !running else { return }
     running = true
     Task {
       while !queue.isEmpty {
         let next = queue.removeFirst()
-        let wait = next.end.addingTimeInterval(Self.settle).timeIntervalSinceNow
+        let wait = next.sentence.end.addingTimeInterval(Self.settle).timeIntervalSinceNow
         if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-        await identify(next)
+        await identify(next.sentence, duringMeeting: next.duringMeeting)
       }
       running = false
     }
@@ -309,17 +388,28 @@ final class Voices {
     }.value
   }
 
-  private func identify(_ sentence: Sentence) async {
-    guard await prepareModel(), let embedding = await embedding(of: sentence) else { return }
-    if let myVoice {
-      let mine = SpeakerEmbedder.similarity(embedding, myVoice)
-      if mine >= Self.meThreshold {
-        if sentence.speaker != .me || sentence.speakerName != nil { store.setSpeaker(id: sentence.id, speaker: .me, name: nil) }
-        return
-      }
+  /// Sets the sentence's speaker from its voice. Returns whether it changed.
+  @discardableResult
+  private func identify(_ sentence: Sentence, duringMeeting: Bool) async -> Bool {
+    // A name the user gave stays; only 我 / 他人 / 说话人 N are worked out here.
+    if let name = sentence.speakerName, !name.hasPrefix("说话人 ") { return false }
+    // Learning alone never downloads the model.
+    guard reference != nil || preferences.splitSpeakers || preferences.rememberVoices || modelState == .ready else { return false }
+    guard await prepareModel(), let embedding = await embedding(of: sentence) else { return false }
+    return classify(sentence, embedding: embedding, duringMeeting: duringMeeting)
+  }
+
+  private func classify(_ sentence: Sentence, embedding: [Float], duringMeeting: Bool) -> Bool {
+    if let name = sentence.speakerName, !name.hasPrefix("说话人 ") { return false }
+    let seconds = sentence.end.timeIntervalSince(sentence.start)
+    if canLearn, duringMeeting, sentence.speaker == .me, seconds >= VoiceReference.minimumSeconds {
+      learn(embedding, seconds: seconds)
+    }
+    if let reference {
+      if VoiceReference.isMe(embedding, reference: reference) { return set(sentence, .me, nil) }
     } else if sentence.speaker == .me {
-      // Without the user's voiceprint, only the quieter voices already marked 他人 are looked at.
-      return
+      // Without the user's voice, only the quieter voices already marked 他人 are looked at.
+      return false
     }
     var name: String?
     if preferences.rememberVoices,
@@ -334,7 +424,26 @@ final class Voices {
     } else if preferences.splitSpeakers {
       name = cluster(embedding, day: Calendar.current.startOfDay(for: sentence.start))
     }
-    store.setSpeaker(id: sentence.id, speaker: .other, name: name)
+    return set(sentence, .other, name)
+  }
+
+  private func set(_ sentence: Sentence, _ speaker: Speaker, _ name: String?) -> Bool {
+    guard sentence.speaker != speaker || sentence.speakerName != name else { return false }
+    store.setSpeaker(id: sentence.id, speaker: speaker, name: name)
+    return true
+  }
+
+  /// One more sentence of the user's voice from an online meeting. When there is first enough
+  /// of it, the last week is checked again.
+  private func learn(_ embedding: [Float], seconds: TimeInterval) {
+    let wasUsable = learnedVoice?.isUsable ?? false
+    let voice = learnedVoice?.adding(embedding, seconds: seconds) ?? .first(embedding, seconds: seconds)
+    learnedVoice = voice
+    if voice.sentences % 5 == 0 || voice.isUsable != wasUsable { VoiceprintKeychain.write(voice, "me-learned") }
+    if voice.isUsable, !wasUsable {
+      Self.logger.notice("Learned the user's voice from \(voice.sentences) meeting sentences")
+      Task { await recheckPast() }
+    }
   }
 
   /// The day's unnamed speaker this voice belongs to, or a new 说话人 N.

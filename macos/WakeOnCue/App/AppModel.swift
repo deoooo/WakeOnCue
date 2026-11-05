@@ -46,6 +46,12 @@ final class AppModel {
     let preferences = preferences
     models.onActiveChange = { [weak refiner] in refiner?.use($0, service: preferences.transcriptionService) }
     voices = Voices(store: store, preferences: preferences, models: models, recorder: recorder)
+    summaries.knowsMyVoice = { [weak voices] in voices?.knowsMyVoice ?? false }
+    // Once the user's voice is known, the hours whose speakers changed are summarized again.
+    voices.onSpeakersChanged = { [weak self] hours in
+      guard let self else { return }
+      for hour in hours { summaries.invalidate(DateInterval(start: hour, duration: 3_600)) }
+    }
     transcription.onSentence = { [weak refiner, weak voices] in
       refiner?.enqueue($0)
       voices?.enqueue($0)

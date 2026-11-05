@@ -26,6 +26,21 @@ nonisolated enum SummaryMaterial {
     return lines.count < 2 || characters < 20
   }
 
+  /// Before the user's voice is known, "我" on the microphone only means "heard by the Mac":
+  /// colleagues across the desk and family at home land there too. The summary then calls it
+  /// 现场 instead of attributing their words to the user.
+  static let unknownMicrophoneSpeaker = "现场"
+
+  static func forSummary(_ sentences: [Sentence], knowsMyVoice: Bool) -> [Sentence] {
+    guard !knowsMyVoice else { return sentences }
+    return sentences.map { sentence in
+      guard sentence.channel == .microphone, sentence.speaker == .me, sentence.speakerName == nil else { return sentence }
+      var copy = sentence
+      copy.speakerName = unknownMicrophoneSpeaker
+      return copy
+    }
+  }
+
   // MARK: Hours
 
   /// The hour's time is already next to its summary; repeating it reads as filler, and so does

@@ -126,6 +126,7 @@ targets:
       - path: WakeOnCue/UI/Main/DayData.swift
       - path: WakeOnCue/Transcription/TranscriptFilter.swift
       - path: WakeOnCue/Transcription/SentenceSplitter.swift
+      - path: WakeOnCue/Transcription/VoiceReference.swift
       - path: WakeOnCue/Intelligence/SummaryMaterial.swift
       - path: WakeOnCue/Intelligence/SummaryEngine.swift
       - path: WakeOnCue/Intelligence/GatewayEngine.swift
