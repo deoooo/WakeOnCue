@@ -464,6 +464,10 @@ final class AppModel {
       try MacOutbox.enqueue(
         file: audio, id: "iphone-\(recording.id)", source: "iphone", recordingID: recording.id, index: 1,
         startedAt: recording.startedAt, duration: duration)
+      // Its bookmarks, including "记下刚才" from the Watch, go along at their real times.
+      try MacOutbox.enqueue(marks: MacOutbox.marks(
+        of: RecordingAnnotationsService.shared.annotations(for: recording.id).bookmarks,
+        recordingID: recording.id, startedAt: recording.startedAt))
     } catch {
       errorMessage = error.localizedDescription
     }

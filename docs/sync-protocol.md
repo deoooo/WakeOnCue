@@ -1,6 +1,6 @@
 # iPhone → Mac 回传协议（第 1 版）
 
-> 状态：Mac 端已实现（`macos/WakeOnCue/Sync/`），iPhone 端待做。消息定义在 `SyncProtocol.swift`，这个文件只依赖 Foundation 和 Network，iPhone 端可以直接共用。
+> 状态：Mac 端（`macos/WakeOnCue/Sync/`）和 iPhone 端（`ios/WakeOnCue/MacLink/`）都已实现。消息定义在 `SyncProtocol.swift`，这个文件只依赖 Foundation 和 Network，iPhone 端可以直接共用。
 
 ## 目标
 
@@ -36,14 +36,41 @@
 | 方向 | 消息 | 说明 |
 | --- | --- | --- |
 | iPhone → Mac | `hello(deviceID, deviceName, protocolVersion)` | 连接后第一条。`deviceID` 就是配对时的 `identity` |
-| Mac → iPhone | `welcome(macName, accepting, drop)` | `accepting` 是 Mac 上「自动回传」开关；`drop` 是最近 30 天里 Mac 上标为私人或已删除的时段，落在这些时段里的音频 iPhone 直接丢弃，不发送 |
+| Mac → iPhone | `welcome(macName, accepting, drop, features)` | `accepting` 是 Mac 上「自动回传」开关；`drop` 是最近 30 天里 Mac 上标为私人或已删除的时段，落在这些时段里的音频和标记 iPhone 直接丢弃，不发送；`features` 是这台 Mac 认识的扩展消息（见下文），老版本 Mac 没有这个字段 |
 | iPhone → Mac | `offer(SegmentInfo)` | 要发的一段：`id`（稳定唯一，如 `watch-<session>-0003`，只能用字母数字和 `-_.`）、`source`（`watch` / `iphone`）、`recordingID`、`index`、`startedAt`（真实开始时间）、`duration`、`bytes`、`sha256`（小写十六进制）、`format`（如 `m4a`） |
 | Mac → iPhone | `resume(segmentID, offset, complete)` | 从 `offset` 继续发；`complete` 为真表示 Mac 早已存好，iPhone 可以直接删 |
 | iPhone → Mac | `chunk(segmentID, offset, bodyLength)` + 正文 | `offset` 必须等于 Mac 已收到的字节数 |
 | iPhone → Mac | `commit(segmentID)` | 发完了 |
 | Mac → iPhone | `stored(segmentID)` | 大小和 SHA-256 都对，已入库。**iPhone 只在收到这条后删除自己那份** |
 | 双向 | `failure(segmentID, reason, retry)` | `retry` 为真时稍后重试（比如 Mac 关了自动回传、偏移量不对、校验失败）；为假时不要重试（比如版本不兼容、未配对） |
+| iPhone → Mac | `marks([MarkInfo])` | 只在 `features` 含 `marks` 时发送，见下文 |
+| Mac → iPhone | `marksStored(ids)` | 这些标记已入库，iPhone 删掉自己那份 |
 | iPhone → Mac | `bye` | 正常结束 |
+
+### 扩展与兼容
+
+协议版本号仍是 1（老 Mac 只接受 1）。新增的消息靠 `welcome.features` 协商：
+
+- Mac 在 `welcome` 里列出自己认识的扩展，目前只有 `marks`。`features` 是可选字段：老 iPhone 解码时忽略它，新 iPhone 收到老 Mac 的 `welcome` 时它为空。
+- iPhone 只发 Mac 列出的扩展消息。老 Mac 解不开新消息会直接断开连接，所以没列出 `marks` 时标记留在 iPhone 上，等 Mac 更新后再发；超过 60 天仍没发出去的标记丢弃。
+- 新版 Mac 收到解不开、但格式正确的 JSON 头时，回 `failure(retry: false)` 并保持连接（只有 `chunk` 带正文，而每个版本都认识 `chunk`）；不是 JSON 才断开。
+
+### 标记（`marks`）
+
+手表上的「记下刚才」、iPhone 录音里的书签（包括手表在 iPhone 录音中按下的「记下刚才」）随录音一起转给 Mac。`MarkInfo`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 稳定唯一：手表是 `watch-<会话>-<书签 UUID>`，iPhone 是 `iphone-<录音 ID>-<书签 UUID>`。同一个 ID 再发一次就是更新（比如改了标签） |
+| `source` | `watch` / `iphone` |
+| `recordingID` | 这个标记所属录音，和这段录音的 `SegmentInfo.recordingID` 相同 |
+| `start`、`end` | 设备时钟下的真实时间；手表是会话开始时间加书签位置，iPhone 是录音开始时间加书签位置。点标记没有 `end` |
+| `tag` | `todo` / `important` / `idea`，没打标签时为空 |
+| `title` | iPhone 书签的名字，可为空 |
+
+- iPhone 在手表会话摘要到达、以及自己的录音结束时把标记放进 `MacOutbox/marks/`；发完音频后按每条消息最多 100 个发出，收到 `marksStored` 再删。
+- Mac 存进 `device_mark` 表，原始时间不动，另记 `clock_offset`：这段录音已有合并过的分段时用它的偏差，否则用这台设备已知的偏差；之后这段录音的分段合并时再改成那次学到的偏差。显示和总结用 `start + clock_offset`。
+- 落在私人或已删除时段的标记不显示、不进总结；删除时段时一起删掉。
 
 ## Mac 端如何保存
 

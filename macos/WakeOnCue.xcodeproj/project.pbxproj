@@ -16,6 +16,9 @@
 		067FF1AE8F731F7BA2C71112 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE068CA12358B2AAD7D8040 /* Store.swift */; };
 		074DA968826B94710C98EA54 /* WakeOnCueCLI in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9B9EF20756B3FE4556D363F7 /* WakeOnCueCLI */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		086A884091A17A549EDB8003 /* MeetingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB8CCAB0E8AF01B9447DD3AE /* MeetingPanel.swift */; };
+		0E9D33F9F0A6F02C0348CE15 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
+		12EFA984E888A25699910D43 /* TimeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6946DDC3A37A77ED7B442F08 /* TimeText.swift */; };
+		19E3F3AA2B724980B3D4937D /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0028A2E2AAF6205861E79EE /* SQLite.swift */; };
 		1B19493A3D03387CF53D146B /* GatewayEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC8A5EA8147A87BA3A18DC3 /* GatewayEngine.swift */; };
 		2431FCE5473ACAEF42887704 /* Shortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6B9B3E71D02879C96DC227 /* Shortcuts.swift */; };
 		259AA3DAF9C9AF2C86C1F4A5 /* CommandLineSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552926D70A21371A53F717CA /* CommandLineSection.swift */; };
@@ -33,6 +36,7 @@
 		568A6CDE002675584CAAF006 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225496F6B2D93CA4BF67B855 /* SyncProtocol.swift */; };
 		594604E227BBD14A9D3BD0F0 /* AppModel+Status.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD9333388EA0FC832DE87BFE /* AppModel+Status.swift */; };
 		5CAA5BD35932D2D308AD2B90 /* ChannelPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B881D8624658CB9AABB6272 /* ChannelPipeline.swift */; };
+		5FC982F30C6EEE434A53BE6A /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225496F6B2D93CA4BF67B855 /* SyncProtocol.swift */; };
 		6642ACB148C2C866F1CF699E /* AskPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA40BBF45DCB552073BB0B06 /* AskPanel.swift */; };
 		6AC2C6083A30EDE47B7C433C /* DayPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4024FFFBF93AB73D3092EA9 /* DayPage.swift */; };
 		6FA01ABF2484C0A3161EFB92 /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0028A2E2AAF6205861E79EE /* SQLite.swift */; };
@@ -52,15 +56,19 @@
 		A2D201B98494AE0F5B7B56A1 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE068CA12358B2AAD7D8040 /* Store.swift */; };
 		A3C0192CFFD30E00A90AEB5C /* MenuBarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9697DEC0ACF8C07A9C9DD418 /* MenuBarContent.swift */; };
 		A69988B8F9DB3128495A5E71 /* SearchPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3394EEFF7218266678A53234 /* SearchPage.swift */; };
+		A7A69FCAA50A93B770E98F85 /* DeviceMarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD3B52BB8E9DB2C5FCB9BA20 /* DeviceMarkTests.swift */; };
 		AD04BD1DC002973CBCDB5934 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7484986F4E8F19BDAB74E05A /* main.swift */; };
 		B7C03903116C19A6F9624054 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB315D2686460BDB4B2A3070 /* Preferences.swift */; };
+		B82AC4EC17D1B863FE3E1305 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE068CA12358B2AAD7D8040 /* Store.swift */; };
 		BA984F3D246180F63EFCDB53 /* DevicesSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F006A2E8B7A953979E93AB2 /* DevicesSettings.swift */; };
 		BEDDEADC8652593587CADE94 /* SyncServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60D98DC371171B5D83C73F1 /* SyncServer.swift */; };
 		C3F66E3AAC65192F484DC864 /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F261B9BF4489419B9A0B63F8 /* AISettings.swift */; };
+		C766AD0EFF92AE30BCC0A35C /* DeviceMarkViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84483822B74202175B816CB1 /* DeviceMarkViews.swift */; };
 		C7F5DF1C19C22CED8E971A78 /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3054BB1053BC0B7E6DF8031B /* Sidebar.swift */; };
 		CE15363A2E5CB3DF7841010E /* TimeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6946DDC3A37A77ED7B442F08 /* TimeText.swift */; };
 		CE966BD705302A7DFB01FF79 /* TranscriptionServiceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B98023BF4C76B08EEB55EC /* TranscriptionServiceSettings.swift */; };
 		D09ACFD5B0E6077D89E83AA1 /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7781C84824159BE318D136 /* WakeOnCueApp.swift */; };
+		D150C09F7EDD534C57C5DBD8 /* DayData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E266453666E0C95A7FA1E1 /* DayData.swift */; };
 		D1BBD885B69E28D81C00959A /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0028A2E2AAF6205861E79EE /* SQLite.swift */; };
 		DA75124CA81A8EA5429B211E /* SherpaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 460846AA753F3705B00049DD /* SherpaRecognizer.swift */; };
 		E1F33B0BC922222ADC6D56DC /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
@@ -117,6 +125,7 @@
 		49DCEF7CD2B1CB054D5A4D01 /* Refiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Refiner.swift; sourceTree = "<group>"; };
 		4BB9AF4A31AD882041D6357D /* VoicesSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesSettings.swift; sourceTree = "<group>"; };
 		4C95A8103DD66013DB71BB5C /* Merger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Merger.swift; sourceTree = "<group>"; };
+		4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WakeOnCueMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E2BABAE8DA93BE5C0F3606F /* AudioDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDevices.swift; sourceTree = "<group>"; };
 		53B98023BF4C76B08EEB55EC /* TranscriptionServiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionServiceSettings.swift; sourceTree = "<group>"; };
 		552926D70A21371A53F717CA /* CommandLineSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLineSection.swift; sourceTree = "<group>"; };
@@ -135,6 +144,7 @@
 		7484986F4E8F19BDAB74E05A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		7BE068CA12358B2AAD7D8040 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		7EE52C883D540F795D9651B6 /* Transcription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcription.swift; sourceTree = "<group>"; };
+		84483822B74202175B816CB1 /* DeviceMarkViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMarkViews.swift; sourceTree = "<group>"; };
 		8991E7CA10CFCAAC0F59D843 /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
 		9697DEC0ACF8C07A9C9DD418 /* MenuBarContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContent.swift; sourceTree = "<group>"; };
 		9B9EF20756B3FE4556D363F7 /* WakeOnCueCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = WakeOnCueCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -146,6 +156,7 @@
 		A60D98DC371171B5D83C73F1 /* SyncServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncServer.swift; sourceTree = "<group>"; };
 		AA9888CC503EB4595331CB8C /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
 		AB8CCAB0E8AF01B9447DD3AE /* MeetingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPanel.swift; sourceTree = "<group>"; };
+		AD3B52BB8E9DB2C5FCB9BA20 /* DeviceMarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMarkTests.swift; sourceTree = "<group>"; };
 		B2208B6D8AEEE945200BCF6C /* SummaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEngine.swift; sourceTree = "<group>"; };
 		B4024FFFBF93AB73D3092EA9 /* DayPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayPage.swift; sourceTree = "<group>"; };
 		B4A3D9F83EDD5B94DDD6E9EB /* NameSpeakerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameSpeakerSheet.swift; sourceTree = "<group>"; };
@@ -163,7 +174,7 @@
 		F3C1319CE831B4E9AF2684B7 /* Voices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voices.swift; sourceTree = "<group>"; };
 		F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_C713D149-9B95-4C9F-924A-04678D45EAA3" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -222,6 +233,7 @@
 				EA40BBF45DCB552073BB0B06 /* AskPanel.swift */,
 				F1E266453666E0C95A7FA1E1 /* DayData.swift */,
 				B4024FFFBF93AB73D3092EA9 /* DayPage.swift */,
+				84483822B74202175B816CB1 /* DeviceMarkViews.swift */,
 				0FFAC588258A3CA40337869C /* HourViews.swift */,
 				6CBEB0FA5F578C028F2C1AB5 /* MainState.swift */,
 				8991E7CA10CFCAAC0F59D843 /* MainWindow.swift */,
@@ -270,6 +282,14 @@
 			path = Search;
 			sourceTree = "<group>";
 		};
+		962EEBAC024202677727B734 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				AD3B52BB8E9DB2C5FCB9BA20 /* DeviceMarkTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
 		A6A92263BF69E8110002BA3B /* MenuBar */ = {
 			isa = PBXGroup;
 			children = (
@@ -291,6 +311,7 @@
 		B0C51E219CC93560234F89EB = {
 			isa = PBXGroup;
 			children = (
+				962EEBAC024202677727B734 /* Tests */,
 				BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */,
 				6D0F2CA9C6B2A73E86FD77B7 /* WakeOnCueCLI */,
 				D05533EED996F08D17279212 /* Products */,
@@ -345,6 +366,7 @@
 			children = (
 				F72C47A91F5199C598D60559 /* WakeOnCue.app */,
 				9B9EF20756B3FE4556D363F7 /* WakeOnCueCLI */,
+				4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -373,10 +395,10 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		"TEMP_FD3C8349-0B68-4853-BFB2-6091780EB0BE" /* macos */ = {
+		"TEMP_CF83CEFB-D331-4E04-A5D4-2E9E27164321" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */,
+				"TEMP_C713D149-9B95-4C9F-924A-04678D45EAA3" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -422,6 +444,23 @@
 			productReference = F72C47A91F5199C598D60559 /* WakeOnCue.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E38D67650FB0B7AA0510CCE9 /* WakeOnCueMacTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77C24268DA7BE4218F6FF36E /* Build configuration list for PBXNativeTarget "WakeOnCueMacTests" */;
+			buildPhases = (
+				8B7597B14DE1E62173810E04 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WakeOnCueMacTests;
+			packageProductDependencies = (
+			);
+			productName = WakeOnCueMacTests;
+			productReference = 4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -436,6 +475,10 @@
 						ProvisioningStyle = Automatic;
 					};
 					B50B0250357195A8284C1B0D = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					E38D67650FB0B7AA0510CCE9 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
@@ -457,6 +500,7 @@
 			targets = (
 				B50B0250357195A8284C1B0D /* WakeOnCue */,
 				3EFC8F4621B3C52B97EA456C /* WakeOnCueCLI */,
+				E38D67650FB0B7AA0510CCE9 /* WakeOnCueMacTests */,
 			);
 		};
 /* End PBXProject section */
@@ -512,6 +556,7 @@
 				7610503FB57D2EBF1B700601 /* DayData.swift in Sources */,
 				6AC2C6083A30EDE47B7C433C /* DayPage.swift in Sources */,
 				4B7316A92534DD52A66E330A /* DebugSnapshot.swift in Sources */,
+				C766AD0EFF92AE30BCC0A35C /* DeviceMarkViews.swift in Sources */,
 				BA984F3D246180F63EFCDB53 /* DevicesSettings.swift in Sources */,
 				1B19493A3D03387CF53D146B /* GatewayEngine.swift in Sources */,
 				EB72C4321B5FA1AE249E908A /* HourViews.swift in Sources */,
@@ -569,6 +614,20 @@
 				E4989DF3DE2102C13C19B233 /* SyncProtocol.swift in Sources */,
 				3D104194CC06D85247654541 /* TimeText.swift in Sources */,
 				AD04BD1DC002973CBCDB5934 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B7597B14DE1E62173810E04 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D150C09F7EDD534C57C5DBD8 /* DayData.swift in Sources */,
+				A7A69FCAA50A93B770E98F85 /* DeviceMarkTests.swift in Sources */,
+				0E9D33F9F0A6F02C0348CE15 /* Models.swift in Sources */,
+				19E3F3AA2B724980B3D4937D /* SQLite.swift in Sources */,
+				B82AC4EC17D1B863FE3E1305 /* Store.swift in Sources */,
+				5FC982F30C6EEE434A53BE6A /* SyncProtocol.swift in Sources */,
+				12EFA984E888A25699910D43 /* TimeText.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -642,6 +701,23 @@
 			};
 			name = Release;
 		};
+		5DAE1027CBF2DA040C77CD06 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.macos.tests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 		6D60DDC5F4BEB5FD4B0F31CB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -667,7 +743,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_C713D149-9B95-4C9F-924A-04678D45EAA3" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -729,9 +805,26 @@
 			};
 			name = Release;
 		};
+		DE3A96610DDC20E3F6CA87F8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.macos.tests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_C713D149-9B95-4C9F-924A-04678D45EAA3" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -825,6 +918,15 @@
 			buildConfigurations = (
 				6D60DDC5F4BEB5FD4B0F31CB /* Debug */,
 				4544FC6AEC433A8AD433EFED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		77C24268DA7BE4218F6FF36E /* Build configuration list for PBXNativeTarget "WakeOnCueMacTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE3A96610DDC20E3F6CA87F8 /* Debug */,
+				5DAE1027CBF2DA040C77CD06 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

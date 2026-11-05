@@ -16,6 +16,17 @@ nonisolated enum SyncProtocol {
   /// Largest chunk body the Mac accepts.
   static let maximumChunk = 1 << 20
   static let maximumHeader = 64 << 10
+  /// Marks per `marks` message, so a header stays well under `maximumHeader`.
+  static let marksPerMessage = 100
+
+  /// What a Mac understands beyond version 1, listed in `welcome`. A phone sends a newer
+  /// message only when the Mac listed it: an older Mac cannot decode it and would hang up.
+  enum Feature {
+    /// `marks` / `marksStored`: the Watch and iPhone "记下刚才" marks.
+    static let marks = "marks"
+  }
+  /// Everything this build of the Mac understands.
+  static let features = [Feature.marks]
 
   /// TLS 1.2 with a pre-shared key; both sides use the same options.
   static func tlsOptions(keys: [(identity: String, key: Data)]) -> NWProtocolTLS.Options {
@@ -110,12 +121,29 @@ nonisolated enum SyncProtocol {
     var format: String
   }
 
+  /// A moment the user marked on the Watch or the iPhone ("记下刚才" or a bookmark), in the
+  /// device's own clock. The Mac shifts it by the clock offset it learned for that recording.
+  struct MarkInfo: Codable, Equatable {
+    /// Unique and stable across retries, e.g. "watch-<session>-<bookmark>".
+    var id: String
+    /// "watch" or "iphone".
+    var source: String
+    /// The `recordingID` of the segments this mark belongs to.
+    var recordingID: String
+    var start: Date
+    /// Nil for a point mark.
+    var end: Date?
+    /// "todo", "important" or "idea"; nil when not tagged.
+    var tag: String?
+    var title: String?
+  }
+
   enum Message: Codable, Equatable {
     /// Phone → Mac, first message.
     case hello(deviceID: String, deviceName: String, protocolVersion: Int)
     /// Mac → phone. `accepting` is the user's 自动回传 switch; `drop` lists ranges whose audio
-    /// the phone deletes without sending.
-    case welcome(macName: String, accepting: Bool, drop: [Range])
+    /// the phone deletes without sending. `features` is missing from older Macs.
+    case welcome(macName: String, accepting: Bool, drop: [Range], features: [String]?)
     /// Phone → Mac: wants to send this segment.
     case offer(SegmentInfo)
     /// Mac → phone: send from `offset`; `complete` means it is already stored and can be deleted.
@@ -126,6 +154,10 @@ nonisolated enum SyncProtocol {
     case commit(segmentID: String)
     /// Mac → phone: verified and stored; the phone may delete its copy now.
     case stored(segmentID: String)
+    /// Phone → Mac, only when `welcome` listed `Feature.marks`: marks to store or update.
+    case marks([MarkInfo])
+    /// Mac → phone: these marks are stored; the phone may forget them.
+    case marksStored(ids: [String])
     /// Either way: something is wrong; `retry` says whether trying again later can help.
     case failure(segmentID: String?, reason: String, retry: Bool)
     case bye
@@ -145,6 +177,15 @@ nonisolated enum SyncProtocol {
     data.append(body)
     return data
   }
+
+  /// A JSON header this build does not know throws `SyncChannel.Failure.unknownMessage`, which
+  /// leaves the connection usable (only `chunk` has a body, and every build knows `chunk`);
+  /// anything that is not JSON throws `badFrame`.
+  static func decodeHeader(_ header: Data) throws -> Message {
+    if let message = try? JSONDecoder.sync.decode(Message.self, from: header) { return message }
+    guard (try? JSONSerialization.jsonObject(with: header)) is [String: Any] else { throw SyncChannel.Failure.badFrame }
+    throw SyncChannel.Failure.unknownMessage
+  }
 }
 
 /// Reads and writes framed messages on a connection.
@@ -152,6 +193,9 @@ nonisolated final class SyncChannel: @unchecked Sendable {
   enum Failure: Error {
     case closed
     case badFrame
+    /// A well-formed frame with a message this build does not know, e.g. from a newer phone.
+    /// The connection is still usable.
+    case unknownMessage
   }
 
   let connection: NWConnection
@@ -173,7 +217,7 @@ nonisolated final class SyncChannel: @unchecked Sendable {
     let lengthBytes = try await read(4)
     let length = lengthBytes.reduce(0) { $0 << 8 | Int($1) }
     guard length > 0, length <= SyncProtocol.maximumHeader else { throw Failure.badFrame }
-    let message = try JSONDecoder.sync.decode(SyncProtocol.Message.self, from: try await read(length))
+    let message = try SyncProtocol.decodeHeader(try await read(length))
     let bodyLength = message.bodyLength
     guard bodyLength >= 0, bodyLength <= SyncProtocol.maximumChunk else { throw Failure.badFrame }
     return (message, bodyLength > 0 ? try await read(bodyLength) : Data())

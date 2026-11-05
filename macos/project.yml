@@ -109,10 +109,31 @@ targets:
         OTHER_LDFLAGS: -lsqlite3
         SKIP_INSTALL: YES
 
+  # Unit tests compile the storage, sync protocol and day data directly, so they never start the
+  # recorder or touch the real library.
+  WakeOnCueMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: WakeOnCue/Storage
+      - path: WakeOnCue/App/TimeText.swift
+      - path: WakeOnCue/Sync/SyncProtocol.swift
+      - path: WakeOnCue/UI/Main/DayData.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos.tests
+        GENERATE_INFOPLIST_FILE: true
+        OTHER_LDFLAGS: -lsqlite3
+
 schemes:
   WakeOnCue:
     build:
       targets:
         WakeOnCue: all
+        WakeOnCueMacTests: [test]
     run:
       config: Debug
+    test:
+      targets:
+        - WakeOnCueMacTests
