@@ -75,6 +75,8 @@ final class Preferences {
   var recordingHeartbeat: Date? { didSet { defaults.set(recordingHeartbeat, forKey: "recordingHeartbeat") } }
   /// The app quit normally after `recordingHeartbeat`, rather than crashing or losing power.
   var quitCleanly: Bool { didSet { defaults.set(quitCleanly, forKey: "quitCleanly") } }
+  /// The user closed the "录入你的声音" hint on the day page.
+  var voiceHintDismissed: Bool { didSet { defaults.set(voiceHintDismissed, forKey: "voiceHintDismissed") } }
   /// Tell other people apart as 说话人 1, 2… without keeping voiceprints.
   var splitSpeakers: Bool { didSet { defaults.set(splitSpeakers, forKey: "splitSpeakers") } }
   /// Keep named people's voiceprints in the keychain and recognize them later.
@@ -106,6 +108,7 @@ final class Preferences {
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
     recordingHeartbeat = defaults.object(forKey: "recordingHeartbeat") as? Date
     quitCleanly = defaults.bool(forKey: "quitCleanly")
+    voiceHintDismissed = defaults.bool(forKey: "voiceHintDismissed")
     splitSpeakers = defaults.bool(forKey: "splitSpeakers")
     rememberVoices = defaults.bool(forKey: "rememberVoices")
     autoSync = defaults.object(forKey: "autoSync") as? Bool ?? true

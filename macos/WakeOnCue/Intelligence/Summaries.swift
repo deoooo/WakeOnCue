@@ -22,6 +22,8 @@ final class Summaries {
   private(set) var lastError: String?
 
   @ObservationIgnored private let store: Store
+  /// Whether "我" on the microphone is the user's voice; see `SummaryMaterial.forSummary`.
+  @ObservationIgnored var knowsMyVoice: () -> Bool = { true }
   @ObservationIgnored private let preferences: Preferences
   @ObservationIgnored private(set) var engine: (any SummaryEngine)?
   @ObservationIgnored private var ticker: Task<Void, Never>?
@@ -232,7 +234,8 @@ final class Summaries {
 
   private func visibleSentences(in interval: DateInterval) -> [Sentence] {
     let hidden = store.marks(overlapping: interval)
-    return store.sentences(in: interval).filter { s in !hidden.contains { $0.covers(s.start) } }
+    let visible = store.sentences(in: interval).filter { s in !hidden.contains { $0.covers(s.start) } }
+    return SummaryMaterial.forSummary(visible, knowsMyVoice: knowsMyVoice())
   }
 
   /// Drops a leading "这一小时（里），" and a closing "没有形成明确结论", also from older summaries.
@@ -282,7 +285,9 @@ final class Summaries {
     let hours = summaries.map { summary in
       SummaryMaterial.DayHour(
         start: summary.hourStart, summary: summary.summary,
-        keys: store.sentences(ids: summary.keySentenceIDs).filter { s in !hidden.contains { $0.covers(s.start) } })
+        keys: SummaryMaterial.forSummary(
+          store.sentences(ids: summary.keySentenceIDs).filter { s in !hidden.contains { $0.covers(s.start) } },
+          knowsMyVoice: knowsMyVoice()))
     }
     // What the user marked on the Watch or iPhone, important and to-do first, with what was said.
     var sources: [Sentence] = []

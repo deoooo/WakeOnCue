@@ -10,6 +10,7 @@ struct DayPage: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
           IssueBanner()
+          VoiceHint(data: data)
           headline
           HStack(alignment: .top, spacing: 36) {
             details.frame(minWidth: 300, maxWidth: .infinity, alignment: .leading).layoutPriority(2)
