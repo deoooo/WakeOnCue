@@ -118,6 +118,10 @@ struct MeetingPanel: View {
         }
         .fixedSize()
         Spacer()
+        Button { model.exportMeeting(meeting.id) } label: { Image(systemName: "square.and.arrow.up") }
+          .help("导出转录…（要点和完整转录，可选 Markdown、TXT、SRT）")
+          .accessibilityLabel("导出转录")
+          .disabled(rows.isEmpty)
         Button("发送纪要…") { model.ui.draftingMinutes = true }
           .buttonStyle(.borderedProminent)
       }

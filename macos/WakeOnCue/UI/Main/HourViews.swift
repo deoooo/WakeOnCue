@@ -257,6 +257,7 @@ struct HourRow: View {
           .disabled(model.summaries.engineName == nil)
         Button("重新转录并总结") { model.refiner.retranscribe(hour.interval, summarizeAll: true) }
           .disabled(model.refiner.isRetranscribing(hour.interval))
+        Button("导出这一小时…") { model.exportHour(hour.interval.start) }
       }
       if hour.state == .speech || hour.state == .privateHour {
         Button(hour.state == .privateHour ? "取消私人" : "标为私人") {
