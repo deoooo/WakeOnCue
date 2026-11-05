@@ -56,6 +56,7 @@
 		B7C03903116C19A6F9624054 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB315D2686460BDB4B2A3070 /* Preferences.swift */; };
 		BA984F3D246180F63EFCDB53 /* DevicesSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F006A2E8B7A953979E93AB2 /* DevicesSettings.swift */; };
 		BEDDEADC8652593587CADE94 /* SyncServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60D98DC371171B5D83C73F1 /* SyncServer.swift */; };
+		BF80A72D03C3065C64C790A8 /* Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60C8EFEF11DBE48707C76A7F /* Health.swift */; };
 		C3F66E3AAC65192F484DC864 /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F261B9BF4489419B9A0B63F8 /* AISettings.swift */; };
 		C7F5DF1C19C22CED8E971A78 /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3054BB1053BC0B7E6DF8031B /* Sidebar.swift */; };
 		CE15363A2E5CB3DF7841010E /* TimeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6946DDC3A37A77ED7B442F08 /* TimeText.swift */; };
@@ -121,6 +122,7 @@
 		53B98023BF4C76B08EEB55EC /* TranscriptionServiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionServiceSettings.swift; sourceTree = "<group>"; };
 		552926D70A21371A53F717CA /* CommandLineSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandLineSection.swift; sourceTree = "<group>"; };
 		604618984DEE22DF2306A61D /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
+		60C8EFEF11DBE48707C76A7F /* Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Health.swift; sourceTree = "<group>"; };
 		635FE3194AEEB811362322F8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6946DDC3A37A77ED7B442F08 /* TimeText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeText.swift; sourceTree = "<group>"; };
 		6955E612737EADC4F7F5D3E2 /* AudioAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAlignment.swift; sourceTree = "<group>"; };
@@ -163,7 +165,7 @@
 		F3C1319CE831B4E9AF2684B7 /* Voices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voices.swift; sourceTree = "<group>"; };
 		F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_4B982492-49AE-4036-9620-24BEB5A19D79" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -237,6 +239,7 @@
 		6D0F2CA9C6B2A73E86FD77B7 /* WakeOnCueCLI */ = {
 			isa = PBXGroup;
 			children = (
+				60C8EFEF11DBE48707C76A7F /* Health.swift */,
 				7484986F4E8F19BDAB74E05A /* main.swift */,
 			);
 			path = WakeOnCueCLI;
@@ -373,10 +376,10 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		"TEMP_FD3C8349-0B68-4853-BFB2-6091780EB0BE" /* macos */ = {
+		"TEMP_35C16825-D59D-43F8-BC4C-D3B2A1F0A57C" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */,
+				"TEMP_4B982492-49AE-4036-9620-24BEB5A19D79" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -563,6 +566,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF80A72D03C3065C64C790A8 /* Health.swift in Sources */,
 				E1F33B0BC922222ADC6D56DC /* Models.swift in Sources */,
 				D1BBD885B69E28D81C00959A /* SQLite.swift in Sources */,
 				A2D201B98494AE0F5B7B56A1 /* Store.swift in Sources */,
@@ -667,7 +671,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_4B982492-49AE-4036-9620-24BEB5A19D79" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -731,7 +735,7 @@
 		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_4B982492-49AE-4036-9620-24BEB5A19D79" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
