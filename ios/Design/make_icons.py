@@ -147,8 +147,11 @@ def watch_iconset() -> None:
   ])
 
 
-def mac_iconset() -> None:
-  catalog = IOS / "WakeOnCueMac/Assets.xcassets"
+# Both Mac apps share the icon: the iOS repo's companion target and the standalone app in macos/.
+MAC_CATALOGS = [IOS / "WakeOnCueMac/Assets.xcassets", IOS.parent / "macos/WakeOnCue/Assets.xcassets"]
+
+
+def mac_iconset(catalog: pathlib.Path) -> None:
   write_contents(catalog, [])
   iconset = catalog / "AppIcon.appiconset"
   images = []
@@ -169,7 +172,8 @@ def main() -> None:
     (DESIGN / f"{name}.svg").write_text(content)
   ios_iconset()
   watch_iconset()
-  mac_iconset()
+  for catalog in MAC_CATALOGS:
+    mac_iconset(catalog)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@
 		6FDB8548C6219C70B8108A09 /* TracksBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FD56E2EF262967915E1C2F /* TracksBar.swift */; };
 		72D5742CC06D76D103CC9AD7 /* Summaries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9BC7FC69A9BD7B4FFEE3FD /* Summaries.swift */; };
 		7610503FB57D2EBF1B700601 /* DayData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E266453666E0C95A7FA1E1 /* DayData.swift */; };
+		789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */; };
 		7A6A162FB8C2E506E0DC513B /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604618984DEE22DF2306A61D /* MicrophoneCapture.swift */; };
 		7E7BB11820B6FB793FDF975E /* Transcription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE52C883D540F795D9651B6 /* Transcription.swift */; };
 		7F3D8836D37758C40E4F2F6B /* NameSpeakerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A3D9F83EDD5B94DDD6E9EB /* NameSpeakerSheet.swift */; };
@@ -139,6 +140,7 @@
 		9B9EF20756B3FE4556D363F7 /* WakeOnCueCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = WakeOnCueCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		9C6CDCB796A3A7CABC5C2179 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCue.entitlements; sourceTree = "<group>"; };
+		9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E7781C84824159BE318D136 /* WakeOnCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueApp.swift; sourceTree = "<group>"; };
 		A022333EA6F9C747D9F302F0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A60D98DC371171B5D83C73F1 /* SyncServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncServer.swift; sourceTree = "<group>"; };
@@ -161,7 +163,7 @@
 		F3C1319CE831B4E9AF2684B7 /* Voices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voices.swift; sourceTree = "<group>"; };
 		F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_C250E0BA-4567-427B-84E9-EA069A24217B" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -307,6 +309,7 @@
 				7D9922E7886EC83C7083329D /* Sync */,
 				27347518BB40E68C9F415BBF /* Transcription */,
 				EA99173F170291CF0B9F5E68 /* UI */,
+				9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */,
 				6EB419A36E5FBD434A45BDA1 /* Info.plist */,
 				3EE09B3DFB89963DF06095DB /* WakeOnCue-Bridging-Header.h */,
 				9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */,
@@ -370,10 +373,10 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		"TEMP_8BB11D61-FA7A-4C06-9F0B-F8A77D1C87C2" /* macos */ = {
+		"TEMP_FD3C8349-0B68-4853-BFB2-6091780EB0BE" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_C250E0BA-4567-427B-84E9-EA069A24217B" /* Signing.xcconfig */,
+				"TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -404,6 +407,7 @@
 			buildPhases = (
 				A6E3C1FB3E3640510A3D7484 /* Check signing identity */,
 				0168411CB1AC6DB400C1E3B6 /* Sources */,
+				5D8101937970D2F293EDBF1F /* Resources */,
 				4C5FB15E18284E2875860380 /* Embed Dependencies */,
 			);
 			buildRules = (
@@ -456,6 +460,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5D8101937970D2F293EDBF1F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		A6E3C1FB3E3640510A3D7484 /* Check signing identity */ = {
@@ -652,7 +667,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_C250E0BA-4567-427B-84E9-EA069A24217B" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -716,7 +731,7 @@
 		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_C250E0BA-4567-427B-84E9-EA069A24217B" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_6F11CA36-1313-4508-995B-CE1BE57CCE3A" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
