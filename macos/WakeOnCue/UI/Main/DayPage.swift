@@ -20,7 +20,10 @@ struct DayPage: View {
           ActivityChart(data: data)
             .padding(.top, 34)
             .padding(.horizontal, 4)
-          LazyVStack(alignment: .leading, spacing: 0) {
+          // A plain stack: at most 24 rows, and their heights differ wildly (an expanded hour
+          // can be thousands of points), which kept a lazy stack re-estimating and re-laying
+          // out the page without end.
+          VStack(alignment: .leading, spacing: 0) {
             ForEach(data.rows) { hour in
               HourRow(hour: hour, data: data).id(MainState.hourAnchor(hour.interval.start))
             }

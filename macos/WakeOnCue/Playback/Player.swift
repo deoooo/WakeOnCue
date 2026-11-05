@@ -7,8 +7,17 @@ import Observation
 @Observable
 final class Player {
   private(set) var isPlaying = false
-  /// Wall-clock time of the playhead; nil before anything was played.
-  private(set) var position: Date?
+  /// Wall-clock time of the playhead; nil before anything was played. It changes ten times a
+  /// second while playing, so only small views should read it; anything that just needs to
+  /// know which hour is playing reads `positionHour`.
+  private(set) var position: Date? {
+    didSet {
+      let hour = position.map { Calendar.current.hourStart($0) }
+      if hour != positionHour { positionHour = hour }
+    }
+  }
+  /// The start of the hour the playhead is in. Changes only when playback crosses an hour.
+  private(set) var positionHour: Date?
   private(set) var sourceLabel = ""
   var rate: Float = 1 {
     didSet { for player in players { player.rate = rate } }

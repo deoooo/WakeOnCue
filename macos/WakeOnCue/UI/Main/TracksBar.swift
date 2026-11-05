@@ -15,11 +15,9 @@ struct TracksBar: View {
           .frame(minWidth: 56)
           .fontWeight(.semibold)
           .help("播放或暂停（空格）")
-          .disabled(player.position == nil)
+          .disabled(player.positionHour == nil)
         Button("+15") { player.skip(15) }.help("前进 15 秒（→）").accessibilityLabel("前进 15 秒")
-        Text(player.position.map(TimeText.seconds) ?? "--:--:--")
-          .font(.system(size: 16, weight: .semibold))
-          .monospacedDigit()
+        PlayheadClock()
         Text(player.sourceLabel.isEmpty ? "" : "音频来源：\(player.sourceLabel)")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -33,7 +31,7 @@ struct TracksBar: View {
         Button("回到播放位置") {
           if let position = player.position { model.revealPlaying(at: position) }
         }
-        .disabled(player.position == nil)
+        .disabled(player.positionHour == nil)
         Button("隐藏") { model.ui.showTracks = false }
       }
       Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 5) {
@@ -101,9 +99,7 @@ struct TracksBar: View {
             .offset(x: fraction(mark.start) * width)
             .help(mark.kind == .privateRange ? "已标为私人，不能回放" : "已删除")
           }
-          if let position = model.player.position, Calendar.current.isDate(position, inSameDayAs: data.day) {
-            Rectangle().fill(.primary).frame(width: 2, height: height).offset(x: fraction(position) * width - 1)
-          }
+          Playhead(day: data.day, width: width, height: height)
         }
         .frame(height: height)
         .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -122,5 +118,31 @@ struct TracksBar: View {
 
   private func fraction(_ date: Date) -> CGFloat {
     CGFloat(min(1, max(0, date.timeIntervalSince(data.day) / 86_400)))
+  }
+}
+
+/// The playhead time. Its own view so the tick only redraws this text, not every track.
+private struct PlayheadClock: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    Text(model.player.position.map(TimeText.seconds) ?? "--:--:--")
+      .font(.system(size: 16, weight: .semibold))
+      .monospacedDigit()
+  }
+}
+
+/// The playhead line on one lane, when playback is on `day`.
+private struct Playhead: View {
+  @Environment(AppModel.self) private var model
+  let day: Date
+  let width: CGFloat
+  let height: CGFloat
+
+  var body: some View {
+    if let position = model.player.position, Calendar.current.isDate(position, inSameDayAs: day) {
+      let fraction = CGFloat(min(1, max(0, position.timeIntervalSince(day) / 86_400)))
+      Rectangle().fill(.primary).frame(width: 2, height: height).offset(x: fraction * width - 1)
+    }
   }
 }

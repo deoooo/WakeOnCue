@@ -32,6 +32,20 @@
         case "all": model.ui.fullHours.insert(hour)
         case "play":
           if let sentence = model.store.sentences(in: DateInterval(start: hour, duration: 3_600)).first { model.play(sentence) }
+        // "playhour 9": the first sentence of 09:00 on the day shown; "cite 123": as if its
+        // time link in a summary was clicked.
+        case "playhour":
+          let start = Calendar.current.startOfDay(for: model.ui.day).addingTimeInterval(Double(Int(argument) ?? 0) * 3_600)
+          if let sentence = model.store.sentences(in: DateInterval(start: start, duration: 3_600)).first { model.play(sentence) }
+        case "cite": model.cite(Int64(argument) ?? 0)
+        // Every hour of the day shown, expanded with all its sentences.
+        case "expandday":
+          let day = Calendar.current.startOfDay(for: model.ui.day)
+          for offset in 0..<24 {
+            let start = day.addingTimeInterval(Double(offset) * 3_600)
+            model.ui.expandedHours.insert(start)
+            model.ui.fullHours.insert(start)
+          }
         case "pause": model.player.pause()
         case "tracks": model.ui.showTracks.toggle()
         case "meeting": model.openMeeting(Int64(argument) ?? 0)

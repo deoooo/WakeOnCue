@@ -121,12 +121,22 @@ struct MainWindow: View {
         HStack(spacing: 6) {
           Image(systemName: "waveform")
           Text("音轨")
-          if model.player.isPlaying && !model.ui.showTracks, let position = model.player.position {
-            Text("播放中 \(TimeText.seconds(position))").font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-          }
+          if model.player.isPlaying && !model.ui.showTracks { PlayingClock() }
         }
       }
       .help("显示音轨和回放")
+    }
+  }
+}
+
+/// "播放中 09:03:31" in the toolbar. Its own view, so the playhead ticking ten times a second
+/// redraws this text and not the whole window (which reloads the day from the database).
+private struct PlayingClock: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    if let position = model.player.position {
+      Text("播放中 \(TimeText.seconds(position))").font(.caption2).monospacedDigit().foregroundStyle(.secondary)
     }
   }
 }

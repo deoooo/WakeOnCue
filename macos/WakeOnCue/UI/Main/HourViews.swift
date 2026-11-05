@@ -47,7 +47,7 @@ struct ActivityChart: View {
   private var maxMinutes: Double { max(42, data.hours.map(\.speechMinutes).max() ?? 0) }
 
   @ViewBuilder private func bar(_ hour: DayData.Hour) -> some View {
-    let focused = model.player.isPlaying && model.player.position.map(hour.interval.contains) == true
+    let focused = model.player.isPlaying && model.player.positionHour == hour.interval.start
     let base = focused ? Color.primary : Color.activity
     Button {
       model.reveal(hour: hour.interval.start)
@@ -138,7 +138,7 @@ struct HourRow: View {
 
   private var expanded: Bool { model.ui.expandedHours.contains(hour.interval.start) && hour.state == .speech }
   private var focused: Bool {
-    model.player.isPlaying && model.player.position.map(hour.interval.contains) == true
+    model.player.isPlaying && model.player.positionHour == hour.interval.start
   }
 
   var body: some View {
