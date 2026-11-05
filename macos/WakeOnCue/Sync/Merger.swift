@@ -55,9 +55,11 @@ final class Merger {
   // MARK: Clock offsets
 
   /// Seconds to add to a device's timestamps, learned from earlier overlaps.
-  private func clockOffset(for device: String) -> TimeInterval {
+  nonisolated static func knownClockOffset(for device: String) -> TimeInterval {
     (UserDefaults.standard.dictionary(forKey: "clockOffsets") as? [String: Double])?[device] ?? 0
   }
+
+  private func clockOffset(for device: String) -> TimeInterval { Self.knownClockOffset(for: device) }
 
   private func learn(_ offset: TimeInterval, for device: String) {
     var offsets = (UserDefaults.standard.dictionary(forKey: "clockOffsets") as? [String: Double]) ?? [:]

@@ -1,19 +1,7 @@
-# WakeOnCue iOS Recording MVP Goal
+# WakeOnCue MVP Goal
 
-实现独立的 Native iOS 18 会议录音与云端同步 App：本地音频是 Source of Truth；录音持续产生约 10 秒 AAC Chunk，并通过持久化 Background URLSession 队列直接上传用户配置的 S3；断网或云端失败不得中断本地录音。
+让用户在 Mac、iPhone 和 Apple Watch 上不操心地录下一整天，并在 Mac 上看到当天的转录和带引用的总结：Mac 全天录音并本机转录、总结；离开电脑时手表全程录音，经 iPhone 在连上 Mac 后回传、合并。录音只保存在用户自己的设备上，网络和第三方服务不参与麦克风到本地文件的写入。
 
-第一阶段只完成：
+MVP 的标准是用户能正常日常使用：连续几天无人值守，录不了时用户知道原因，录下来的内容能导出。范围、各端状态和验收见 `docs/mvp.md`，Mac 的分期和界面规则见 `docs/macos-app.md`。
 
-```text
-iPhone → Reliable Recording → Chunk Upload → User S3
-```
-
-不依赖 Omi，不在 iPhone 内实现 ASR、Chat 或 Agent。Recording API 与 Agent 接入推迟到后续阶段。具体范围、架构与验收分别见：
-
-- `docs/mvp.md`
-- `docs/architecture.md`
-- `docs/api-contract.md`
-- `docs/development.md`
-- `docs/verification.md`
-
-唯一完成标准是代码、完整 Xcode build 和目标真机验收矩阵全部通过。fixture、Swift 语法解析或服务端合成音频测试不能替代真机证明。
+唯一完成标准是 `docs/mvp.md` 的验收表在真机上全部通过。模拟器、fixture 或合成音频的测试不能代替真机证据。

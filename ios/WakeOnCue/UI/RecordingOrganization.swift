@@ -295,7 +295,8 @@ struct RecordingOrganizationSection: View {
           transcript: transcript,
           speakerAliases: annotations.speakerAliases,
           personNames: model.settings.personNames,
-          format: format
+          format: format,
+          directory: RecordingFileLayout.transcriptExportDirectory(recordingID: recording.id)
         )
       )
     } catch {

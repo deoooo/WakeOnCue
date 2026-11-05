@@ -22,6 +22,7 @@ struct RecordingDetailView: View {
   @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
   @State private var appliedInitialSeek = false
   @State private var notesDraft: MeetingNotesDraft?
+  @State private var isSpokenLanguageSupported = true
 
   private let panel = Color(uiColor: .secondarySystemBackground)
 
@@ -101,6 +102,9 @@ struct RecordingDetailView: View {
     .task(id: "\(recording.id)-\(model.transcriptVersion)") {
       await refreshDisplayedRecording()
       await loadTranscript()
+    }
+    .task(id: "\(model.settings.spokenLanguage)-\(model.settings.activeSpeechEndpoint == nil)") {
+      isSpokenLanguageSupported = await model.transcriptionSupportsSpokenLanguage()
     }
     .sheet(item: $notesDraft) { draft in
       MeetingNotesComposer(draft: draft)
@@ -358,7 +362,7 @@ struct RecordingDetailView: View {
               .foregroundStyle(.secondary)
           }
           .padding(.vertical, 8)
-        } else if model.canTranscribeRecordings {
+        } else if model.canTranscribeRecordings, isSpokenLanguageSupported {
           Text("No transcript was produced for this recording.")
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -367,7 +371,9 @@ struct RecordingDetailView: View {
           transcribeButton
         } else {
           serviceSetupHint(
-            OnDeviceIntelligence.transcriptionUnavailableMessage,
+            model.canTranscribeRecordings
+              ? OnDeviceIntelligence.spokenLanguageUnsupportedMessage
+              : OnDeviceIntelligence.transcriptionUnavailableMessage,
             action: "Set up transcription",
             identifier: "set-up-transcription"
           )

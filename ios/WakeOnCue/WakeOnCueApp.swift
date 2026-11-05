@@ -22,6 +22,15 @@ struct WakeOnCueApp: App {
                 file: URL(fileURLWithPath: path), id: id, source: "watch", recordingID: "simtest", index: 1,
                 startedAt: Date().addingTimeInterval(-300), duration: 5)
             }
+            // Test hook: a Watch recording summary with one tagged "记下刚才" mark, as if the
+            // Watch had just sent it.
+            if ProcessInfo.processInfo.environment["WAKEONCUE_TEST_MAC_MARKS"] != nil {
+              let summary = WatchSessionSummary(
+                sessionID: UUID(), startedAt: Date().addingTimeInterval(-300), endedAt: Date().addingTimeInterval(-60),
+                segmentCount: 0,
+                bookmarks: [WatchSessionBookmark(position: 120, duration: 120, tag: .important)])
+              try? MacOutbox.enqueue(marks: MacOutbox.marks(of: summary))
+            }
           #endif
           await model.start()
         }
@@ -49,7 +58,7 @@ enum MacSyncTask {
 
   /// Asks for a background refresh while a paired Mac still has audio coming.
   static func schedule() {
-    guard MacPairing.load() != nil, !MacOutbox.items().isEmpty else { return }
+    guard MacPairing.load() != nil, !MacOutbox.items().isEmpty || !MacOutbox.marks().isEmpty else { return }
     let request = BGAppRefreshTaskRequest(identifier: identifier)
     request.earliestBeginDate = Date().addingTimeInterval(15 * 60)
     try? BGTaskScheduler.shared.submit(request)

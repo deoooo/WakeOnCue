@@ -64,7 +64,7 @@ struct MenuBarContent: View {
         Text("暂停").frame(maxWidth: .infinity)
       }
       .controlSize(.large)
-      .keyboardShortcut("p", modifiers: [.control, .option])
+      .help("暂停录音（⌃⌥P）")
       VStack(alignment: .leading, spacing: 0) {
         row("暂停 1 小时") { model.recorder.pause(until: .now.addingTimeInterval(3_600)) }
         Menu {

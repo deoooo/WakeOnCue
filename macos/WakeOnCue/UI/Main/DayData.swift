@@ -21,6 +21,8 @@ struct DayData {
     let meetings: [Meeting]
     let summary: HourSummary?
     let sentences: [Sentence]
+    /// Watch and iPhone marks that start in this hour, outside private and deleted time.
+    var deviceMarks: [DeviceMark] = []
     var id: Date { interval.start }
     var hour: Int { Calendar.current.component(.hour, from: interval.start) }
     var clock: String { String(format: "%02d:00", hour) }
@@ -57,6 +59,7 @@ struct DayData {
     let sentences = store.sentences(in: interval).filter { !hidden($0.start) }
     let summaries = store.hourSummaries(in: interval)
     let meetings = store.meetings(overlapping: interval).filter { !hidden($0.start) }
+    let deviceMarks = store.deviceMarks(overlapping: interval).filter { !hidden($0.start) }
 
     let hours = calendar.hours(of: day).map { hour -> Hour in
       let inHour = sentences.filter { hour.contains($0.start) }
@@ -79,9 +82,10 @@ struct DayData {
       return Hour(
         interval: hour, state: state, speechMinutes: speech,
         meetingShare: speech > 0 ? min(1, meetingSpeech / speech) : 0,
-        meetings: inMeetings, summary: summaries[hour.start], sentences: inHour)
+        meetings: inMeetings, summary: summaries[hour.start], sentences: inHour,
+        deviceMarks: state == .privateHour || state == .deleted ? [] : deviceMarks.filter { $0.start >= hour.start && $0.start < hour.end })
     }
-    let shown = hours.filter { $0.state != .none }
+    let shown = hours.filter { $0.state != .none || !$0.deviceMarks.isEmpty }
     let rows: [Hour]
     if let first = shown.first, let last = shown.last {
       rows = hours.filter { $0.interval.start >= first.interval.start && $0.interval.start <= last.interval.start }

@@ -7,13 +7,17 @@ let usage = """
   用法：wakeoncue <命令> [选项]
 
   命令：
-    day [日期]                      当天总结、重点事件和每小时总结
+    day [日期]                      当天总结、重点事件、手表标记和每小时总结
     transcript [日期] [--hour HH | --from HH:MM --to HH:MM]
                                    转录原文
     search <词>... [--days N] [--speaker 我|会议对方|他人]
                                    全文搜索，多个词同时命中的排在前面
     meetings [日期]                 会议列表
     meeting <编号>                  一场会议的要点和完整转录
+    export [日期] [--hour HH | --meeting 编号] [--format md|txt|srt]
+                                   导出成文件内容，输出到标准输出；默认导出整天的 Markdown
+    health [--days N]               检查最近 N 天（默认 3）的全天录音：没有原因的空档、
+                                   有音频没转录、有转录没总结、回传进度
     help                           显示这段说明
 
   日期：今天（默认）、昨天、2026-11-04 或 11-04。
@@ -189,7 +193,16 @@ func run(_ raw: [String]) throws {
       let headline: CitedOut?
       let details: [CitedOut]
       let meetings: [MeetingOut]
+      let marks: [MarkOut]
       let hours: [HourOut]
+    }
+    /// A Watch or iPhone mark ("记下刚才"), on the Mac's clock.
+    struct MarkOut: Encodable {
+      let start: String
+      let end: String?
+      let tag: String?
+      let title: String?
+      let source: String
     }
     struct HourOut: Encodable {
       let hour: String
@@ -201,6 +214,11 @@ func run(_ raw: [String]) throws {
       headline: summary.flatMap { reader.cited($0.headline) },
       details: summary?.details.compactMap(reader.cited) ?? [],
       meetings: meetings.map { reader.meeting($0, transcript: false) },
+      marks: reader.store.deviceMarks(overlapping: interval).filter { reader.visible($0.start) }.map { mark in
+        MarkOut(
+          start: Dates.iso.string(from: mark.start), end: mark.end.map { Dates.iso.string(from: $0) },
+          tag: mark.tag?.label, title: mark.title, source: mark.sourceLabel)
+      },
       hours: hours.map { hour in
         HourOut(
           hour: TimeText.clock(hour.hourStart), summary: hour.summary,
@@ -217,6 +235,14 @@ func run(_ raw: [String]) throws {
       print("\n重点事件")
       for meeting in out.meetings {
         print("· #\(meeting.id) \(meeting.start.dropFirst(11).prefix(5))–\(meeting.end.dropFirst(11).prefix(5)) \(meeting.title)")
+      }
+    }
+    if !out.marks.isEmpty {
+      print("\n标记")
+      for mark in out.marks {
+        let time = String(mark.start.dropFirst(11).prefix(5)) + (mark.end.map { "–" + String($0.dropFirst(11).prefix(5)) } ?? "")
+        let label = [mark.tag, mark.title].compactMap { $0 }.joined(separator: " ")
+        print("· \(time) \(label.isEmpty ? "标记" : label) · \(mark.source)")
       }
     }
     if !out.hours.isEmpty {
@@ -286,6 +312,37 @@ func run(_ raw: [String]) throws {
     for point in out.points ?? [] { print("· \(point.text)\(cites(point))") }
     print("\n完整转录")
     for sentence in out.transcript ?? [] { print(sentence.line) }
+
+  case "export":
+    let reader = try Reader()
+    let formatText = args.options["format"] ?? "md"
+    guard let format = ExportFormat(rawValue: formatText.lowercased()) else {
+      throw UsageError(message: "不支持的格式：\(formatText)，可选 md、txt、srt")
+    }
+    let source: ExportSource
+    if let text = args.options["meeting"] {
+      guard let id = Int64(text), let meeting = reader.store.meeting(id: id), reader.visible(meeting.start) else {
+        throw UsageError(message: "没有编号为 \(text) 的会议")
+      }
+      source = .meeting(meeting, store: reader.store)
+    } else {
+      let day = try Dates.day(args.positionals.first)
+      if let text = args.options["hour"] {
+        guard let hour = Int(text), (0..<24).contains(hour) else { throw UsageError(message: "--hour 要在 0 到 23 之间") }
+        source = .hour(Calendar.current.date(byAdding: .hour, value: hour, to: day)!, store: reader.store)
+      } else {
+        source = .day(day, store: reader.store)
+      }
+    }
+    if args.json { throw UsageError(message: "export 不支持 --json，请用 --format 选择格式") }
+    FileHandle.standardOutput.write(Data(Exporter.render(source, as: format).utf8))
+
+  case "health":
+    let reader = try Reader()
+    let days = max(1, args.options["days"].flatMap(Int.init) ?? 3)
+    let out = healthReport(store: reader.store, days: days)
+    if args.json { return try printJSON(out) }
+    printHealth(out, remote: reader.store.remoteSegmentCounts())
 
   default:
     throw UsageError(message: "不认识的命令：\(command)\n\n\(usage)")

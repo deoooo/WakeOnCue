@@ -144,6 +144,12 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate, @unchecked Sendable {
     else { return }
     do {
       try WatchSessionInbox.stage(summary: summary)
+      // The Mac gets the Watch's "记下刚才" marks with their real times, next to the segments.
+      do {
+        try MacOutbox.enqueue(marks: MacOutbox.marks(of: summary))
+      } catch {
+        logger.error("Could not queue Watch marks for the Mac: \(error.localizedDescription, privacy: .public)")
+      }
       logger.notice(
         "Watch recording summary \(summary.sessionID.uuidString.prefix(8), privacy: .public): \(summary.segmentCount) segments")
     } catch {

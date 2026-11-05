@@ -119,7 +119,8 @@ nonisolated enum SummaryMaterial {
 
   /// Every hour's summary with some of its key sentences, numbered for citing. Each hour gets an
   /// equal share of `budget` characters, so a long day loses key sentences, never its evening.
-  static func dayMaterial(_ hours: [DayHour], budget: Int, keysPerHour: Int = 4) -> (text: String, sources: [Sentence]) {
+  /// Numbers start at `firstNumber`, after sentences already listed (the user's marks).
+  static func dayMaterial(_ hours: [DayHour], budget: Int, keysPerHour: Int = 4, firstNumber: Int = 1) -> (text: String, sources: [Sentence]) {
     guard !hours.isEmpty else { return ("", []) }
     let share = max(budget / hours.count, 80)
     var lines: [String] = []
@@ -129,7 +130,7 @@ nonisolated enum SummaryMaterial {
       lines.append(header)
       var used = header.count
       for sentence in hour.keys.prefix(keysPerHour) {
-        let line = "  [\(sources.count + 1)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)"
+        let line = "  [\(firstNumber + sources.count)] \(TimeText.clock(sentence.start)) \(sentence.speakerLabel)：\(sentence.text)"
         guard used + line.count <= share else { break }
         sources.append(sentence)
         lines.append(line)

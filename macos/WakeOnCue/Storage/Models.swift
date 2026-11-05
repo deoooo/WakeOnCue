@@ -69,6 +69,42 @@ nonisolated struct TimeMark: Identifiable, Hashable, Sendable {
   func covers(_ date: Date) -> Bool { date >= start && date < end }
 }
 
+/// A moment the user marked on the Watch or the iPhone ("记下刚才"), placed on the Mac's
+/// timeline: `start` and `end` already include the device's clock offset.
+nonisolated struct DeviceMark: Identifiable, Hashable, Sendable {
+  enum Tag: String, Sendable {
+    case todo
+    case important
+    case idea
+
+    var label: String {
+      switch self {
+      case .todo: "待办"
+      case .important: "重要"
+      case .idea: "想法"
+      }
+    }
+  }
+
+  var id: String
+  /// "watch" or "iphone".
+  var source: String
+  var recordingID: String
+  var start: Date
+  /// Nil for a point mark.
+  var end: Date?
+  var tag: Tag?
+  var title: String?
+
+  var sourceLabel: String { source == "watch" ? "Apple Watch" : "iPhone" }
+  /// The marked stretch; a point mark counts as its own instant.
+  var interval: DateInterval { DateInterval(start: start, end: max(start, end ?? start)) }
+  /// What to call it: the title, the tag, or just "标记".
+  var label: String { title ?? tag?.label ?? "标记" }
+  /// Important and to-do marks steer the day summary.
+  var isPriority: Bool { tag == .important || tag == .todo }
+}
+
 /// Why this Mac could not record during a range, shown on the hour and in the banner.
 nonisolated struct CaptureGap: Identifiable, Hashable, Sendable {
   var id: Int64

@@ -57,8 +57,17 @@ enum MacOutbox {
     let descriptor: URL
   }
 
-  static func root() throws -> URL {
-    let directory = try FileManager.default.url(
+  /// What happens to an item, given the state of its recording on this iPhone.
+  enum Disposition: Sendable {
+    case send
+    /// In Recently Deleted: kept in case it is recovered, but not sent.
+    case hold
+    /// Permanently deleted: removed without being sent.
+    case discard
+  }
+
+  static func root(override: URL? = nil) throws -> URL {
+    let directory = try override ?? FileManager.default.url(
       for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
     ).appending(path: "MacOutbox", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -71,7 +80,16 @@ enum MacOutbox {
     file: URL, id: String, source: String, recordingID: String, index: Int, startedAt: Date, duration: TimeInterval
   ) throws {
     guard MacPairing.load() != nil else { return }
-    let root = try root()
+    try add(
+      file: file, id: id, source: source, recordingID: recordingID, index: index, startedAt: startedAt,
+      duration: duration)
+  }
+
+  static func add(
+    file: URL, id: String, source: String, recordingID: String, index: Int, startedAt: Date, duration: TimeInterval,
+    root override: URL? = nil
+  ) throws {
+    let root = try root(override: override)
     let format = file.pathExtension.isEmpty ? "m4a" : file.pathExtension
     let destination = root.appending(path: "\(id).\(format)")
     try? FileManager.default.removeItem(at: destination)
@@ -88,8 +106,19 @@ enum MacOutbox {
     try JSONEncoder.sync.encode(info).write(to: root.appending(path: "\(id).json"), options: .atomic)
   }
 
-  static func items() -> [Item] {
-    guard let root = try? root(), let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return [] }
+  /// The recording on this iPhone that an item belongs to. A Watch segment names its Watch
+  /// session, which becomes a recording only once imported.
+  static func appRecordingID(for info: SyncProtocol.SegmentInfo) -> String {
+    guard info.source == "watch", let sessionID = UUID(uuidString: info.recordingID) else {
+      return info.recordingID
+    }
+    return WatchSessionSummary.recordingID(for: sessionID)
+  }
+
+  static func items(root override: URL? = nil) -> [Item] {
+    guard let root = try? root(override: override),
+      let names = try? FileManager.default.contentsOfDirectory(atPath: root.path)
+    else { return [] }
     return names.filter { $0.hasSuffix(".json") }.compactMap { name in
       let descriptor = root.appending(path: name)
       guard let data = try? Data(contentsOf: descriptor), let info = try? JSONDecoder.sync.decode(SyncProtocol.SegmentInfo.self, from: data)
@@ -103,13 +132,122 @@ enum MacOutbox {
     }.sorted { $0.info.startedAt < $1.info.startedAt }
   }
 
+  /// Items to send now. Removes those of permanently deleted recordings and leaves those in
+  /// Recently Deleted waiting.
+  static func sendableItems(
+    root override: URL? = nil, disposition: @Sendable (String) async -> Disposition
+  ) async -> [Item] {
+    var sendable: [Item] = []
+    for item in items(root: override) {
+      switch await disposition(appRecordingID(for: item.info)) {
+      case .send: sendable.append(item)
+      case .hold: continue
+      case .discard: remove(item)
+      }
+    }
+    return sendable
+  }
+
   static func remove(_ item: Item) {
     try? FileManager.default.removeItem(at: item.file)
     try? FileManager.default.removeItem(at: item.descriptor)
   }
 
+  /// Removes everything queued for a recording on this iPhone, e.g. when it is permanently deleted.
+  static func remove(appRecordingID: String, root override: URL? = nil) {
+    for item in items(root: override) where Self.appRecordingID(for: item.info) == appRecordingID {
+      remove(item)
+    }
+  }
+
   static func removeAll() {
     for item in items() { remove(item) }
+    if let root = try? marksRoot() { try? FileManager.default.removeItem(at: root) }
+  }
+
+  // MARK: Marks
+
+  /// A mark the Mac never confirmed (an older Mac that does not take marks) is given up after this.
+  static let markLifetime: TimeInterval = 60 * 86_400
+
+  /// Marks wait in `MacOutbox/marks/<id>.json` until the Mac confirms them.
+  static func marksRoot(in root: URL? = nil) throws -> URL {
+    let directory = try (root ?? Self.root()).appending(path: "marks", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+  }
+
+  /// Queues marks for the Mac, if a Mac is paired. Queuing the same ID again replaces it, e.g.
+  /// after a tag changed.
+  static func enqueue(marks: [SyncProtocol.MarkInfo]) throws {
+    guard MacPairing.load() != nil, !marks.isEmpty else { return }
+    try enqueue(marks: marks, root: root())
+  }
+
+  static func enqueue(marks: [SyncProtocol.MarkInfo], root: URL) throws {
+    let directory = try marksRoot(in: root)
+    for mark in marks {
+      let url = directory.appending(path: "\(fileName(mark.id)).json")
+      try JSONEncoder.sync.encode(mark).write(to: url, options: .atomic)
+      try? RecordingFileLayout.protect(url)
+    }
+  }
+
+  /// Marks waiting for the Mac, oldest first. Ones past `markLifetime` are dropped.
+  static func marks(root: URL? = nil, now: Date = .now) -> [SyncProtocol.MarkInfo] {
+    guard let directory = try? marksRoot(in: root),
+      let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+    else { return [] }
+    return names.filter { $0.hasSuffix(".json") }.compactMap { name -> SyncProtocol.MarkInfo? in
+      let url = directory.appending(path: name)
+      guard let data = try? Data(contentsOf: url), let mark = try? JSONDecoder.sync.decode(SyncProtocol.MarkInfo.self, from: data)
+      else { return nil }
+      guard now.timeIntervalSince(mark.start) < markLifetime else {
+        try? FileManager.default.removeItem(at: url)
+        return nil
+      }
+      return mark
+    }.sorted { $0.start < $1.start }
+  }
+
+  static func removeMarks(ids: [String], root: URL? = nil) {
+    guard let directory = try? marksRoot(in: root) else { return }
+    for id in ids { try? FileManager.default.removeItem(at: directory.appending(path: "\(fileName(id)).json")) }
+  }
+
+  /// Forgets marks in time the Mac deleted or marked private, as it does with audio.
+  static func dropMarks(in drop: [SyncProtocol.Range], root: URL? = nil) {
+    let dropped = marks(root: root).filter { mark in drop.contains { $0.start <= mark.start && mark.start < $0.end } }
+    removeMarks(ids: dropped.map(\.id), root: root)
+  }
+
+  /// IDs are made of UUIDs and recording IDs; anything else is replaced so it stays one file name.
+  private static func fileName(_ id: String) -> String {
+    String(id.map { $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) ? $0 : "_" })
+  }
+
+  /// The marks of a Watch recording: its bookmarks at their real time, under the session ID its
+  /// segments carry.
+  static func marks(of summary: WatchSessionSummary) -> [SyncProtocol.MarkInfo] {
+    let session = summary.sessionID.uuidString.lowercased()
+    return summary.bookmarks.map { bookmark in
+      let start = summary.startedAt.addingTimeInterval(bookmark.position)
+      return SyncProtocol.MarkInfo(
+        id: "watch-\(session)-\(bookmark.id.uuidString.lowercased())", source: "watch", recordingID: session,
+        start: start, end: bookmark.duration.map { start.addingTimeInterval($0) }, tag: bookmark.tag?.rawValue, title: nil)
+    }
+  }
+
+  /// The bookmarks of a finished iPhone recording, which goes to the Mac as one piece starting at
+  /// `startedAt`.
+  static func marks(of bookmarks: [RecordingBookmark], recordingID: String, startedAt: Date) -> [SyncProtocol.MarkInfo] {
+    bookmarks.map { bookmark in
+      let start = startedAt.addingTimeInterval(bookmark.position)
+      return SyncProtocol.MarkInfo(
+        id: "iphone-\(recordingID)-\(bookmark.id.uuidString.lowercased())", source: "iphone", recordingID: recordingID,
+        start: start, end: bookmark.duration.flatMap { $0 > 0 ? start.addingTimeInterval($0) : nil },
+        tag: bookmark.tag?.rawValue, title: bookmark.title)
+    }
   }
 }
 
@@ -131,6 +269,8 @@ final class MacUploader {
   private(set) var status: Status = .idle
   private(set) var pending = MacOutbox.items().count
   private var running = false
+  /// Decides, per recording on this iPhone, whether its audio may go to the Mac. Unset, all goes.
+  var disposition: (@MainActor @Sendable (String) async -> MacOutbox.Disposition)?
 
   /// Handles `wakeoncue://pair?…` from the Mac's QR code.
   func pair(with url: URL) -> Bool {
@@ -160,35 +300,45 @@ final class MacUploader {
 
   /// Sends everything in the outbox. Safe to call often; one run at a time.
   func sync() async {
-    pending = MacOutbox.items().count
-    guard !running, var pairing, !pairing.needsRepair else { return }
+    guard !running else { return }
     running = true
     defer { running = false }
+    pending = await sendableItems().count
+    guard var pairing, !pairing.needsRepair else { return }
     do {
       let channel = try await connect(pairing)
       defer { channel.connection.cancel() }
       try await channel.send(.hello(deviceID: pairing.identity, deviceName: Self.deviceName, protocolVersion: SyncProtocol.version))
       let first = try await channel.receive().0
-      guard case .welcome(let macName, let accepting, let drop) = first else {
+      guard case .welcome(let macName, let accepting, let drop, let features) = first else {
         if case .failure(_, let reason, _) = first { throw MacLinkError.refused(reason) }
         Self.logger.error("Unexpected first reply: \(String(describing: first), privacy: .public)")
         throw MacLinkError.unexpected
       }
-      Self.logger.notice("Connected to \(macName, privacy: .public), accepting \(accepting), \(MacOutbox.items().count) waiting")
+      Self.logger.notice("Connected to \(macName, privacy: .public), accepting \(accepting), \(self.pending) waiting")
       pairing.macName = macName
       // The Mac deleted or marked these times private: their audio never leaves this iPhone.
       for item in MacOutbox.items() where drop.contains(where: { $0.start <= item.info.startedAt && item.info.startedAt < $0.end }) {
         MacOutbox.remove(item)
       }
+      MacOutbox.dropMarks(in: drop)
       guard accepting else {
         status = .failed(AppLanguage.localized("Forwarding is turned off on the Mac."))
         return
       }
-      let items = MacOutbox.items()
+      // Checked again: a recording can be deleted while the connection was being set up.
+      let items = await sendableItems()
       for (index, item) in items.enumerated() {
+        // Sending can take minutes; a recording deleted meanwhile stops here.
+        guard await disposition?(MacOutbox.appRecordingID(for: item.info)) ?? .send == .send else { continue }
         status = .sending(done: index, total: items.count)
         try await send(item, over: channel)
-        pending = MacOutbox.items().count
+        pending = items.count - index - 1
+      }
+      // After the audio, so the Mac may already know the clock offset of these recordings. An
+      // older Mac does not list marks and would hang up on them: they wait for an update.
+      if features?.contains(SyncProtocol.Feature.marks) == true {
+        try await sendMarks(over: channel)
       }
       try? await channel.send(.bye)
       pairing.lastSync = .now
@@ -206,7 +356,12 @@ final class MacUploader {
       Self.logger.error("Sync failed: \(String(describing: error), privacy: .public)")
       status = .failed(error.localizedDescription)
     }
-    pending = MacOutbox.items().count
+    pending = await sendableItems().count
+  }
+
+  private func sendableItems() async -> [MacOutbox.Item] {
+    guard let disposition else { return MacOutbox.items() }
+    return await MacOutbox.sendableItems(disposition: disposition)
   }
 
   private func send(_ item: MacOutbox.Item, over channel: SyncChannel) async throws {
@@ -234,6 +389,23 @@ final class MacUploader {
       throw MacLinkError.refused(reason)
     default:
       throw MacLinkError.unexpected
+    }
+  }
+
+  private func sendMarks(over channel: SyncChannel) async throws {
+    let marks = MacOutbox.marks()
+    for start in stride(from: 0, to: marks.count, by: SyncProtocol.marksPerMessage) {
+      let batch = Array(marks[start..<min(marks.count, start + SyncProtocol.marksPerMessage)])
+      try await channel.send(.marks(batch))
+      switch try await channel.receive().0 {
+      case .marksStored(let ids):
+        MacOutbox.removeMarks(ids: ids)
+        Self.logger.notice("Stored \(ids.count) marks on the Mac")
+      case .failure(_, let reason, _):
+        throw MacLinkError.refused(reason)
+      default:
+        throw MacLinkError.unexpected
+      }
     }
   }
 

@@ -63,6 +63,24 @@ enum OnDeviceIntelligence {
     )
   }
 
+  /// Whether on-device transcription handles the spoken language chosen in Settings.
+  static func supports(spokenLanguage: SpokenLanguage) async -> Bool {
+    guard #available(iOS 26.0, *) else { return true }
+    return await SpeechTranscriber.supportedLocale(equivalentTo: locale(for: spokenLanguage)) != nil
+  }
+
+  private static func locale(for spokenLanguage: SpokenLanguage) -> Locale {
+    Locale(identifier: spokenLanguage.recognitionCode.map {
+      $0 == "zh" ? "zh-CN" : "en-US"
+    } ?? Locale.current.identifier)
+  }
+
+  static var spokenLanguageUnsupportedMessage: String {
+    AppLanguage.localized(
+      "This iPhone cannot transcribe the selected spoken language. Choose another language or add a transcription service in Settings."
+    )
+  }
+
   /// Why on-device summaries cannot run, and what the user can do instead.
   static var summaryUnavailableMessage: String {
     #if canImport(FoundationModels)
@@ -98,9 +116,7 @@ enum OnDeviceIntelligence {
     spokenLanguage: SpokenLanguage
   ) async throws -> [RealtimeTranscriptEvent] {
     guard #available(iOS 26.0, *) else { throw OnDeviceIntelligenceError.unavailable }
-    let requested = Locale(identifier: spokenLanguage.recognitionCode.map {
-      $0 == "zh" ? "zh-CN" : "en-US"
-    } ?? Locale.current.identifier)
+    let requested = locale(for: spokenLanguage)
     guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) else {
       throw OnDeviceIntelligenceError.unsupportedLanguage
     }

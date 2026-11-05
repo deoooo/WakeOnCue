@@ -35,6 +35,8 @@ final class SyncServer {
   @ObservationIgnored private let queue = DispatchQueue(label: "com.deoooo.WakeOnCue.macos.sync")
   /// Called after a segment is stored, so merging can pick it up.
   @ObservationIgnored var onSegment: ((SyncProtocol.SegmentInfo, URL) -> Void)?
+  /// Called after Watch or iPhone marks are stored, with where they fall on the Mac's timeline.
+  @ObservationIgnored var onMarks: (([DeviceMark]) -> Void)?
 
   static var inbox: URL { Store.rootDirectory.appending(path: "Inbox", directoryHint: .isDirectory) }
 
@@ -190,11 +192,20 @@ final class SyncServer {
 
     let drop = store.marks(overlapping: DateInterval(start: .now.addingTimeInterval(-30 * 86_400), end: .now))
       .map { SyncProtocol.Range(kind: $0.kind.rawValue, start: $0.start, end: $0.end) }
-    try await channel.send(.welcome(macName: Host.current().localizedName ?? "Mac", accepting: preferences.autoSync, drop: drop))
+    try await channel.send(.welcome(
+      macName: Host.current().localizedName ?? "Mac", accepting: preferences.autoSync, drop: drop, features: SyncProtocol.features))
 
     var offered: [String: SyncProtocol.SegmentInfo] = [:]
     while true {
-      let (message, body) = try await channel.receive()
+      let message: SyncProtocol.Message
+      let body: Data
+      do {
+        (message, body) = try await channel.receive()
+      } catch SyncChannel.Failure.unknownMessage {
+        // A newer phone; tell it and keep the connection.
+        try await channel.send(.failure(segmentID: nil, reason: "Mac 不认识这条消息，请把 Mac 上的 WakeOnCue 更新到最新", retry: false))
+        continue
+      }
       switch message {
       case .offer(let info):
         guard preferences.autoSync else {
@@ -253,6 +264,18 @@ final class SyncServer {
         try await channel.send(.stored(segmentID: segmentID))
         Self.logger.notice("Stored \(segmentID, privacy: .public) from \(deviceName, privacy: .public)")
         onSegment?(info, final)
+
+      case .marks(let marks):
+        guard preferences.autoSync else {
+          try await channel.send(.failure(segmentID: nil, reason: "Mac 上关闭了自动回传", retry: true))
+          continue
+        }
+        let valid = marks.filter { Self.isSafe($0.id) }
+        let saved = store.saveDeviceMarks(valid, device: deviceID, clockOffset: Merger.knownClockOffset(for: deviceID))
+        // Malformed ones are confirmed too, or the phone would offer them forever.
+        try await channel.send(.marksStored(ids: marks.map(\.id)))
+        Self.logger.notice("Stored \(valid.count) marks from \(deviceName, privacy: .public)")
+        if !saved.isEmpty { onMarks?(saved) }
 
       case .bye:
         return

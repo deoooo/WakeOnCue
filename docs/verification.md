@@ -136,3 +136,121 @@ transcript by design and is not an accuracy sample.
 - Personal Team 7 天签名到期后的重新签名/安装操作（当前签名、App Group provisioning 与安装已通过）。
 
 这些项目按 [development.md](development.md) 的真机矩阵执行。在实体机证据产生前保持 `DEVICE NOT RUN`，不能用 Simulator 结果替代。
+
+## iPhone 真机检查清单
+
+照着在真机上逐项跑，每项把结果（PASS / FAIL + 录音 ID、截图或日志片段）记在本节末尾。没跑过的保持 `DEVICE NOT RUN`。
+
+### 准备（约 10 分钟，只做一次）
+
+1. 用 `ios/install_device.sh <UDID>` 安装 Debug 版，打开一次 App，允许麦克风和本地网络。UDID 用 `xcrun devicectl list devices` 查。
+2. 在 Mac 上设置几个变量，后面的命令都用它们：
+
+   ```bash
+   export UDID=<iPhone 的 UDID>
+   export APP=com.deoooo.WakeOnCue
+   export PULL=~/Desktop/woc-pull
+   ```
+
+3. 拉取 App 数据（每项检查结束后都用它取证；会覆盖上一次）：
+
+   ```bash
+   rm -rf "$PULL" && mkdir -p "$PULL" && xcrun devicectl device copy from --device "$UDID" --domain-type appDataContainer --domain-identifier "$APP" --source "Library/Application Support" --destination "$PULL"
+   ```
+
+   之后数据库在 `$PULL/RecordingData/recordings.sqlite`，音频在 `$PULL/RecordingData/recordings/<录音 ID>/`（`source.caf` 是连续录音，`chunks/` 是约 10 秒一段的 AAC），转发给 Mac 的待发队列在 `$PULL/MacOutbox/`，手表收件箱在 `$PULL/WatchInbox/sessions/`。
+
+4. 看最近一条录音的状态（后面多处用到）：
+
+   ```bash
+   sqlite3 "$PULL/RecordingData/recordings.sqlite" "SELECT id, status, round(duration,1), datetime(started_at,'unixepoch','localtime'), (SELECT count(*) FROM chunks c WHERE c.recording_id = r.id), (SELECT round(sum(duration),1) FROM chunks c WHERE c.recording_id = r.id), json_extract(metadata_json,'$.deleted_at') FROM recordings r ORDER BY started_at DESC LIMIT 3"
+   ```
+
+   列依次是：ID、状态、时长、开始时间、分段数、分段总时长、是否在“最近删除”。
+
+5. 取 iPhone 日志（需要 `sudo`，iPhone 解锁并已信任这台 Mac）：
+
+   ```bash
+   sudo log collect --device-udid "$UDID" --last 1h --output ~/Desktop/woc.logarchive
+   ```
+
+   ```bash
+   log show ~/Desktop/woc.logarchive --info --predicate 'subsystem == "com.deoooo.WakeOnCue"'
+   ```
+
+   也可以在 Console.app 左侧选中 iPhone，筛选 `subsystem:com.deoooo.WakeOnCue` 实时看。录音本身的打断没有专门日志，以数据库和界面为准。
+
+通用的通过标准：录音最终 `COMPLETED`；`duration` 与分段总时长相差不超过 1 秒；分段序号从 1 连续，没有缺号（`SELECT chunk_index FROM chunks WHERE recording_id='<ID>' ORDER BY chunk_index`）；播放这条录音，开头、中段、结尾都有声音。
+
+### 1. 锁屏 30 分钟（约 35 分钟）
+
+1. 打开 App，开始录音，在手机旁边放一个持续出声的东西（播客、电视，或者每隔几分钟说一句“现在是 X 点 Y 分”）。
+2. 按侧边键锁屏，放着不动 30 分钟。期间看一眼锁屏 Live Activity，计时应该在走。
+3. 解锁，回到 App，确认计时约 30 分钟且仍在录音，点“完成”。
+4. 拉取数据，跑第 4 步的查询。
+
+通过：状态 `COMPLETED`，时长约 30 分钟，分段约 180 个且连续；拖到第 5、15、25 分钟播放都能听到当时的声音（说过时间的话能对上）。失败时记下停在哪个时间点，以及当时的 Live Activity 是否还在走。
+
+### 2. 切到后台用微信 / Safari（约 15 分钟）
+
+1. 开始录音，切到微信：发一条语音消息、播放一条别人的语音、看一段视频号视频（带声音）。
+2. 切到 Safari，打开一个有声视频播放 1 分钟，再暂停。
+3. 回到 WakeOnCue，看是否仍在录音；如果显示被打断，点继续。再录 1 分钟，点完成。
+
+通过：录音没有在你不知情的情况下停止——要么一直在录，要么界面明确显示被打断并能继续；最终 `COMPLETED`，分段连续，回到 App 之后的部分有声音。记下哪一步出现了打断（微信语音通常会抢麦克风，这是系统行为，但 App 必须显示出来，而不是假装还在录）。
+
+### 3. 来电和 AirPods 切换打断（约 15 分钟，需要另一部手机）
+
+1. 开始录音。用另一部手机给这台 iPhone 打电话，响铃 10 秒后接听，说 20 秒，挂断。
+2. 回到 App：应显示被打断，挂断后自动继续，或者显示可以继续，点继续。
+3. 录音中戴上 AirPods（连接），说几句话；再摘下（断开），再说几句话。
+4. 点完成，拉取数据。
+
+通过：来电期间的录音暂停、挂断后能继续，不会卡在“录音中”但计时不动；AirPods 连上和断开后，录音界面的输入来源名称跟着变，两段都有声音（AirPods 段应是 AirPods 麦克风的音色）；最终 `COMPLETED`，分段连续。失败时记下是第几步、界面显示什么，并取一份日志。
+
+### 4. 强退后恢复（约 10 分钟）
+
+1. 开始录音，录 2 分钟以上（跨过至少 10 个分段）。
+2. 上滑进入多任务界面，把 WakeOnCue 划掉。
+3. 等 1 分钟，重新打开 App。
+4. 拉取数据，跑第 4 步的查询。
+
+通过：打开后这条录音不再是 `RECORDING` / `FINISHING`，而是 `COMPLETED`（如果有提示“恢复失败”，记下全文）；时长约等于被划掉前录到的长度，分段连续；能播放，结尾停在划掉的时刻附近；首页可以立即开始新录音。再重复一次，但划掉前先点暂停，结果应一样。
+
+### 5. 录音转发到 Mac（约 20 分钟）
+
+前提：Mac 上运行 WakeOnCue，iPhone 已在设置 › Mac 里扫码配对，两台在同一个 Wi‑Fi。
+
+1. iPhone 录一条 1 分钟的录音并完成。完成后立刻拉取数据，`$PULL/MacOutbox/` 里应有 `iphone-<录音 ID>.m4a` 和同名 `.json`。
+2. 保持 App 在前台 1 分钟，再拉取一次：`MacOutbox/` 里这一条应已消失（Mac 确认收到后才删）。
+3. 在 Mac 上确认收到：
+
+   ```bash
+   ls -l ~/Library/Application\ Support/WakeOnCue/Inbox/*/
+   ```
+
+   ```bash
+   sqlite3 ~/Library/Application\ Support/WakeOnCue/library.sqlite "SELECT id, source, recording, round(duration,1), datetime(received,'unixepoch','localtime'), merged, outcome FROM remote_segment ORDER BY received DESC LIMIT 5"
+   ```
+
+   ```bash
+   log show --last 30m --info --predicate 'subsystem == "com.deoooo.WakeOnCue.macos" AND category == "Sync"'
+   ```
+
+   日志里应有 `Stored iphone-<录音 ID>`；`remote_segment` 里有这一行，`merged` 稍后变为 1；Mac 主页面对应时间出现这段语音。
+4. 删除不转发：关掉 Mac 的 Wi‑Fi（或退出 Mac 上的 WakeOnCue），iPhone 录两条各 30 秒。第一条移到“最近删除”，第二条移到“最近删除”后再永久删除。拉取数据：`MacOutbox/` 里应只剩第一条的 `.m4a` 和 `.json`，第二条在永久删除时已一起清掉。
+5. 打开 Mac 的网络和 WakeOnCue，iPhone 回到前台 1 分钟，再拉取：第一条仍留在 `MacOutbox/`（等你恢复或永久删除），第二条不在。Mac 上的 `remote_segment` 和 Sync 日志里都不应出现这两条的 ID。
+6. 在 iPhone 上恢复第一条，回到前台 1 分钟：它应出现在 Mac 的 `remote_segment` 里，并从 `MacOutbox/` 消失。
+7. 手表（可选）：iPhone 不打开 App 时用手表录 2 分钟并结束，等 iPhone 收到后打开 App。iPhone 日志里应有 `Watch segment N of …` 和 MacLink 类别的 `Stored watch-…`；Mac 的 `remote_segment` 里出现 `source = watch` 的几行。
+
+通过：第 2、3 步收到且 iPhone 端清掉；第 5 步已删除的录音没有到达 Mac；第 6 步恢复后补发。
+
+### 结果记录
+
+| 项目 | 日期 / 设备 / iOS | 结果 | 录音 ID / 备注 |
+|---|---|---|---|
+| 1. 锁屏 30 分钟 | | DEVICE NOT RUN | |
+| 2. 后台用微信 / Safari | | DEVICE NOT RUN | |
+| 3. 来电和 AirPods | | DEVICE NOT RUN | |
+| 4. 强退后恢复 | | DEVICE NOT RUN | |
+| 5. 转发到 Mac | | DEVICE NOT RUN | |
