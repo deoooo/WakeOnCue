@@ -258,10 +258,9 @@ final class Refiner {
       workSeconds += Date().timeIntervalSince(began)
     }
     let cleaned = Self.clean(text)
-    guard !cleaned.isEmpty else { return false }
-    // Apple speech run again on a short sound (嗯, 对) can hear English ("you"); keep the
-    // Chinese the live pass heard instead.
-    if modelName == nil, !Self.hasChinese(cleaned), Self.hasChinese(sentence.text) { return false }
+    // An empty or made-up reply (Apple speech hearing "you" in 嗯, Qwen3-ASR's "Hello, world.")
+    // keeps the Chinese the live pass heard.
+    guard TranscriptFilter.shouldReplace(live: sentence.text, with: cleaned) else { return false }
     // The current text may be gone: the sentence was deleted, or merged with a recording.
     guard let current = store.sentences(ids: [sentence.id]).first else { return nil }
     guard cleaned != current.text || modelName != current.refinedBy else { return false }
@@ -269,18 +268,10 @@ final class Refiner {
     return cleaned != current.text
   }
 
-  nonisolated static func hasChinese(_ text: String) -> Bool {
-    text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
-  }
-
-  /// Qwen3-ASR sometimes prefixes the detected language; keep only the words.
+  /// The words of the model's reply, without its language tag, special tokens and the text it
+  /// makes up after them.
   nonisolated static func clean(_ text: String) -> String {
-    var result = text
-    if let range = result.range(of: "<asr_text>") { result = String(result[range.upperBound...]) }
-    if result.hasPrefix("language "), let space = result.dropFirst(9).firstIndex(where: { $0 == " " || $0 == "\n" }) {
-      result = String(result[space...])
-    }
-    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    TranscriptFilter.cleanModelOutput(text)
   }
 
   /// 16 kHz mono samples between `start` and `end`, read from the segment files.

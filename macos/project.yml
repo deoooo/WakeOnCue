@@ -109,6 +109,25 @@ targets:
         OTHER_LDFLAGS: -lsqlite3
         SKIP_INSTALL: YES
 
+  # Unit tests for the pure rules (sentence splitting, transcript filtering, summary material). They compile those
+  # files directly instead of loading the app, which would start recording.
+  WakeOnCueTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: WakeOnCueTests
+      - path: WakeOnCue/Transcription/TranscriptFilter.swift
+      - path: WakeOnCue/Transcription/SentenceSplitter.swift
+      - path: WakeOnCue/Intelligence/SummaryMaterial.swift
+      - path: WakeOnCue/Intelligence/SummaryEngine.swift
+      - path: WakeOnCue/Intelligence/GatewayEngine.swift
+      - path: WakeOnCue/Storage/Models.swift
+      - path: WakeOnCue/App/TimeText.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos.tests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   WakeOnCue:
     build:
@@ -116,3 +135,7 @@ schemes:
         WakeOnCue: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - WakeOnCueTests

@@ -73,6 +73,8 @@ final class Transcription {
   }
 
   private func save(_ recognized: RecognizedSentence) {
+    // A lone "M" or "Thank you" heard in a noise is not worth a line.
+    if TranscriptFilter.isNoise(recognized.text) { return }
     switch recognized.channel {
     case .remote:
       // Forwarded audio is transcribed by the merger, not live.
