@@ -69,10 +69,11 @@ struct DayCommands: Commands {
       Button("打开 WakeOnCue") { openWindow(id: "main") }.keyboardShortcut("o")
     }
     CommandMenu("录音") {
-      Button(model.recorder.isRecording ? "暂停录音" : "继续录音") {
+      // ⌃⌥P is the global hot key (`GlobalHotKey`). Binding it here too made one press toggle
+      // twice while the app was active, so recording resumed and paused again a moment later.
+      Button(model.recorder.isRecording ? "暂停录音（⌃⌥P）" : "继续录音（⌃⌥P）") {
         Task { await model.recorder.togglePause() }
       }
-      .keyboardShortcut("p", modifiers: [.control, .option])
       Button(model.player.isPlaying ? "暂停播放" : "播放") { model.player.toggle() }
         .disabled(model.player.position == nil)
     }

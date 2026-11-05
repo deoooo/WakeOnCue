@@ -110,10 +110,11 @@ for them.
 ## Library upkeep (2026-11-02)
 
 - Deleting moves a recording to Recently Deleted for 30 days; its files stay until it is
-  permanently deleted, by the user or on the first launch after the period ends. Copies
+  permanently deleted, by the user or by two launches at least a day apart after the period
+  ends, so that setting the date forward cannot empty Recently Deleted at once. Copies
   already in a legacy S3 bucket are not removed, and the screen says so. Recordings still
-  being captured or finished cannot be deleted, and a recording being transcribed or
-  summarized cannot be permanently deleted until that ends.
+  being captured or finished cannot be deleted, and a recording being transcribed,
+  summarized or prepared for playback cannot be permanently deleted until that ends.
 - Very short recordings (under 10 s) offer Discard on the completion card.
 - A summary's title and overview are stored as separate metadata. A user or calendar title
   always wins; clearing a user title falls back to the summary's. Earlier summaries are

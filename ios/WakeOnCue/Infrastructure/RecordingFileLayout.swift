@@ -45,6 +45,14 @@ struct RecordingFileLayout: Sendable {
     return directory
   }
 
+  /// Where a recording's TXT and SRT exports wait to be shared. Being per recording, they can
+  /// be removed with it.
+  static func transcriptExportDirectory(recordingID: String) -> URL {
+    FileManager.default.temporaryDirectory
+      .appending(path: "transcript-exports", directoryHint: .isDirectory)
+      .appending(path: recordingID, directoryHint: .isDirectory)
+  }
+
   /// Removes everything stored for a recording. Removing files that are already gone succeeds.
   func removeFiles(recordingID: String) throws {
     guard !recordingID.isEmpty, recordingID != ".", recordingID != "..",
@@ -56,8 +64,10 @@ struct RecordingFileLayout: Sendable {
       root
       .appending(path: "recordings", directoryHint: .isDirectory)
       .appending(path: recordingID, directoryHint: .isDirectory)
-    guard FileManager.default.fileExists(atPath: directory.path) else { return }
-    try FileManager.default.removeItem(at: directory)
+    for folder in [directory, Self.transcriptExportDirectory(recordingID: recordingID)]
+    where FileManager.default.fileExists(atPath: folder.path) {
+      try FileManager.default.removeItem(at: folder)
+    }
   }
 
   func sourceAudioURL(recordingID: String) throws -> URL {

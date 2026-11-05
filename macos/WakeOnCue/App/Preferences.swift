@@ -69,6 +69,12 @@ final class Preferences {
   var onboarded: Bool { didSet { defaults.set(onboarded, forKey: "onboarded") } }
   /// Recording is paused until this time; `.distantFuture` pauses until the user resumes.
   var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: "pausedUntil") } }
+  /// Last time the recorder was known to be recording; cleared when it stops for a reason it
+  /// records itself (pause, sleep, an error). Still set on the next launch means the app was not
+  /// running for a while, and that time is recorded as a gap.
+  var recordingHeartbeat: Date? { didSet { defaults.set(recordingHeartbeat, forKey: "recordingHeartbeat") } }
+  /// The app quit normally after `recordingHeartbeat`, rather than crashing or losing power.
+  var quitCleanly: Bool { didSet { defaults.set(quitCleanly, forKey: "quitCleanly") } }
   /// Tell other people apart as 说话人 1, 2… without keeping voiceprints.
   var splitSpeakers: Bool { didSet { defaults.set(splitSpeakers, forKey: "splitSpeakers") } }
   /// Keep named people's voiceprints in the keychain and recognize them later.
@@ -98,6 +104,8 @@ final class Preferences {
     textRetentionDays = defaults.object(forKey: "textRetentionDays") as? Int ?? 0
     onboarded = defaults.bool(forKey: "onboarded")
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
+    recordingHeartbeat = defaults.object(forKey: "recordingHeartbeat") as? Date
+    quitCleanly = defaults.bool(forKey: "quitCleanly")
     splitSpeakers = defaults.bool(forKey: "splitSpeakers")
     rememberVoices = defaults.bool(forKey: "rememberVoices")
     autoSync = defaults.object(forKey: "autoSync") as? Bool ?? true

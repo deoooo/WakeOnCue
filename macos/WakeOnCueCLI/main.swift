@@ -16,6 +16,8 @@ let usage = """
     meeting <编号>                  一场会议的要点和完整转录
     export [日期] [--hour HH | --meeting 编号] [--format md|txt|srt]
                                    导出成文件内容，输出到标准输出；默认导出整天的 Markdown
+    health [--days N]               检查最近 N 天（默认 3）的全天录音：没有原因的空档、
+                                   有音频没转录、有转录没总结、回传进度
     help                           显示这段说明
 
   日期：今天（默认）、昨天、2026-11-04 或 11-04。
@@ -312,6 +314,13 @@ func run(_ raw: [String]) throws {
     }
     if args.json { throw UsageError(message: "export 不支持 --json，请用 --format 选择格式") }
     FileHandle.standardOutput.write(Data(Exporter.render(source, as: format).utf8))
+
+  case "health":
+    let reader = try Reader()
+    let days = max(1, args.options["days"].flatMap(Int.init) ?? 3)
+    let out = healthReport(store: reader.store, days: days)
+    if args.json { return try printJSON(out) }
+    printHealth(out, remote: reader.store.remoteSegmentCounts())
 
   default:
     throw UsageError(message: "不认识的命令：\(command)\n\n\(usage)")

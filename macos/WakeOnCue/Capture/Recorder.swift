@@ -4,6 +4,7 @@ import CoreAudio
 import Foundation
 import Observation
 import OSLog
+import UserNotifications
 
 /// Records all day: the microphone always, and the chosen meeting apps whenever they play
 /// sound. Restarts itself after device changes and sleep, pauses on request or when the disk
@@ -45,6 +46,11 @@ final class Recorder {
   @ObservationIgnored private var ticker: Task<Void, Never>?
   @ObservationIgnored private var restartTask: Task<Void, Never>?
   @ObservationIgnored private var observers: [NSObjectProtocol] = []
+  /// A pause or resume is in progress; a second toggle in the meantime is ignored.
+  @ObservationIgnored private var toggling = false
+  /// When the current pause began, for the "still paused" reminder.
+  @ObservationIgnored private var pausedSince: Date?
+  @ObservationIgnored private var pauseRemindersSent = 0
   /// Receives every converted buffer; the transcriber plugs in here.
   @ObservationIgnored let audioOut = AudioFanout()
   /// Called whenever capture stops, so the transcriber can finalize what it heard.
@@ -65,6 +71,7 @@ final class Recorder {
       onAudio: { buffer in audioOut.send(.meeting, buffer) })
     recoverOpenSegments()
     store.closeOpenGaps(at: .now)
+    recordDowntime()
     observeWorkspace()
   }
 
@@ -78,6 +85,7 @@ final class Recorder {
     }
     if let until = preferences.pausedUntil, until > .now {
       state = .paused(until: until)
+      pausedSince = store.marks(overlapping: DateInterval(start: .now, duration: 1)).first { $0.kind == .paused }?.start ?? .now
       startTicker()
       return
     }
@@ -113,6 +121,8 @@ final class Recorder {
       self.openGapID = nil
     }
     state = .recording
+    preferences.recordingHeartbeat = .now
+    preferences.quitCleanly = false
     startTicker()
     refreshMeetingAudio()
   }
@@ -121,18 +131,32 @@ final class Recorder {
     store.closeMarks(.paused, at: .now)
     store.addMark(.paused, start: .now, end: until == .distantFuture ? Date(timeIntervalSince1970: 4_102_444_800) : until)
     preferences.pausedUntil = until
+    preferences.recordingHeartbeat = nil
     stopCapture()
     state = .paused(until: until)
+    pausedSince = .now
+    pauseRemindersSent = 0
+    if until == .distantFuture { Self.requestNotificationPermission() }
     startTicker()
   }
 
   func resume() async {
     store.closeMarks(.paused, at: .now)
     preferences.pausedUntil = nil
+    pausedSince = nil
+    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Self.pauseReminderID])
     await start()
   }
 
+  /// ⌃⌥P and the toolbar button. Ignores a second toggle while one is still starting the
+  /// microphone, so a double trigger cannot leave recording paused right after resuming.
   func togglePause() async {
+    guard !toggling else {
+      Self.logger.notice("Ignored a pause toggle while another was in progress")
+      return
+    }
+    toggling = true
+    defer { toggling = false }
     if case .recording = state {
       pause(until: .distantFuture)
     } else {
@@ -140,7 +164,20 @@ final class Recorder {
     }
   }
 
+  /// All-day recording was switched off in Settings.
   func turnOff() {
+    preferences.recordingHeartbeat = nil
+    stopCapture()
+    state = .off
+  }
+
+  /// The app is quitting. Keeps the heartbeat, so the next launch records the time the app was
+  /// not running.
+  func quit() {
+    if state == .recording {
+      preferences.recordingHeartbeat = .now
+      preferences.quitCleanly = true
+    }
     stopCapture()
     state = .off
   }
@@ -165,6 +202,7 @@ final class Recorder {
   }
 
   private func fail(_ reason: String) {
+    preferences.recordingHeartbeat = nil
     stopCapture()
     state = .unavailable(reason: reason)
     if openGapID == nil { openGapID = store.openGap(start: .now, reason: reason) }
@@ -206,10 +244,15 @@ final class Recorder {
   private func everyThreeSeconds() async {
     switch state {
     case .recording:
+      preferences.recordingHeartbeat = .now
       refreshMeetingAudio()
       if let reason = diskBlocker() { fail(reason) }
     case .paused(let until):
-      if until <= .now { await resume() }
+      if until <= .now {
+        await resume()
+      } else if until == .distantFuture {
+        remindIfPausedLong()
+      }
     case .unavailable:
       // Retry quietly, e.g. after the user turns the microphone permission back on.
       if MicrophoneCapture.isAuthorized, diskBlocker() == nil { await start() }
@@ -289,6 +332,68 @@ final class Recorder {
     }
   }
 
+  // MARK: Time not recorded
+
+  /// The app was not running since the last heartbeat (quit, crash, power loss, restart).
+  private func recordDowntime() {
+    defer {
+      preferences.recordingHeartbeat = nil
+      preferences.quitCleanly = false
+    }
+    guard let gap = Self.downtime(heartbeat: preferences.recordingHeartbeat, quitCleanly: preferences.quitCleanly, now: .now)
+    else { return }
+    let id = store.openGap(start: gap.start, reason: gap.reason)
+    store.closeGap(id: id, end: gap.end)
+    Self.logger.notice("Recorded \(Int(gap.end.timeIntervalSince(gap.start)))s while the app was not running")
+  }
+
+  /// Gaps shorter than this are a normal relaunch, not worth showing.
+  nonisolated static let downtimeThreshold: TimeInterval = 60
+
+  nonisolated static func downtime(heartbeat: Date?, quitCleanly: Bool, now: Date) -> (start: Date, end: Date, reason: String)? {
+    guard let heartbeat, now.timeIntervalSince(heartbeat) >= downtimeThreshold else { return nil }
+    return (heartbeat, now, quitCleanly ? "WakeOnCue 没有运行" : "WakeOnCue 意外退出，或 Mac 关机、重启")
+  }
+
+  // MARK: Long pause reminder
+
+  nonisolated static let pauseReminderID = "paused-reminder"
+
+  /// Hours after a manual pause began at which to remind: 1, 3, 6, then every 6 hours.
+  nonisolated static func pauseReminderDue(pausedFor: TimeInterval, alreadySent: Int) -> Bool {
+    let hours: [Double] = [1, 3, 6]
+    let next = alreadySent < hours.count ? hours[alreadySent] : 6 + Double(alreadySent - hours.count + 1) * 6
+    return pausedFor >= next * 3_600
+  }
+
+  private func remindIfPausedLong() {
+    guard let pausedSince else { return }
+    let pausedFor = Date.now.timeIntervalSince(pausedSince)
+    guard Self.pauseReminderDue(pausedFor: pausedFor, alreadySent: pauseRemindersSent) else { return }
+    pauseRemindersSent += 1
+    let content = UNMutableNotificationContent()
+    content.title = "录音已暂停 \(Int(pausedFor / 3_600)) 小时"
+    content.body = "全天录音要手动继续。点菜单栏的 WakeOnCue，或按 ⌃⌥P 继续录音。"
+    content.categoryIdentifier = Self.pauseReminderCategory
+    let request = UNNotificationRequest(identifier: Self.pauseReminderID, content: content, trigger: nil)
+    UNUserNotificationCenter.current().add(request)
+    Self.logger.notice("Reminded that recording has been paused for \(Int(pausedFor))s")
+  }
+
+  nonisolated static let pauseReminderCategory = "paused"
+  nonisolated static let resumeAction = "resume"
+
+  private static func requestNotificationPermission() {
+    let center = UNUserNotificationCenter.current()
+    center.setNotificationCategories([
+      UNNotificationCategory(
+        identifier: pauseReminderCategory,
+        actions: [UNNotificationAction(identifier: resumeAction, title: "继续录音")],
+        intentIdentifiers: [])
+    ])
+    center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+  }
+
   // MARK: Sleep and wake
 
   private func observeWorkspace() {
@@ -297,6 +402,9 @@ final class Recorder {
       MainActor.assumeIsolated {
         guard let self, self.state == .recording else { return }
         self.stopCapture()
+        // Closed by `start()` after waking; a launch closes it if the Mac shut down instead.
+        if self.openGapID == nil { self.openGapID = self.store.openGap(start: .now, reason: "Mac 休眠或合盖") }
+        self.preferences.recordingHeartbeat = nil
       }
     })
     observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in

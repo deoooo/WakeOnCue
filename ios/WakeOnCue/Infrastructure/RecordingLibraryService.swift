@@ -11,15 +11,26 @@ struct RecordingLibrarySearchResult: Sendable {
 actor RecordingLibraryService {
   private let layout: RecordingFileLayout
   private let store: RecordingStore
+  /// Where audio waits for the paired Mac; nil for the app's own outbox.
+  private let macOutboxRoot: URL?
+  /// Where Watch audio arrives; nil for the app's own inbox.
+  private let watchInboxRoot: URL?
 
-  init(layout: RecordingFileLayout) throws {
+  init(layout: RecordingFileLayout, macOutboxRoot: URL? = nil, watchInboxRoot: URL? = nil) throws {
     self.layout = layout
+    self.macOutboxRoot = macOutboxRoot
+    self.watchInboxRoot = watchInboxRoot
     store = try RecordingStore(databaseURL: layout.databaseURL)
   }
 
-  init(layout: RecordingFileLayout, store: RecordingStore) {
+  init(
+    layout: RecordingFileLayout, store: RecordingStore, macOutboxRoot: URL? = nil,
+    watchInboxRoot: URL? = nil
+  ) {
     self.layout = layout
     self.store = store
+    self.macOutboxRoot = macOutboxRoot
+    self.watchInboxRoot = watchInboxRoot
   }
 
   func page(limit: Int, offset: Int) async throws -> [RecordingRecord] {
@@ -50,25 +61,74 @@ actor RecordingLibraryService {
     try await store.deletedRecordings()
   }
 
-  /// Files go first so a failure leaves the recording in Recently Deleted to retry, rather
-  /// than leaving audio on the iPhone that nothing in the app can reach.
+  /// Rows go first, in one transaction, so Recover can never return a recording with some of
+  /// its files gone. Files that fail to go here are removed by `removeFilesOfDeletedRecordings`.
   func deletePermanently(recordingID: String) async throws {
-    guard try await store.recording(id: recordingID).deletedAt != nil else {
-      throw RecordingStoreError.invalidData("Recording is not in Recently Deleted")
-    }
-    try layout.removeFiles(recordingID: recordingID)
     try await store.removeDeletedRecording(recordingID: recordingID)
+    try? layout.removeFiles(recordingID: recordingID)
+    // The outbox holds its own link to the audio, which would otherwise still reach the Mac.
+    MacOutbox.remove(appRecordingID: recordingID, root: macOutboxRoot)
+    // Late Watch segments of this recording would otherwise wait for the next import.
+    WatchSessionInbox.removeFolders(ofRecordings: [recordingID], root: watchInboxRoot)
   }
 
-  /// Permanently deletes recordings past the retention period. One that fails is retried
-  /// the next time this runs.
-  func purgeExpiredRecordings(now: Date = Date()) async throws {
-    for recording in try await store.deletedRecordings() {
-      guard let deletedAt = recording.deletedAt,
-        now.timeIntervalSince(deletedAt) >= RecordingStore.trashRetention
-      else { continue }
-      try? await deletePermanently(recordingID: recording.id)
+  /// Whether a recording's audio may go to the paired Mac. A Watch segment can be queued
+  /// before its recording exists, so an unknown recording is sent.
+  func macForwardingDisposition(recordingID: String) async -> MacOutbox.Disposition {
+    do {
+      return try await store.recording(id: recordingID).isDeleted ? .hold : .send
+    } catch RecordingStoreError.notFound {
+      return (try? await store.wasPermanentlyDeleted(recordingID: recordingID)) == true ? .discard : .send
+    } catch {
+      // Unsure is not a reason to send audio the user may have deleted; the next sync decides.
+      return .hold
     }
+  }
+
+  /// Removes what remains of permanently deleted recordings: files that failed to go, and
+  /// folders that late writes, such as a bookmark tag from the Watch, created again.
+  func removeFilesOfDeletedRecordings() async throws {
+    let recordingIDs = try await store.permanentlyDeletedRecordingIDs()
+    for recordingID in recordingIDs {
+      try? layout.removeFiles(recordingID: recordingID)
+    }
+    // Late Watch segments are queued for the Mac as they arrive, before anything can check them.
+    let deleted = Set(recordingIDs)
+    WatchSessionInbox.removeFolders(ofRecordings: deleted, root: watchInboxRoot)
+    for item in MacOutbox.items(root: macOutboxRoot)
+    where deleted.contains(MacOutbox.appRecordingID(for: item.info)) {
+      MacOutbox.remove(item)
+    }
+  }
+
+  /// Permanently deletes recordings past the retention period and returns their identifiers.
+  /// Deleting needs two runs a day apart, because the only clock here is one the user can set:
+  /// a date moved forward and back again deletes nothing. One that fails is retried next time.
+  @discardableResult
+  func purgeExpiredRecordings(now: Date = Date()) async throws -> [String] {
+    var purged: [String] = []
+    for recording in try await store.deletedRecordings() {
+      guard let deletedAt = recording.deletedAt, deletedAt <= now else {
+        try? await store.restartTrashRetention(recordingID: recording.id, now: now)
+        continue
+      }
+      guard now.timeIntervalSince(deletedAt) >= RecordingStore.trashRetention else {
+        if recording.trashExpirySeenAt != nil {
+          try? await store.setTrashExpirySeen(recordingID: recording.id, at: nil, now: now)
+        }
+        continue
+      }
+      guard let seenAt = recording.trashExpirySeenAt, seenAt <= now else {
+        try? await store.setTrashExpirySeen(recordingID: recording.id, at: now, now: now)
+        continue
+      }
+      guard now.timeIntervalSince(seenAt) >= RecordingStore.trashPurgeConfirmationDelay else {
+        continue
+      }
+      guard (try? await deletePermanently(recordingID: recording.id)) != nil else { continue }
+      purged.append(recording.id)
+    }
+    return purged
   }
 
   /// Names the recording after its summary. Metadata keeps the two values with the recording

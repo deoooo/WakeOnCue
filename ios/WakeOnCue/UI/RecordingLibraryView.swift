@@ -459,6 +459,10 @@ struct RecordingTitleEditor: View {
 
   @MainActor
   private func save() async {
+    guard recording.isTitleChange(title) else {
+      dismiss()
+      return
+    }
     isSaving = true
     defer { isSaving = false }
     do {
@@ -477,6 +481,12 @@ extension RecordingRecord {
     resolvedTitle ?? formattedStartDate(startedAt, language: language)
   }
 
+  /// The field starts with the automatic title. Saving that unchanged must not make it the
+  /// user's title, which a new summary could no longer replace.
+  func isTitleChange(_ edited: String) -> Bool {
+    edited.trimmingCharacters(in: .whitespacesAndNewlines) != (resolvedTitle ?? "")
+  }
+
   /// A recording still being captured or finished cannot be deleted.
   var canBeDeleted: Bool {
     ![.recording, .paused, .finishing].contains(status)
@@ -484,10 +494,13 @@ extension RecordingRecord {
 
   /// Whole days left in Recently Deleted, counting a partial day as one.
   func daysUntilPermanentDeletion(now: Date = Date()) -> Int {
-    guard let deletedAt else { return 0 }
+    let day: TimeInterval = 24 * 60 * 60
+    let retentionDays = RecordingStore.trashRetention / day
+    // An unreadable date restarts the period at the next purge.
+    guard let deletedAt else { return Int(retentionDays) }
     let remaining = deletedAt.addingTimeInterval(RecordingStore.trashRetention)
       .timeIntervalSince(now)
-    return max(0, Int((remaining / (24 * 60 * 60)).rounded(.up)))
+    return Int(min(retentionDays, max(0, (remaining / day).rounded(.up))))
   }
 
   func libraryStatusLabel(language: AppLanguage) -> String {
