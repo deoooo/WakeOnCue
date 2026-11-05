@@ -71,12 +71,6 @@ struct DayPage: View {
       RedoStatus(interval: dayInterval, engine: data.summary.map(\.engine)) {
         model.regenerateSummaries(in: dayInterval)
       }
-      if let destination = model.summaries.destination {
-        Label("总结由网关生成，转录文字会发送到 \(destination)。标为私人或已删除的时段不会发送。", systemImage: "arrow.up.forward.app")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .padding(.top, 2)
-      }
     }
     .padding(.vertical, 18)
     .padding(.horizontal, 20)
