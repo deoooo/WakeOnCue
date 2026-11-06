@@ -8,6 +8,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   private var keyMonitor: Any?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // The crash watchdog launches the executable directly. If the app is already running (or
+    // LaunchServices started a second copy), keep the first instance and exit this one cleanly.
+    if let bundleID = Bundle.main.bundleIdentifier,
+      NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains(where: {
+        $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
+      })
+    {
+      NSApp.terminate(nil)
+      return
+    }
     UNUserNotificationCenter.current().delegate = self
     Task { await model.launch() }
     keyMonitor = PlaybackKeys.install(model: model)
