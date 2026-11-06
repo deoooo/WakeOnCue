@@ -73,9 +73,4 @@ extension AppModel {
   func exportDay() { ExportPanel.run(.day(ui.day, store: store)) }
 
   func exportHour(_ start: Date) { ExportPanel.run(.hour(start, store: store)) }
-
-  func exportMeeting(_ id: Int64) {
-    guard let meeting = store.meeting(id: id) else { return }
-    ExportPanel.run(.meeting(meeting, store: store))
-  }
 }

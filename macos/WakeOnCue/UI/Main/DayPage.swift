@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// One day: the summary on top, then key events, the activity chart and every hour.
+/// One day: the summary on top, the activity chart and every hour.
 struct DayPage: View {
   @Environment(AppModel.self) private var model
   let data: DayData
@@ -12,12 +12,9 @@ struct DayPage: View {
           IssueBanner()
           VoiceHint(data: data)
           headline
-          HStack(alignment: .top, spacing: 36) {
-            details.frame(minWidth: 300, maxWidth: .infinity, alignment: .leading).layoutPriority(2)
-            events.frame(minWidth: 180, maxWidth: 280, alignment: .leading)
-          }
-          .padding(.top, 26)
-          .padding(.horizontal, 4)
+          details
+            .padding(.top, 26)
+            .padding(.horizontal, 4)
           ActivityChart(data: data)
             .padding(.top, 34)
             .padding(.horizontal, 4)
@@ -104,7 +101,7 @@ struct DayPage: View {
     .controlSize(.small)
     .fixedSize()
     .disabled(silent || model.refiner.isRetranscribing(dayInterval))
-    .help("整天的每一小时重新转录，完成后重新生成每小时总结、当天总结和会议要点")
+    .help("整天的每一小时重新转录，完成后重新生成每小时总结和当天总结")
     .accessibilityLabel("重新转录并总结整天")
   }
 
@@ -126,33 +123,6 @@ struct DayPage: View {
       Text("点时间可查看原话。标为私人或已删除的时段不进总结。")
         .font(.caption)
         .foregroundStyle(.secondary)
-    }
-  }
-
-  @ViewBuilder private var events: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("重点事件").font(.system(size: 15, weight: .semibold))
-      if data.meetings.isEmpty {
-        Text("会议和标成会议的对话会列在这里。").font(.callout).foregroundStyle(.secondary)
-      }
-      ForEach(data.meetings) { meeting in
-        Button {
-          model.openMeeting(meeting.id)
-        } label: {
-          VStack(alignment: .leading, spacing: 1) {
-            Text(TimeText.range(meeting.start, meeting.end)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
-            Text(meeting.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.primary)
-          }
-          .padding(.vertical, 6)
-          .padding(.horizontal, 10)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(model.ui.meetingID == meeting.id ? Color.soft : .clear)
-          .overlay(alignment: .leading) { Rectangle().fill(Color.event).frame(width: 3) }
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("打开整场：要点、完整转录和纪要")
-      }
     }
   }
 }

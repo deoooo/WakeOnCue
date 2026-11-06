@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full-text search over every transcript, grouped by day and meeting, with the surrounding
+/// Full-text search over every transcript, grouped by day and hour, with the surrounding
 /// conversation for the selected hit. Private and deleted ranges never show up.
 struct SearchPage: View {
   @Environment(AppModel.self) private var model
@@ -33,14 +33,14 @@ struct SearchPage: View {
         .fixedSize()
         Picker("说话人", selection: $speaker) {
           Text("说话人：全部").tag(Speaker?.none)
-          ForEach([Speaker.me, .remote, .other], id: \.self) { Text($0.label).tag(Speaker?.some($0)) }
+          ForEach([Speaker.me, .other], id: \.self) { Text($0.label).tag(Speaker?.some($0)) }
         }
         .fixedSize()
-        .help("我、会议对方、他人")
+        .help("我、他人")
         Picker("来源", selection: $channel) {
           Text("来源：全部").tag(AudioChannel?.none)
           Text("Mac 麦克风").tag(AudioChannel?.some(.microphone))
-          Text("会议 App").tag(AudioChannel?.some(.meeting))
+          Text("手表 / iPhone").tag(AudioChannel?.some(.remote))
         }
         .fixedSize()
       }
@@ -102,9 +102,8 @@ struct SearchPage: View {
   private func group(_ hits: [Sentence]) -> [Group] {
     var groups: [Group] = []
     for hit in hits {
-      let meeting = model.store.meetings(overlapping: DateInterval(start: hit.start, duration: 1)).first
-      let key = meeting.map { "m\($0.id)" } ?? "h\(Int(Calendar.current.hourStart(hit.start).timeIntervalSince1970))"
-      let title = TimeText.relativeDay(hit.start) + " · " + (meeting?.title ?? "\(TimeText.clock(Calendar.current.hourStart(hit.start))) 这一小时")
+      let key = "h\(Int(Calendar.current.hourStart(hit.start).timeIntervalSince1970))"
+      let title = TimeText.relativeDay(hit.start) + " · \(TimeText.clock(Calendar.current.hourStart(hit.start))) 这一小时"
       if let index = groups.firstIndex(where: { $0.id == key }) {
         groups[index] = Group(id: key, title: title, hits: groups[index].hits + [hit])
       } else {
@@ -116,15 +115,13 @@ struct SearchPage: View {
 
   @ViewBuilder private func context(for hit: Sentence?, query: String) -> some View {
     if let hit {
-      let meeting = model.store.meetings(overlapping: DateInterval(start: hit.start, duration: 1)).first
       let hidden = model.store.marks()
       let around = model.store.sentences(in: DateInterval(start: hit.start.addingTimeInterval(-90), end: hit.start.addingTimeInterval(90)))
         .filter { s in !hidden.contains { $0.covers(s.start) } }
       VStack(alignment: .leading, spacing: 0) {
         VStack(alignment: .leading, spacing: 2) {
-          Text(meeting?.title ?? "\(TimeText.clock(Calendar.current.hourStart(hit.start))) 这一小时").font(.system(size: 15, weight: .semibold))
-          Text(meeting.map { "\(TimeText.relativeDay($0.start)) \(TimeText.range($0.start, $0.end)) · \(Meetings.sourceText($0))" }
-            ?? TimeText.relativeDay(hit.start))
+          Text("\(TimeText.clock(Calendar.current.hourStart(hit.start))) 这一小时").font(.system(size: 15, weight: .semibold))
+          Text(TimeText.relativeDay(hit.start))
             .font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)

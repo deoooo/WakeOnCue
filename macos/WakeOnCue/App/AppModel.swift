@@ -17,7 +17,6 @@ final class AppModel {
   let voices: Voices
   let sync: SyncServer
   let merger: Merger
-  let meetings: Meetings
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
   @ObservationIgnored var openSettings: (() -> Void)?
@@ -37,7 +36,6 @@ final class AppModel {
     transcription = Transcription(store: store, recorder: recorder)
     player = Player(store: store)
     summaries = Summaries(store: store, preferences: preferences)
-    meetings = Meetings(store: store, summaries: summaries)
     refiner = Refiner(store: store)
     sync = SyncServer(store: store, preferences: preferences)
     merger = Merger(store: store, preferences: preferences, summaries: summaries)
@@ -61,27 +59,20 @@ final class AppModel {
       voices?.enqueue($0)
     }
     recorder.onCaptureStopped = { [weak transcription] in transcription?.flush() }
-    // New words make the old summaries wrong: redo the hours and meetings they fall in.
-    // Each hour is summarized again as soon as its sentences are done; the day summary and the
-    // meetings follow once the whole stretch is.
+    // New words make the old summaries wrong: redo the hours they fall in.
+    // Each hour is summarized again as soon as its sentences are done; the day summary follows.
     summaries.holdsDays = { [weak refiner] in !(refiner?.retranscribing.isEmpty ?? true) }
     refiner.onHourRetranscribed = { [weak self] hour in
       self?.summaries.regenerate(hour: hour)
     }
-    refiner.onRetranscribed = { [weak self] interval, starts, all in
-      guard let self else { return }
-      for meeting in store.meetings(overlapping: interval)
-      where all || starts.contains(where: { $0 >= meeting.start && $0 < max(meeting.end, meeting.start.addingTimeInterval(1)) }) {
-        summaries.regenerateMeeting(meeting.id)
-      }
-      summaries.releaseDays()
+    refiner.onRetranscribed = { [weak self] _, _, _ in
+      self?.summaries.releaseDays()
     }
   }
 
-  /// Every summary of the stretch again: its hours, its day and its meetings.
+  /// Every summary of the stretch again: its hours and its day.
   func regenerateSummaries(in interval: DateInterval) {
     summaries.invalidate(interval)
-    for meeting in store.meetings(overlapping: interval) { summaries.regenerateMeeting(meeting.id) }
   }
 
   /// Development aid: `WAKEONCUE_VIEW_ONLY` (with `WAKEONCUE_DATA_DIR`) opens a library to look
@@ -116,12 +107,11 @@ final class AppModel {
       return
     }
     await recorder.startIfAllowed()
-    await voices.repairLegacyIfNeeded()
+    if preferences.onboarded && preferences.alwaysRecord { CrashRecovery.registerIfNeeded() }
     refiner.use(models.active, service: preferences.transcriptionService)
     transcription.setSentencesRetranscribed(models.active != nil)
     await transcription.start()
     summaries.start()
-    meetings.start()
     startHousekeeping()
     sync.onSegment = { [weak merger] _, _ in Task { await merger?.mergePending() } }
     // Important and to-do marks steer the day summary, so the days they fall on are redone.
@@ -172,21 +162,6 @@ final class AppModel {
     } else {
       reveal(hour: hour)
     }
-  }
-
-  func openMeeting(_ id: Int64) {
-    ui.asking = false
-    ui.meetingID = id
-    ui.draftingMinutes = false
-  }
-
-  func closeMeeting() {
-    ui.meetingID = nil
-    ui.draftingMinutes = false
-  }
-
-  func markMeeting(in hour: DateInterval) {
-    if let id = meetings.markMeeting(in: hour) { openMeeting(id) }
   }
 
   func reveal(hour: Date) {

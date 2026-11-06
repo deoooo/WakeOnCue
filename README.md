@@ -33,8 +33,7 @@ iPhone 不再上传到 S3。旧版本已备份到 S3 的录音，仍可用这台
 - 地点：到达或离开设定地点时结束录音，到达时提醒一键开始（iOS 不允许后台自动打开麦克风）；
 - 日历（默认关闭）：会议期间开始的录音自动用会议名命名并记下参会人；可在会议开始时（或提前 N 分钟）收到提醒，一键开始录音；可限定日历、只算有其他参会人或视频链接的会议；会后在录音详情页把摘要、要点和待办整理成纪要，经邮件或分享面板发给参会人（由你确认发送）；
 - 系统自适应浅深色、大字体布局；
-- macOS 菜单栏 App（v1）：一键启停本机 Gateway 与 Mac Processor、显示运行状态、登录时打开；线上会议（Zoom、Teams、飞书）同时录麦克风（我）和系统声音（对方），先写本地文件，再作为两个声道会话实时转写，小窗口显示实时文字；
-- Mac Processor（只供 Mac App 使用）：Qwen3-ASR-1.7B 实时初稿/原位修订（MLX Whisper 回退）+ sherpa-onnx 说话人分割、会话内聚类；
+- macOS 原生 App：全天麦克风录音、本机实时转录、每小时和每天总结、点句回放、搜索、导出，以及手表/iPhone 回传合并；不录线上会议的系统声音。
 - Swift 核心单元测试和真实 AAC/M4A 验证。
 
 详细说明：
@@ -49,27 +48,9 @@ iPhone 不再上传到 S3。旧版本已备份到 S3 的录音，仍可用这台
 - [提问与 MCP](docs/mcp.md)
 - [第三方语音识别与 AI 服务](docs/ai-providers.md)
 - [Apple Watch 接入](docs/apple-watch.md)
+- [macOS App](macos/README.md)
 
 连接 iPhone 后运行 `ios/install_device.sh <device-id-or-udid>` 完成构建和安装。首次使用只需在 Xcode 选择自己的 Development Team，并在 iPhone 上允许麦克风访问。
-
-## Mac 菜单栏 App
-
-`ios/project.yml` 里的 `WakeOnCueMac` target（代码在 `ios/WakeOnCueMac/`，macOS 15+）是一个只在菜单栏显示的 App：
-
-- **实时服务**：启动或停止本机 Python Gateway（端口 8090，只监听本机）和 Mac Processor，与 `run_local_mac_stack.sh` 相同；通过 `/health` 显示 Gateway 是否在线、Processor 是否已注册。Gateway 令牌沿用钥匙串里 `setup_mac.sh` 创建的那一项，没有时自动生成。终端里已经启动的 Gateway 也会被识别，只监控不接管。
-- **登录时打开**（`SMAppService`）与「打开 App 时启动实时服务」两个开关。
-- **录制线上会议**：麦克风标为「我」，Core Audio process tap 抓到的系统声音标为「对方」，不需要声纹。两路先写入 `~/Library/Application Support/WakeOnCue/Meetings/<recording_id>/microphone.caf` 与 `system.caf`，停止后合成 `meeting.m4a` 并保存 `transcript.json`；实时服务不可用时只录本地。可选「区分对方说话人」（默认关闭，匿名说话人 1 / 2，不保存声纹）。
-- v1 不内置 Python：App 在自己所在的代码目录（及其上级，git worktree 会复用主 checkout 的 `.venv`）或用户选择的文件夹里寻找 `server/.venv`、`.runtime/asr-qwen/.venv`，缺失时提示运行 `server/scripts/setup_mac.sh`。日志在 `server/.runtime/mac-app/`。
-
-```bash
-cd ios
-xcodebuild -project WakeOnCue.xcodeproj -scheme WakeOnCueMac -destination 'platform=macOS' build
-xcodebuild -project WakeOnCue.xcodeproj -scheme WakeOnCueMac -destination 'platform=macOS' test
-```
-
-单元测试覆盖分帧与写盘、混音导出和双声道字幕合并。另有两个默认跳过的集成测试：`~/Library/Caches/com.deoooo.WakeOnCue.mac.e2e.json`（`{"gateway": "...", "token": "..."}`）存在时把两个声道流到真实 Gateway；`~/Library/Caches/com.deoooo.WakeOnCue.mac.host-e2e` 存在时用本机 Python 环境真实启停整套服务。
-
-首次录音时 macOS 会分别请求麦克风和「录屏与系统录音」（系统声音）权限。
 
 ## 打开 iOS 工程
 

@@ -74,13 +74,6 @@ final class Store {
         day REAL PRIMARY KEY, headline TEXT NOT NULL, details TEXT NOT NULL, generated REAL NOT NULL)
       """)
     try db.execute("""
-      CREATE TABLE IF NOT EXISTS meeting (
-        id INTEGER PRIMARY KEY, title TEXT NOT NULL, start REAL NOT NULL, end REAL NOT NULL,
-        origin TEXT NOT NULL, calendar_id TEXT, calendar_start REAL, calendar_end REAL, app TEXT,
-        attendees TEXT NOT NULL, points TEXT NOT NULL, minutes TEXT, points_generated REAL,
-        adjusted INTEGER NOT NULL DEFAULT 0)
-      """)
-    try db.execute("""
       CREATE TABLE IF NOT EXISTS remote_segment (
         id TEXT PRIMARY KEY, device TEXT NOT NULL, source TEXT NOT NULL, recording TEXT NOT NULL,
         idx INTEGER NOT NULL, start REAL NOT NULL, duration REAL NOT NULL, path TEXT NOT NULL,
@@ -117,7 +110,7 @@ final class Store {
         received REAL NOT NULL)
       """)
     try db.execute("CREATE INDEX IF NOT EXISTS device_mark_start ON device_mark(start)")
-    for table in ["hour_summary", "day_summary", "meeting"] {
+    for table in ["hour_summary", "day_summary"] {
       let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
       if !columns.contains("engine") { try db.execute("ALTER TABLE \(table) ADD COLUMN engine TEXT") }
     }
@@ -501,74 +494,6 @@ final class Store {
         day: row.date(0), headline: headline, details: row.json(2, as: [CitedLine].self) ?? [],
         generatedAt: row.date(3), engine: row.isNull(4) ? nil : row.text(4))
     }.first
-  }
-
-  // MARK: Meetings
-
-  private static let meetingColumns =
-    "id, title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted, engine"
-
-  private static func meeting(_ row: SQLiteDatabase.Row) -> Meeting? {
-    Meeting(
-      id: row.int(0), title: row.text(1), start: row.date(2), end: row.date(3),
-      origin: Meeting.Origin(rawValue: row.text(4)) ?? .manual,
-      calendarEventID: row.isNull(5) ? nil : row.text(5),
-      calendarStart: row.optionalDate(6), calendarEnd: row.optionalDate(7),
-      app: row.isNull(8) ? nil : row.text(8),
-      attendees: row.json(9, as: [Attendee].self) ?? [],
-      points: row.json(10, as: [CitedLine].self) ?? [],
-      minutes: row.isNull(11) ? nil : row.text(11),
-      pointsGeneratedAt: row.optionalDate(12),
-      userAdjusted: row.int(13) != 0,
-      pointsEngine: row.isNull(14) ? nil : row.text(14))
-  }
-
-  func meetings(overlapping interval: DateInterval) -> [Meeting] {
-    fetch(
-      "SELECT \(Self.meetingColumns) FROM meeting WHERE start < ? AND end > ? ORDER BY start",
-      [.date(interval.end), .date(interval.start)], map: Self.meeting)
-  }
-
-  func meeting(id: Int64) -> Meeting? {
-    fetch("SELECT \(Self.meetingColumns) FROM meeting WHERE id = ?", [.int(id)], map: Self.meeting).first
-  }
-
-  func meeting(calendarEventID: String, day: Date) -> Meeting? {
-    let interval = Calendar.current.dateInterval(of: .day, for: day)!
-    return fetch(
-      "SELECT \(Self.meetingColumns) FROM meeting WHERE calendar_id = ? AND start < ? AND end > ?",
-      [.text(calendarEventID), .date(interval.end.addingTimeInterval(86_400)), .date(interval.start.addingTimeInterval(-86_400))],
-      map: Self.meeting
-    ).first
-  }
-
-  @discardableResult
-  func saveMeeting(_ meeting: Meeting) -> Int64 {
-    let values: [SQLiteDatabase.Value] = [
-      .text(meeting.title), .date(meeting.start), .date(meeting.end), .text(meeting.origin.rawValue),
-      meeting.calendarEventID.map { .text($0) } ?? .null, .optionalDate(meeting.calendarStart),
-      .optionalDate(meeting.calendarEnd), meeting.app.map { .text($0) } ?? .null,
-      .json(meeting.attendees), .json(meeting.points), meeting.minutes.map { .text($0) } ?? .null,
-      .optionalDate(meeting.pointsGeneratedAt), .int(meeting.userAdjusted ? 1 : 0),
-      meeting.pointsEngine.map { .text($0) } ?? .null,
-    ]
-    if meeting.id == 0 {
-      run(
-        "INSERT INTO meeting (title, start, end, origin, calendar_id, calendar_start, calendar_end, app, attendees, points, minutes, points_generated, adjusted, engine) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        values)
-      changed()
-      return db.lastInsertID
-    }
-    run(
-      "UPDATE meeting SET title = ?, start = ?, end = ?, origin = ?, calendar_id = ?, calendar_start = ?, calendar_end = ?, app = ?, attendees = ?, points = ?, minutes = ?, points_generated = ?, adjusted = ?, engine = ? WHERE id = ?",
-      values + [.int(meeting.id)])
-    changed()
-    return meeting.id
-  }
-
-  func deleteMeeting(id: Int64) {
-    run("DELETE FROM meeting WHERE id = ?", [.int(id)])
-    changed()
   }
 
   // MARK: Audio from other devices

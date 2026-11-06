@@ -27,7 +27,7 @@ struct CommandLineSection: View {
         }
       } label: {
         Text("命令行工具 wakeoncue")
-        Text("在终端或 Claude 等 AI 工具里只读查询总结、转录和会议，例如 wakeoncue day、wakeoncue search 告警 --json。不包含标为私人或已删除的时段。")
+        Text("在终端或 Claude 等 AI 工具里只读查询总结和转录，例如 wakeoncue day、wakeoncue search 告警 --json。不包含标为私人或已删除的时段。")
       }
       if let message {
         Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)

@@ -47,7 +47,7 @@
             model.ui.expandedHours.insert(start)
             model.ui.fullHours.insert(start)
           }
-        // "export day md", "export 9 srt", "export meeting txt": writes what 导出 would save to
+        // "export day md", "export 9 srt": writes what 导出 would save to
         // <path>.export.<format>, without the save panel.
         case "export":
           let words = argument.split(separator: " ").map(String.init)
@@ -56,7 +56,6 @@
           let source: ExportSource? =
             switch words.first {
             case "day": .day(day, store: model.store)
-            case "meeting": model.ui.meetingID.flatMap(model.store.meeting(id:)).map { .meeting($0, store: model.store) }
             default: .hour(day.addingTimeInterval(Double(Int(words.first ?? "") ?? 0) * 3_600), store: model.store)
             }
           if let source {
@@ -73,7 +72,6 @@
           try? lines.joined(separator: "\n").write(toFile: path + ".menus", atomically: true, encoding: .utf8)
         case "pause": model.player.pause()
         case "tracks": model.ui.showTracks.toggle()
-        case "meeting": model.openMeeting(Int64(argument) ?? 0)
         case "download": model.models.download(.qwen3_0_6B)
         case "pausedl": model.models.pause(.qwen3_0_6B)
         case "pairqr":
@@ -115,9 +113,6 @@
             "\(parts[0], privacy: .public) \(interval, privacy: .public) with \(model.refiner.retranscribeName, privacy: .public) / \(model.summaries.engineName ?? "-", privacy: .public)")
         case "scrollhour": model.reveal(hour: Calendar.current.startOfDay(for: model.ui.day).addingTimeInterval(Double(Int(argument) ?? 0) * 3_600))
         case "stoptranscribe": model.refiner.cancelRetranscription()
-        case "markmeeting": model.markMeeting(in: DateInterval(start: hour, duration: 3_600))
-        case "draft": model.ui.draftingMinutes = true
-        case "close": model.closeMeeting()
         case "search": model.ui.searchText = argument; model.ui.submittedSearch = argument
         case "deleted": model.ui.page = .deleted
         case "day": model.ui.moveDay(by: Int(argument) ?? 0)

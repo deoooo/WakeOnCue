@@ -7,8 +7,7 @@ extension ExportSource {
     let range = DateInterval(start: start, end: calendar.date(byAdding: .day, value: 1, to: start)!)
     return ExportSource(
       scope: .day, range: range, sentences: store.sentences(in: range), marks: store.marks(overlapping: range),
-      daySummary: store.daySummary(for: start), hourSummaries: Array(store.hourSummaries(in: range).values),
-      meetings: store.meetings(overlapping: range))
+      daySummary: store.daySummary(for: start), hourSummaries: Array(store.hourSummaries(in: range).values))
   }
 
   static func hour(_ hour: Date, store: Store, calendar: Calendar = .current) -> ExportSource {
@@ -16,11 +15,5 @@ extension ExportSource {
     return ExportSource(
       scope: .hour, range: range, sentences: store.sentences(in: range), marks: store.marks(overlapping: range),
       hourSummaries: Array(store.hourSummaries(in: range).values))
-  }
-
-  static func meeting(_ meeting: Meeting, store: Store) -> ExportSource {
-    let range = DateInterval(start: meeting.start, end: max(meeting.end, meeting.start))
-    return ExportSource(
-      scope: .meeting(meeting), range: range, sentences: store.sentences(in: range), marks: store.marks(overlapping: range))
   }
 }

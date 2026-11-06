@@ -16,9 +16,6 @@ struct DayData {
     let interval: DateInterval
     let state: HourState
     let speechMinutes: Double
-    /// Share of the speech that belongs to a meeting, 0...1.
-    let meetingShare: Double
-    let meetings: [Meeting]
     let summary: HourSummary?
     let sentences: [Sentence]
     /// Watch and iPhone marks that start in this hour, outside private and deleted time.
@@ -39,7 +36,6 @@ struct DayData {
   let hours: [Hour]
   /// Hours that get a row: anything recorded, marked or missed, from the first to the last.
   let rows: [Hour]
-  let meetings: [Meeting]
   let summary: DaySummary?
   let visibleDetails: [CitedLine]
   let headlineCites: [Int64]
@@ -58,7 +54,6 @@ struct DayData {
     let hidden = { (date: Date) in marks.contains { $0.covers(date) } }
     let sentences = store.sentences(in: interval).filter { !hidden($0.start) }
     let summaries = store.hourSummaries(in: interval)
-    let meetings = store.meetings(overlapping: interval).filter { !hidden($0.start) }
     let deviceMarks = store.deviceMarks(overlapping: interval).filter { !hidden($0.start) }
 
     let hours = calendar.hours(of: day).map { hour -> Hour in
@@ -76,13 +71,8 @@ struct DayData {
         else if let gap, !recorded { .gap(Self.gapText(gap, hour: hour)) }
         else if recorded { .quiet }
         else { .none }
-      let inMeetings = meetings.filter { $0.start < hour.end && $0.end > hour.start }
-      let meetingSpeech = inHour.filter { sentence in inMeetings.contains { $0.start <= sentence.start && sentence.start < $0.end } }
-        .reduce(0) { $0 + max(1, $1.end.timeIntervalSince($1.start)) } / 60
       return Hour(
-        interval: hour, state: state, speechMinutes: speech,
-        meetingShare: speech > 0 ? min(1, meetingSpeech / speech) : 0,
-        meetings: inMeetings, summary: summaries[hour.start], sentences: inHour,
+        interval: hour, state: state, speechMinutes: speech, summary: summaries[hour.start], sentences: inHour,
         deviceMarks: state == .privateHour || state == .deleted ? [] : deviceMarks.filter { $0.start >= hour.start && $0.start < hour.end })
     }
     let shown = hours.filter { $0.state != .none || !$0.deviceMarks.isEmpty }
@@ -97,14 +87,36 @@ struct DayData {
     // A summary line is dropped as soon as any of its sources is hidden or gone.
     let visible = { (line: CitedLine) in !line.cites.isEmpty && line.cites.allSatisfy { byID[$0] != nil } }
     let summary = store.daySummary(for: start)
-    let recorded = segments.filter { $0.channel == .microphone }.reduce(0) {
-      $0 + min($1.end, interval.end).timeIntervalSince(max($1.start, interval.start))
-    }
     return DayData(
-      day: start, hours: hours, rows: rows, meetings: meetings, summary: summary,
+      day: start, hours: hours, rows: rows, summary: summary,
       visibleDetails: summary?.details.filter(visible) ?? [],
       headlineCites: summary?.headline.cites.filter { byID[$0] != nil } ?? [],
-      recordedSeconds: recorded, segments: segments, marks: marks, sentencesByID: byID)
+      recordedSeconds: recordedDuration(segments: segments, in: interval),
+      segments: segments, marks: marks, sentencesByID: byID)
+  }
+
+  /// Total time covered by any audio, merging overlapping Mac and forwarded segments so a Watch
+  /// recording that fills a Mac gap is not counted twice.
+  static func recordedDuration(segments: [AudioSegment], in interval: DateInterval) -> TimeInterval {
+    let ranges = segments.map { DateInterval(start: max($0.start, interval.start), end: min($0.end, interval.end)) }
+      .filter { $0.duration > 0 }
+      .sorted { $0.start < $1.start }
+    var total: TimeInterval = 0
+    var current: DateInterval?
+    for range in ranges {
+      guard let open = current else {
+        current = range
+        continue
+      }
+      if range.start <= open.end {
+        current = DateInterval(start: open.start, end: max(open.end, range.end))
+      } else {
+        total += open.duration
+        current = range
+      }
+    }
+    if let current { total += current.duration }
+    return total
   }
 
   private static func gapText(_ gap: CaptureGap, hour: DateInterval) -> String {
@@ -117,8 +129,4 @@ struct DayData {
   func sentence(_ id: Int64) -> Sentence? { sentencesByID[id] }
 
   func hour(containing date: Date) -> Hour? { hours.first { $0.interval.contains(date) } }
-
-  func sentences(in meeting: Meeting) -> [Sentence] {
-    hours.flatMap(\.sentences).filter { $0.start >= meeting.start && $0.start < meeting.end }
-  }
 }

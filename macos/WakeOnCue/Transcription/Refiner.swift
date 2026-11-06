@@ -8,7 +8,7 @@ import OSLog
 /// activity detection; the better text replaces the live one, while times and speakers stay.
 ///
 /// "重新转录" runs a stretch of time again with whatever is chosen now: the downloaded model or
-/// service, or Apple speech when none is. Once a stretch is done, the hours and meetings whose
+/// service, or Apple speech when none is. Once a stretch is done, the hours whose
 /// words changed are handed to `onRetranscribed`, so their summaries follow the new words.
 ///
 /// Work that has not been done yet is kept in the database (`refine_attempts`, `refine_next`,
@@ -51,7 +51,7 @@ final class Refiner {
   /// changed, or the whole stretch was asked to be summarized again.
   @ObservationIgnored var onHourRetranscribed: ((Date) -> Void)?
   /// A finished or stopped stretch, the starts of the sentences whose words changed, and whether
-  /// everything in it (meetings too) should be summarized again.
+  /// everything in it should be summarized again.
   @ObservationIgnored var onRetranscribed: ((DateInterval, [Date], Bool) -> Void)?
   @ObservationIgnored private var summarizeAll: Set<DateInterval> = []
   @ObservationIgnored private var batchStarts: [DateInterval: [Date]] = [:]

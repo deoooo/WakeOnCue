@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		057DC271DC7A756AA99C8953 /* ThirdPartyAITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */; };
-		0613C041BE30DBB585D12CB3 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 11B4A8475A46E49F4252083D /* WakeOnCueCore */; };
+		059B100D06CF3261EC7F49F3 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F3E38A3B7866C99BD49C34 /* SyncProtocol.swift */; };
 		0893E7F83FEFD4DA404A0AB0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2599C2E999A7DC633B162D22 /* Assets.xcassets */; };
 		0B06350E90B3DDB84D6F2BD3 /* RecordingAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */; };
 		0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */; };
@@ -17,7 +17,6 @@
 		12A9B9EEB60F435DF65D50AB /* OnDeviceIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94E0BAC6540587DC81151E7 /* OnDeviceIntelligence.swift */; };
 		13FFD4ADDAFC7A24C5C6DA8D /* MeetingCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35F0BC2386F45353193F618 /* MeetingCalendar.swift */; };
 		15DABFCCBEA2D664D8135B84 /* MacLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A59FB09C5DA2D04DF6AAA12 /* MacLink.swift */; };
-		18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */; };
 		1F3E39D44A1C41DFAA117050 /* MeetingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */; };
 		1F707DFDC8FF1C20063D67B4 /* AppLaunchPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D0C2608E3102F030635AF0 /* AppLaunchPathTests.swift */; };
 		1F95FD0B7CEA6494AA98C2D2 /* TranscriptFollowPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */; };
@@ -31,11 +30,9 @@
 		2A8610AB1AF7A3586F04A4A6 /* RecordingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81F7307DD7F72D8760C28A1 /* RecordingLibraryView.swift */; };
 		2DBD994F5A1A4F58D14958D0 /* WatchSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */; };
 		3171964153B1D10762B0D817 /* RecordingLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */; };
-		31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */; };
 		33438C5A1D871E0E6A4EA101 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50518C75DBA05FB9CA7481EF /* SegmentWriter.swift */; };
 		3AE9B935CA1890C7062EF162 /* WatchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20889E7DF5CAAFCC9426C80 /* WatchBridgeTests.swift */; };
 		3D6088080012CF83F5AF8A3F /* AudioFileImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65E1A987A93274405990977 /* AudioFileImporter.swift */; };
-		3DD22E6C84FA5BA69FE68A0C /* MeetingRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594CC2666FFD10327B58885 /* MeetingRecorder.swift */; };
 		3EBC44400AD284B01FFE86D5 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
 		412F44512C0CFB9E5F0B32AD /* MacLinkSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */; };
 		4621521D19A9D66917FB326F /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF42E5FFA89E1AC2CCEF9139 /* AudioCaptureService.swift */; };
@@ -46,7 +43,6 @@
 		4DF281C33F88AD3E15421D24 /* WakeOnCueWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F3DA1ED4E1BBE549B1BA0175 /* WakeOnCueWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4EF21E4EDA824902AE71BBF2 /* RecordingLibrarySearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE5A4F6E1123C866C22B26B /* RecordingLibrarySearchTests.swift */; };
 		50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBD3411560A1F6277CC54CD /* WatchBridgeProtocol.swift */; };
-		522482754ECDB7F7EED9FB6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */; };
 		53CD5F4C453E36D552D5B823 /* RecordingIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */; };
 		54745C0C8A403912F0CFD139 /* CalendarAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693665B632273E1810A1B3F9 /* CalendarAutomation.swift */; };
 		5EDDBA01D724627D9BA91347 /* WatchAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549316D5BA7AB969C1FA358D /* WatchAudioRecorder.swift */; };
@@ -55,18 +51,14 @@
 		620646DB5F219098697F6F06 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50518C75DBA05FB9CA7481EF /* SegmentWriter.swift */; };
 		6C53F973EF070EEAB3756AA5 /* SegmentWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFC752FB7792BDD85D142C9 /* SegmentWriterTests.swift */; };
 		6CD45D96409928D81E97F2C0 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50518C75DBA05FB9CA7481EF /* SegmentWriter.swift */; };
-		6D52E05F042A6D470D9629EA /* MacAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */; };
 		6F05CED013A1AF8884D57F5F /* RecordingCompletionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */; };
-		6FA971851ECD7F66B49FC27F /* ServerCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */; };
 		72C7F91E8D3B08750F13990D /* RecordingStatusPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */; };
-		772ECED326406316A13A2A47 /* GatewayToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01ED94A406F296B5E9C800E /* GatewayToken.swift */; };
 		7793B8A5CCB586C6201FD25E /* RecordingStorageStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */; };
 		77D9A9DA2BB8B7A0E507A3EE /* PhoneWatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B96E27AA3E894679484BCE /* PhoneWatchBridge.swift */; };
 		77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430BD843F968775BC442DAE5 /* SharedRecordingState.swift */; };
 		787B37A9EB69FBBB72AC7D8F /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = CFC7BACBA5344DF7A901A9DF /* Localizable.strings */; };
 		789B2C47AAA0802A47C7C6B6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */; };
 		7926AE919DB1149BFB9561E2 /* SpokenLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */; };
-		79A2AAB13050484399D7E6D5 /* LiveTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CC637367C079CD3E80E2BB4 /* LiveTranscript.swift */; };
 		79B3C2441B3E453A3D24D063 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 33CCCFD5FC2D9005CF22D259 /* WakeOnCueCore */; };
 		7E02EEA67FBF3956649B53E2 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 60E2D1AA51D4AF6A05F72704 /* InfoPlist.strings */; };
 		7EB44FF3E1DAFF4DF5CB55E5 /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10E8E972C269EA4BAA5B9BF /* RecordingRecoveryTests.swift */; };
@@ -82,16 +74,12 @@
 		920E0E8B46A2126A7498B445 /* RecordingCommandObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */; };
 		96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84E710F1E8E75F4010D1A19 /* ThirdPartyAI.swift */; };
 		982D1A7A9C67C37CF0258F03 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B7CB564F864C828123FDD3 /* AppLanguage.swift */; };
-		99B5511CD0F0C94BEA00B69B /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 505E3AEA1DCF81CE57243B16 /* Localizable.strings */; };
 		9C88985EF3A6F5B0A47C57CC /* WakeOnCueWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */; };
 		9D9FE1273731021262DAF3D9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
 		A0EA916EC20170B1859BEB78 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */; };
-		A2F5FC830416568E1FE30DB5 /* RealtimeChannelStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1367632068864972664C459 /* RealtimeChannelStream.swift */; };
-		A4A153D12ABFD2BBFAE72367 /* ChannelRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */; };
 		A58C99A13BF887A827FDEF83 /* WatchSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C158855675A574042A201393 /* WatchSessionClient.swift */; };
 		AFDC699951B16BFB8C96ABB8 /* AskRecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B487556E3A1F8594032A540B /* AskRecordingsView.swift */; };
 		B0F9A4F91F18B4AFE9C48CF4 /* S3StorageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */; };
-		B1BE1BF1689A76AE23B205D0 /* WakeOnCueMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EC2EA3CFE00AECF7F18796 /* WakeOnCueMacApp.swift */; };
 		B2C88683F77391BBC6E88D9D /* RecordingAudioFileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */; };
 		B2CA3AB149BE67DE7CA3B031 /* ProductExperienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC66F4DB820A5BEF37B9B2FE /* ProductExperienceUITests.swift */; };
 		B3C44F955BD28C6022EA8ACB /* RecordingStartupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */; };
@@ -101,13 +89,10 @@
 		B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */; };
 		B8EC165E40AC6C92613F52CD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E745A03BE489FE9A6A44E7FF /* AppModel.swift */; };
 		B9FF50CB284BB7E39D70F7CB /* CaptureFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285C45F948055C39CB834C56 /* CaptureFeedbackView.swift */; };
-		BC0F528B13A6EE6A6B044819 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */; };
 		BE75DC724B8912D09D73C4C3 /* RecordingQuestionAnsweringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3097B0FBE62F96DCF9550CEA /* RecordingQuestionAnsweringTests.swift */; };
 		BE9A905CC49C9DCE3B734AF3 /* RecordingFileLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05A523B7F02D6136CDE6748 /* RecordingFileLayoutTests.swift */; };
 		C24DF066904D9578C60CDC8D /* RecordingStatusPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */; };
 		C62276DB046BEA9DA1177724 /* WatchDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1FD7BC7993E488E5EBA7C8 /* WatchDiagnostics.swift */; };
-		C8701C8607263A969D3BF225 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3368F34F6AC47A8E86B0F92F /* SystemAudioCapture.swift */; };
-		CDA63232CF100ECF36FA14D6 /* WakeOnCueCore in Frameworks */ = {isa = PBXBuildFile; productRef = 245024FC21D7C17E4EB3ADF8 /* WakeOnCueCore */; };
 		D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A872A2ADA906883325D430 /* SettingsView.swift */; };
 		D1B1CC0D2F7682644B6444AD /* ExperienceFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9976BCB1134AB12DBA8FC2 /* ExperienceFixtures.swift */; };
 		D1FEF9FFE4812E635D82CC33 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 60E2D1AA51D4AF6A05F72704 /* InfoPlist.strings */; };
@@ -117,12 +102,8 @@
 		D6CDA81B0D16B7D9BAFD4C57 /* PlaceAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D617E1495504C52549F0C12 /* PlaceAutomation.swift */; };
 		DA336C5E9026EB01BB8684D5 /* RecordingLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */; };
 		DAC32638A37AA865F8162814 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3997A0D733F09923BCD17F13 /* AppSettings.swift */; };
-		DE3634B1B53F43A2B4FBF787 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFCD7BF4C9CA4E3F68E7C817 /* MicrophoneCapture.swift */; };
 		E06139DC97785F0A3F6BB515 /* RecordingQuestionAnswering.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3592013A5409260EDBE697 /* RecordingQuestionAnswering.swift */; };
 		E10895DDCDD3F71090339392 /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F2E8A0DB7B3D1332CFFBCE /* RecordingDetailView.swift */; };
-		E11207234680367BA55DE186 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 53209C740FCB8627BF279F63 /* InfoPlist.strings */; };
-		E2A2EE9447304283057E7345 /* WakeOnCueMacTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */; };
-		E5875F5696F165E9D2480743 /* SyncProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88918F9766DC95400816C9EC /* SyncProtocol.swift */; };
 		E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */; };
 		E9355C0DC49CC752DCC62098 /* MacOutboxMarksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */; };
 		EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9701A3E0898DEBFD733614 /* WakeOnCueApp.swift */; };
@@ -155,13 +136,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 607E3501D532C3999CB3249E;
 			remoteInfo = WakeOnCueWatchWidgets;
-		};
-		286054D3646B148B6B9C0A5D /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 22275792CBEC965A2CFAFCE6 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C2B341F3613CBC0ACB3990DE;
-			remoteInfo = WakeOnCueMac;
 		};
 		B7D67B36BEEBAA2E0C5FDF56 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -225,12 +199,10 @@
 /* Begin PBXFileReference section */
 		004ADFE12E5AC730D2E437EF /* WakeOnCueWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WakeOnCueWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0252310DE8F594A7650B78AE /* ThirdPartyAITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyAITests.swift; sourceTree = "<group>"; };
-		04D9900A160821CAA581F681 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioFileProvider.swift; sourceTree = "<group>"; };
 		0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOutboxMarksTests.swift; sourceTree = "<group>"; };
 		0D617E1495504C52549F0C12 /* PlaceAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceAutomation.swift; sourceTree = "<group>"; };
 		0FB107982BDA9DC3F38164F4 /* WakeOnCueWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatch.entitlements; sourceTree = "<group>"; };
-		1707596316FD6E39E0CAF37E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		17B96E27AA3E894679484BCE /* PhoneWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWatchBridge.swift; sourceTree = "<group>"; };
 		18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshotStore.swift; sourceTree = "<group>"; };
 		20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAnnotations.swift; sourceTree = "<group>"; };
@@ -238,27 +210,18 @@
 		2599C2E999A7DC633B162D22 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		285C45F948055C39CB834C56 /* CaptureFeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeedbackView.swift; sourceTree = "<group>"; };
 		28875075914483902B567040 /* ContactNamePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactNamePicker.swift; sourceTree = "<group>"; };
-		2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRecorder.swift; sourceTree = "<group>"; };
-		2CC637367C079CD3E80E2BB4 /* LiveTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscript.swift; sourceTree = "<group>"; };
 		2DC4832B9813FFF32FDDA16B /* RecordingLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivityWidget.swift; sourceTree = "<group>"; };
 		3097B0FBE62F96DCF9550CEA /* RecordingQuestionAnsweringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingQuestionAnsweringTests.swift; sourceTree = "<group>"; };
-		328322C51CF0274889CB9174 /* WakeOnCueMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueMac.entitlements; sourceTree = "<group>"; };
-		3368F34F6AC47A8E86B0F92F /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		34B7BD6B10991766DBFCABC7 /* RecordingIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingIntents.swift; sourceTree = "<group>"; };
 		376919AF2F6C0950FFD37186 /* AIProviderSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderSettingsTests.swift; sourceTree = "<group>"; };
-		38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCheckout.swift; sourceTree = "<group>"; };
 		3997A0D733F09923BCD17F13 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueMacTests.swift; sourceTree = "<group>"; };
 		3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWatchApp.swift; sourceTree = "<group>"; };
 		3D0B8189F97DC9CEAD26CCBE /* MeetingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarView.swift; sourceTree = "<group>"; };
 		40D02478AF771970C07D9626 /* RecordingStatusPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusPresentation.swift; sourceTree = "<group>"; };
 		430BD843F968775BC442DAE5 /* SharedRecordingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedRecordingState.swift; sourceTree = "<group>"; };
 		43164E008733A4AB386A4FC9 /* WatchRecordingImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRecordingImporter.swift; sourceTree = "<group>"; };
-		435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		43EC47D0ECE07DF72FCBF3F0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		45EC2EA3CFE00AECF7F18796 /* WakeOnCueMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueMacApp.swift; sourceTree = "<group>"; };
 		4A6F8EBA363AFC36576CBDC2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
-		4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WakeOnCueMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DE5A4F6E1123C866C22B26B /* RecordingLibrarySearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLibrarySearchTests.swift; sourceTree = "<group>"; };
 		4E586D0CAE4A16A96B529544 /* WatchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
 		4F5D92341789174B478A1B2B /* WakeOnCueWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWidgets.entitlements; sourceTree = "<group>"; };
@@ -282,31 +245,24 @@
 		6EB419A36E5FBD434A45BDA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLinkSettingsSection.swift; sourceTree = "<group>"; };
 		716FEFA1580E1ECF4892151C /* MeetingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendarTests.swift; sourceTree = "<group>"; };
-		76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppModel.swift; sourceTree = "<group>"; };
-		77D935DF36510C3E4241B30D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageStatus.swift; sourceTree = "<group>"; };
 		7C1FD1BE67853B96AFCB7B61 /* S3StorageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StorageClient.swift; sourceTree = "<group>"; };
 		8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWidgets.swift; sourceTree = "<group>"; };
-		88918F9766DC95400816C9EC /* SyncProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProtocol.swift; sourceTree = "<group>"; };
-		88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindow.swift; sourceTree = "<group>"; };
 		8B804F0E376CE6B89B8E6699 /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
 		8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingShortcuts.swift; sourceTree = "<group>"; };
-		8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessorHost.swift; sourceTree = "<group>"; };
 		924A8C3F829527067DF9AAC7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureMeterTests.swift; sourceTree = "<group>"; };
 		9555026A4CBDBF9E6436266A /* WatchHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHomeView.swift; sourceTree = "<group>"; };
 		963C6B34ACD7DFD69290A796 /* WakeOnCueWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCueWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		96F3E38A3B7866C99BD49C34 /* SyncProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProtocol.swift; sourceTree = "<group>"; };
 		976FECE23E3D00B7EABB4584 /* RecordingCompletionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCompletionCard.swift; sourceTree = "<group>"; };
 		990C9A7072F2A8065D71B41D /* TranscriptFollowPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptFollowPolicyTests.swift; sourceTree = "<group>"; };
 		9CE5DFAEA753B015C19504F3 /* WakeOnCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCue.entitlements; sourceTree = "<group>"; };
 		9CFFF8DDE52B69775AE29C51 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E6649031CC6A7765A74FA9E /* RecordingCaptureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCaptureFeedback.swift; sourceTree = "<group>"; };
-		A01ED94A406F296B5E9C800E /* GatewayToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayToken.swift; sourceTree = "<group>"; };
 		A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingFileLayout.swift; sourceTree = "<group>"; };
 		A1ADBD56EE417C63D3FCA1F5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WakeOnCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A594CC2666FFD10327B58885 /* MeetingRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorder.swift; sourceTree = "<group>"; };
 		A7709651F3BA8D4DA97CBFA4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA1FD7BC7993E488E5EBA7C8 /* WatchDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDiagnostics.swift; sourceTree = "<group>"; };
 		AB3592013A5409260EDBE697 /* RecordingQuestionAnswering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingQuestionAnswering.swift; sourceTree = "<group>"; };
@@ -328,15 +284,10 @@
 		C63D8705D5FD51844884330D /* WakeOnCueWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatchWidgets.entitlements; sourceTree = "<group>"; };
 		C65E1A987A93274405990977 /* AudioFileImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileImporter.swift; sourceTree = "<group>"; };
 		C8FD08CBBCC70EF4C3942C05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		CFCD7BF4C9CA4E3F68E7C817 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
 		D10E8E972C269EA4BAA5B9BF /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		D2B7CB564F864C828123FDD3 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
-		D30BD46777FBF75FA65628FA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		D32C79BD0983FE06B93613F1 /* RecordingActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivityAttributes.swift; sourceTree = "<group>"; };
 		D51E1C1B25E0B0AC295CBDF1 /* SpokenLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenLanguage.swift; sourceTree = "<group>"; };
-		E0300EF5377E5E2A270B213C /* WakeOnCueMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCueMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E1367632068864972664C459 /* RealtimeChannelStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeChannelStream.swift; sourceTree = "<group>"; };
-		E1860311F68A96DF19E7DD88 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		E35F0BC2386F45353193F618 /* MeetingCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendar.swift; sourceTree = "<group>"; };
 		E6004447EDEBE3328D536B77 /* RecordingStartupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartupUITests.swift; sourceTree = "<group>"; };
 		E745A03BE489FE9A6A44E7FF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -361,22 +312,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		22698EC8BD43B58259767DC9 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				CDA63232CF100ECF36FA14D6 /* WakeOnCueCore in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		50C299FB49D0321462666014 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				0613C041BE30DBB585D12CB3 /* WakeOnCueCore in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		589ACA587CA97422452DDBF3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -396,15 +331,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		15C307A5BA8C662D0987195E /* Realtime */ = {
-			isa = PBXGroup;
-			children = (
-				2CC637367C079CD3E80E2BB4 /* LiveTranscript.swift */,
-				E1367632068864972664C459 /* RealtimeChannelStream.swift */,
-			);
-			path = Realtime;
-			sourceTree = "<group>";
-		};
 		1C1600BD98E1C2C297C4FDF5 /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
@@ -432,15 +358,6 @@
 			path = WakeOnCueWatchWidgets;
 			sourceTree = "<group>";
 		};
-		1F9B5F6E603F23C1E9A5CA21 /* UI */ = {
-			isa = PBXGroup;
-			children = (
-				7BD1DB9269E3EBE4C18578D8 /* MenuBarView.swift */,
-				88FDD9CDC1336FE345A73412 /* TranscriptWindow.swift */,
-			);
-			path = UI;
-			sourceTree = "<group>";
-		};
 		21424503D95B6E4A2E151C5D /* Watch */ = {
 			isa = PBXGroup;
 			children = (
@@ -450,22 +367,20 @@
 			path = Watch;
 			sourceTree = "<group>";
 		};
+		2A62DD4C7C40B41287E9D3E3 /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				962118A584DDDA2A162FB744 /* WakeOnCue */,
+			);
+			path = macos;
+			sourceTree = "<group>";
+		};
 		2B11A1DF0C76CA77FC235D8E /* WakeOnCueWatchUITests */ = {
 			isa = PBXGroup;
 			children = (
 				64CFD6A5039DEA1AD2FBC079 /* WatchCaptureUITests.swift */,
 			);
 			path = WakeOnCueWatchUITests;
-			sourceTree = "<group>";
-		};
-		2B962757437BEA52E443676C /* Host */ = {
-			isa = PBXGroup;
-			children = (
-				A01ED94A406F296B5E9C800E /* GatewayToken.swift */,
-				8FE9FE41DD7640EB0063443B /* ProcessorHost.swift */,
-				38261F2BD0167EF10F70C3DB /* ServerCheckout.swift */,
-			);
-			path = Host;
 			sourceTree = "<group>";
 		};
 		3CA1FDEB2749552379120AF4 /* Calendar */ = {
@@ -494,15 +409,6 @@
 			path = WakeOnCueWatch;
 			sourceTree = "<group>";
 		};
-		5B95008EFC810B0E935A3EBE /* product-optimization-suggestions-1ec6d3 */ = {
-			isa = PBXGroup;
-			children = (
-				AF6C914E280E0AAE31CF0CC4 /* macos */,
-			);
-			name = "product-optimization-suggestions-1ec6d3";
-			path = ..;
-			sourceTree = "<group>";
-		};
 		62185A30AD230562C842AEB6 /* WakeOnCueUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -511,14 +417,6 @@
 				BB40A4A34EDA59047776592D /* WatchCompanionUITests.swift */,
 			);
 			path = WakeOnCueUITests;
-			sourceTree = "<group>";
-		};
-		66FDD7F8FE6F23433EEB2485 /* WakeOnCueMacTests */ = {
-			isa = PBXGroup;
-			children = (
-				3AFE1DB8CF1F43C9524708FB /* WakeOnCueMacTests.swift */,
-			);
-			path = WakeOnCueMacTests;
 			sourceTree = "<group>";
 		};
 		762FBE8986157697A72EC117 /* Recording */ = {
@@ -533,10 +431,10 @@
 			path = Recording;
 			sourceTree = "<group>";
 		};
-		8DC65BD886BA9F7A33950352 /* Sync */ = {
+		76C905B2157690209BD56E67 /* Sync */ = {
 			isa = PBXGroup;
 			children = (
-				88918F9766DC95400816C9EC /* SyncProtocol.swift */,
+				96F3E38A3B7866C99BD49C34 /* SyncProtocol.swift */,
 			);
 			path = Sync;
 			sourceTree = "<group>";
@@ -553,24 +451,6 @@
 			path = WakeOnCueWidgets;
 			sourceTree = "<group>";
 		};
-		92C6CF7D9F48F72BCE28CDE8 /* WakeOnCueMac */ = {
-			isa = PBXGroup;
-			children = (
-				A631CC4FC9C3E17C35988B30 /* Capture */,
-				2B962757437BEA52E443676C /* Host */,
-				53209C740FCB8627BF279F63 /* InfoPlist.strings */,
-				505E3AEA1DCF81CE57243B16 /* Localizable.strings */,
-				15C307A5BA8C662D0987195E /* Realtime */,
-				1F9B5F6E603F23C1E9A5CA21 /* UI */,
-				435A0A2F7434ED37CF4C6EBA /* Assets.xcassets */,
-				04D9900A160821CAA581F681 /* Info.plist */,
-				76F570E8DA00B5F1CE2997FF /* MacAppModel.swift */,
-				328322C51CF0274889CB9174 /* WakeOnCueMac.entitlements */,
-				45EC2EA3CFE00AECF7F18796 /* WakeOnCueMacApp.swift */,
-			);
-			path = WakeOnCueMac;
-			sourceTree = "<group>";
-		};
 		95EC5C3F1BF3BD8EE9B8C1BD /* WatchShared */ = {
 			isa = PBXGroup;
 			children = (
@@ -581,6 +461,14 @@
 			path = WatchShared;
 			sourceTree = "<group>";
 		};
+		962118A584DDDA2A162FB744 /* WakeOnCue */ = {
+			isa = PBXGroup;
+			children = (
+				76C905B2157690209BD56E67 /* Sync */,
+			);
+			path = WakeOnCue;
+			sourceTree = "<group>";
+		};
 		97FCD6C50790388851EA2D42 /* WatchResources */ = {
 			isa = PBXGroup;
 			children = (
@@ -589,34 +477,13 @@
 			path = WatchResources;
 			sourceTree = "<group>";
 		};
-		A631CC4FC9C3E17C35988B30 /* Capture */ = {
-			isa = PBXGroup;
-			children = (
-				2C47C40A11E2344B8B900594 /* ChannelRecorder.swift */,
-				A594CC2666FFD10327B58885 /* MeetingRecorder.swift */,
-				CFCD7BF4C9CA4E3F68E7C817 /* MicrophoneCapture.swift */,
-				3368F34F6AC47A8E86B0F92F /* SystemAudioCapture.swift */,
-			);
-			path = Capture;
-			sourceTree = "<group>";
-		};
-		AF6C914E280E0AAE31CF0CC4 /* macos */ = {
-			isa = PBXGroup;
-			children = (
-				E0FD9DA14A5F7B84B31E7384 /* WakeOnCue */,
-			);
-			path = macos;
-			sourceTree = "<group>";
-		};
 		B0C51E219CC93560234F89EB = {
 			isa = PBXGroup;
 			children = (
 				F24B1B3357D9837560525D4A /* Packages */,
-				5B95008EFC810B0E935A3EBE /* product-optimization-suggestions-1ec6d3 */,
 				BC6C8F3D769236CE92111178 /* Shared */,
 				BA21DF6AD7F363BDAAC19A78 /* WakeOnCue */,
-				92C6CF7D9F48F72BCE28CDE8 /* WakeOnCueMac */,
-				66FDD7F8FE6F23433EEB2485 /* WakeOnCueMacTests */,
+				DA9306CE2BE03043CA4B4879 /* WakeOnCue */,
 				EDB8145834B4A82A2DB4E95C /* WakeOnCueTests */,
 				62185A30AD230562C842AEB6 /* WakeOnCueUITests */,
 				4D0ABFD7CAAD9749579DA20A /* WakeOnCueWatch */,
@@ -669,8 +536,6 @@
 			isa = PBXGroup;
 			children = (
 				F72C47A91F5199C598D60559 /* WakeOnCue.app */,
-				E0300EF5377E5E2A270B213C /* WakeOnCueMac.app */,
-				4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */,
 				A4CB04BF3F02E9412D5B426C /* WakeOnCueTests.xctest */,
 				FBD67A1E5C4EF7AEAF00AA9D /* WakeOnCueUITests.xctest */,
 				963C6B34ACD7DFD69290A796 /* WakeOnCueWatch.app */,
@@ -691,20 +556,21 @@
 			path = Intelligence;
 			sourceTree = "<group>";
 		};
+		DA9306CE2BE03043CA4B4879 /* WakeOnCue */ = {
+			isa = PBXGroup;
+			children = (
+				2A62DD4C7C40B41287E9D3E3 /* macos */,
+			);
+			name = WakeOnCue;
+			path = ..;
+			sourceTree = "<group>";
+		};
 		DDB9D7A5FA182BB74BB0E0E4 /* LiveActivity */ = {
 			isa = PBXGroup;
 			children = (
 				ED77411A41DE040D76751A3F /* RecordingLiveActivityController.swift */,
 			);
 			path = LiveActivity;
-			sourceTree = "<group>";
-		};
-		E0FD9DA14A5F7B84B31E7384 /* WakeOnCue */ = {
-			isa = PBXGroup;
-			children = (
-				8DC65BD886BA9F7A33950352 /* Sync */,
-			);
-			path = WakeOnCue;
 			sourceTree = "<group>";
 		};
 		EA99173F170291CF0B9F5E68 /* UI */ = {
@@ -886,26 +752,6 @@
 			productReference = F72C47A91F5199C598D60559 /* WakeOnCue.app */;
 			productType = "com.apple.product-type.application";
 		};
-		C2B341F3613CBC0ACB3990DE /* WakeOnCueMac */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 508370C29D1B897ADD96439A /* Build configuration list for PBXNativeTarget "WakeOnCueMac" */;
-			buildPhases = (
-				4B4900A417324EAEE8667CC4 /* Sources */,
-				110DACDD908E671F0484B5E8 /* Resources */,
-				22698EC8BD43B58259767DC9 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = WakeOnCueMac;
-			packageProductDependencies = (
-				245024FC21D7C17E4EB3ADF8 /* WakeOnCueCore */,
-			);
-			productName = WakeOnCueMac;
-			productReference = E0300EF5377E5E2A270B213C /* WakeOnCueMac.app */;
-			productType = "com.apple.product-type.application";
-		};
 		E37E0EEFB65AC5560E578943 /* WakeOnCueWatch */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 95BA9F1DCDD5FA4C05A8C7E7 /* Build configuration list for PBXNativeTarget "WakeOnCueWatch" */;
@@ -925,26 +771,6 @@
 			productName = WakeOnCueWatch;
 			productReference = 963C6B34ACD7DFD69290A796 /* WakeOnCueWatch.app */;
 			productType = "com.apple.product-type.application";
-		};
-		E38D67650FB0B7AA0510CCE9 /* WakeOnCueMacTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 77C24268DA7BE4218F6FF36E /* Build configuration list for PBXNativeTarget "WakeOnCueMacTests" */;
-			buildPhases = (
-				8B7597B14DE1E62173810E04 /* Sources */,
-				50C299FB49D0321462666014 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				15A1DD71991A574EE4257425 /* PBXTargetDependency */,
-			);
-			name = WakeOnCueMacTests;
-			packageProductDependencies = (
-				11B4A8475A46E49F4252083D /* WakeOnCueCore */,
-			);
-			productName = WakeOnCueMacTests;
-			productReference = 4D7FB5FA076D2EC303B05CD4 /* WakeOnCueMacTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -981,15 +807,7 @@
 						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
-					C2B341F3613CBC0ACB3990DE = {
-						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
-						ProvisioningStyle = Automatic;
-					};
 					E37E0EEFB65AC5560E578943 = {
-						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
-						ProvisioningStyle = Automatic;
-					};
-					E38D67650FB0B7AA0510CCE9 = {
 						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
@@ -1017,8 +835,6 @@
 				85F277F2A36A7806BAF04573 /* WakeOnCueWidgets */,
 				E37E0EEFB65AC5560E578943 /* WakeOnCueWatch */,
 				607E3501D532C3999CB3249E /* WakeOnCueWatchWidgets */,
-				C2B341F3613CBC0ACB3990DE /* WakeOnCueMac */,
-				E38D67650FB0B7AA0510CCE9 /* WakeOnCueMacTests */,
 				25ACFF305571091555AB43E0 /* WakeOnCueWatchUITests */,
 				7AF0B4AF86BD6DF4524967DE /* WakeOnCueTests */,
 				19562381A80A56EE9E63CF5D /* WakeOnCueUITests */,
@@ -1027,16 +843,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		110DACDD908E671F0484B5E8 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				522482754ECDB7F7EED9FB6E /* Assets.xcassets in Resources */,
-				E11207234680367BA55DE186 /* InfoPlist.strings in Resources */,
-				99B5511CD0F0C94BEA00B69B /* Localizable.strings in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		371D2A297752AAC667D728F2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1124,7 +930,7 @@
 				D1A4044278C91D7D8445D731 /* SettingsView.swift in Sources */,
 				77EC860FF879C3D719039D1A /* SharedRecordingState.swift in Sources */,
 				B7D56641E963EA50149E0D56 /* SpokenLanguage.swift in Sources */,
-				E5875F5696F165E9D2480743 /* SyncProtocol.swift in Sources */,
+				059B100D06CF3261EC7F49F3 /* SyncProtocol.swift in Sources */,
 				96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */,
 				EAABD78153B215BC4D9E01DA /* WakeOnCueApp.swift in Sources */,
 				50C69522AD79F70A49C5BECC /* WatchBridgeProtocol.swift in Sources */,
@@ -1155,26 +961,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		4B4900A417324EAEE8667CC4 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A4A153D12ABFD2BBFAE72367 /* ChannelRecorder.swift in Sources */,
-				772ECED326406316A13A2A47 /* GatewayToken.swift in Sources */,
-				79A2AAB13050484399D7E6D5 /* LiveTranscript.swift in Sources */,
-				6D52E05F042A6D470D9629EA /* MacAppModel.swift in Sources */,
-				3DD22E6C84FA5BA69FE68A0C /* MeetingRecorder.swift in Sources */,
-				BC0F528B13A6EE6A6B044819 /* MenuBarView.swift in Sources */,
-				DE3634B1B53F43A2B4FBF787 /* MicrophoneCapture.swift in Sources */,
-				18D7C484A3C953B46F44EAB6 /* ProcessorHost.swift in Sources */,
-				A2F5FC830416568E1FE30DB5 /* RealtimeChannelStream.swift in Sources */,
-				6FA971851ECD7F66B49FC27F /* ServerCheckout.swift in Sources */,
-				C8701C8607263A969D3BF225 /* SystemAudioCapture.swift in Sources */,
-				31B59B6CFEC0AAB4FB4F8EF7 /* TranscriptWindow.swift in Sources */,
-				B1BE1BF1689A76AE23B205D0 /* WakeOnCueMacApp.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		786DF70F984B74D9C052EBC9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1188,14 +974,6 @@
 				4B211C375A1E8FBFCBFFACAB /* SharedRecordingState.swift in Sources */,
 				7926AE919DB1149BFB9561E2 /* SpokenLanguage.swift in Sources */,
 				E723C78AE9F8BEC9EA4A7694 /* WakeOnCueWidgets.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8B7597B14DE1E62173810E04 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				E2A2EE9447304283057E7345 /* WakeOnCueMacTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1253,11 +1031,6 @@
 			target = 85F277F2A36A7806BAF04573 /* WakeOnCueWidgets */;
 			targetProxy = 0921B2FA1383FE5740454635 /* PBXContainerItemProxy */;
 		};
-		15A1DD71991A574EE4257425 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C2B341F3613CBC0ACB3990DE /* WakeOnCueMac */;
-			targetProxy = 286054D3646B148B6B9C0A5D /* PBXContainerItemProxy */;
-		};
 		22736868B8F1507D48E438E9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E37E0EEFB65AC5560E578943 /* WakeOnCueWatch */;
@@ -1286,15 +1059,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
-		505E3AEA1DCF81CE57243B16 /* Localizable.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				1707596316FD6E39E0CAF37E /* en */,
-				E1860311F68A96DF19E7DD88 /* zh-Hans */,
-			);
-			name = Localizable.strings;
-			sourceTree = "<group>";
-		};
 		50E2E8DB3973F50512033610 /* Localizable.strings */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -1302,15 +1066,6 @@
 				EDE36A0BFE6304551A90D527 /* zh-Hans */,
 			);
 			name = Localizable.strings;
-			sourceTree = "<group>";
-		};
-		53209C740FCB8627BF279F63 /* InfoPlist.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				D30BD46777FBF75FA65628FA /* en */,
-				77D935DF36510C3E4241B30D /* zh-Hans */,
-			);
-			name = InfoPlist.strings;
 			sourceTree = "<group>";
 		};
 		60E2D1AA51D4AF6A05F72704 /* InfoPlist.strings */ = {
@@ -1369,25 +1124,6 @@
 			};
 			name = Debug;
 		};
-		0FA84966764F541105381246 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = WakeOnCueMac/WakeOnCueMac.entitlements;
-				COMBINE_HIDPI_IMAGES = YES;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
-				INFOPLIST_FILE = WakeOnCueMac/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.mac;
-				PRODUCT_NAME = WakeOnCue;
-				SDKROOT = macosx;
-			};
-			name = Release;
-		};
 		184D04DC88CF71908502F63A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1421,23 +1157,6 @@
 				PRODUCT_NAME = WakeOnCue;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
-		5DAE1027CBF2DA040C77CD06 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				COMBINE_HIDPI_IMAGES = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.mac.tests;
-				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeOnCue.app/Contents/MacOS/WakeOnCue";
 			};
 			name = Release;
 		};
@@ -1495,25 +1214,6 @@
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 4;
-			};
-			name = Debug;
-		};
-		86B56BCD9C196DB09BD1EE5A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = WakeOnCueMac/WakeOnCueMac.entitlements;
-				COMBINE_HIDPI_IMAGES = YES;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
-				INFOPLIST_FILE = WakeOnCueMac/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.mac;
-				PRODUCT_NAME = WakeOnCue;
-				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
@@ -1666,23 +1366,6 @@
 			};
 			name = Debug;
 		};
-		DE3A96610DDC20E3F6CA87F8 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				COMBINE_HIDPI_IMAGES = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.deoooo.WakeOnCue.mac.tests;
-				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeOnCue.app/Contents/MacOS/WakeOnCue";
-			};
-			name = Debug;
-		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1813,24 +1496,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		508370C29D1B897ADD96439A /* Build configuration list for PBXNativeTarget "WakeOnCueMac" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				86B56BCD9C196DB09BD1EE5A /* Debug */,
-				0FA84966764F541105381246 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		77C24268DA7BE4218F6FF36E /* Build configuration list for PBXNativeTarget "WakeOnCueMacTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DE3A96610DDC20E3F6CA87F8 /* Debug */,
-				5DAE1027CBF2DA040C77CD06 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
 		7DDDA9EEA4F24E08AD38D0DD /* Build configuration list for PBXNativeTarget "WakeOnCueWatchWidgets" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1886,14 +1551,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		11B4A8475A46E49F4252083D /* WakeOnCueCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = WakeOnCueCore;
-		};
-		245024FC21D7C17E4EB3ADF8 /* WakeOnCueCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = WakeOnCueCore;
-		};
 		33CCCFD5FC2D9005CF22D259 /* WakeOnCueCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WakeOnCueCore;

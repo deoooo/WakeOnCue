@@ -1,14 +1,13 @@
 @preconcurrency import AVFoundation
 import AppKit
-import CoreAudio
 import Foundation
 import Observation
 import OSLog
 import UserNotifications
 
-/// Records all day: the microphone always, and the chosen meeting apps whenever they play
-/// sound. Restarts itself after device changes and sleep, pauses on request or when the disk
-/// is nearly full, and records why it could not record as a gap.
+/// Records all day: the microphone always. Restarts itself after device changes and sleep,
+/// pauses on request or when the disk is nearly full, and records why it could not record as a
+/// gap.
 @Observable
 final class Recorder {
   enum State: Equatable {
@@ -19,29 +18,22 @@ final class Recorder {
   }
 
   private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Recorder")
-  /// Keep tapping a meeting app this long after it goes quiet, so pauses in a call stay in one piece.
-  private static let meetingHold: TimeInterval = 90
 
   private(set) var state: State = .off {
     didSet { if state != oldValue { Self.logger.notice("State: \(String(describing: self.state), privacy: .public)") } }
   }
   private(set) var microphoneName = ""
+  /// True when the preferred built-in microphone was unavailable and another one was used.
+  private(set) var microphoneFellBack = false
   private(set) var microphoneLevel: Float = 0
-  private(set) var meetingLevel: Float = 0
-  /// Names of the meeting apps being recorded right now.
-  private(set) var activeMeetingApps: [String] = []
-  private(set) var meetingAudioIssue: String?
   private(set) var diskWarning: String?
   private(set) var writeIssue: String?
 
   @ObservationIgnored private let store: Store
   @ObservationIgnored private let preferences: Preferences
   @ObservationIgnored private var microphone: MicrophoneCapture?
-  @ObservationIgnored private let meetingCapture = MeetingAudioCapture()
   @ObservationIgnored private(set) var micPipeline: ChannelPipeline!
-  @ObservationIgnored private(set) var meetingPipeline: ChannelPipeline!
   @ObservationIgnored private var segmentIDs: [String: Int64] = [:]
-  @ObservationIgnored private var lastHeard: [AudioObjectID: (bundleID: String, at: Date)] = [:]
   @ObservationIgnored private var openGapID: Int64?
   @ObservationIgnored private var ticker: Task<Void, Never>?
   @ObservationIgnored private var restartTask: Task<Void, Never>?
@@ -55,8 +47,6 @@ final class Recorder {
   @ObservationIgnored let audioOut = AudioFanout()
   /// Called whenever capture stops, so the transcriber can finalize what it heard.
   @ObservationIgnored var onCaptureStopped: (() -> Void)?
-  /// Called when the meeting channel closes after silence, so its live text is finalized.
-  @ObservationIgnored var onMeetingIdle: (() -> Void)?
 
   init(store: Store, preferences: Preferences) {
     self.store = store
@@ -68,12 +58,6 @@ final class Recorder {
     micPipeline = ChannelPipeline(
       channel: .microphone, source: "Mac 麦克风", onSegment: onSegment,
       onAudio: { buffer in audioOut.send(.microphone, buffer) })
-    meetingPipeline = ChannelPipeline(
-      channel: .meeting, source: "会议 App", onSegment: onSegment,
-      onAudio: { buffer in audioOut.send(.meeting, buffer) },
-      onIdle: { [weak self] in
-        Task { @MainActor in self?.onMeetingIdle?() }
-      })
     recoverOpenSegments()
     store.closeOpenGaps(at: .now)
     recordDowntime()
@@ -122,6 +106,7 @@ final class Recorder {
     }
     microphone = capture
     microphoneName = capture.deviceName
+    microphoneFellBack = capture.fellBack
     if let openGapID {
       store.closeGap(id: openGapID, end: .now)
       self.openGapID = nil
@@ -130,7 +115,6 @@ final class Recorder {
     preferences.recordingHeartbeat = .now
     preferences.quitCleanly = false
     startTicker()
-    refreshMeetingAudio()
   }
 
   func pause(until: Date) {
@@ -199,11 +183,9 @@ final class Recorder {
     }
     microphone = nil
     micPipeline.stop()
-    meetingCapture.stop()
-    meetingPipeline.stop()
-    activeMeetingApps = []
+    microphoneName = ""
+    microphoneFellBack = false
     microphoneLevel = 0
-    meetingLevel = 0
     onCaptureStopped?()
   }
 
@@ -241,7 +223,6 @@ final class Recorder {
         guard let self else { return }
         count += 1
         self.microphoneLevel = self.micPipeline.level
-        self.meetingLevel = self.meetingPipeline.level
         if count % 15 == 0 { await self.everyThreeSeconds() }
       }
     }
@@ -251,7 +232,6 @@ final class Recorder {
     switch state {
     case .recording:
       preferences.recordingHeartbeat = .now
-      refreshMeetingAudio()
       if let reason = diskBlocker() { fail(reason) }
     case .paused(let until):
       if until <= .now {
@@ -265,48 +245,6 @@ final class Recorder {
     case .off:
       break
     }
-  }
-
-  /// Taps the enabled apps that played sound recently, and rebuilds the tap when that set or
-  /// the output device changes. `activeMeetingApps` is narrower: an app counts as being recorded
-  /// only while its channel has actually been audible in the last 90 seconds.
-  func refreshMeetingAudio() {
-    guard state == .recording else { return }
-    let now = Date()
-    let enabled = preferences.meetingApps.filter(\.enabled)
-    for process in AudioDevices.processes() where process.isPlaying {
-      if enabled.contains(where: { $0.matches(process.bundleID) }) {
-        lastHeard[process.object] = (process.bundleID, now)
-      }
-    }
-    lastHeard = lastHeard.filter { now.timeIntervalSince($0.value.at) < Self.meetingHold }
-    let wanted = lastHeard.keys.sorted()
-    let names = Set(lastHeard.values.compactMap { entry in enabled.first { $0.matches(entry.bundleID) }?.name }).sorted()
-    let outputChanged = meetingCapture.isRunning && meetingCapture.outputUID != AudioDevices.defaultOutputUID()
-
-    if wanted != meetingCapture.processes || outputChanged {
-      meetingCapture.stop()
-      meetingPipeline.stop()
-      guard !wanted.isEmpty else {
-        activeMeetingApps = []
-        return
-      }
-      meetingPipeline.source = names.joined(separator: "、")
-      meetingPipeline.start()
-      do {
-        try meetingCapture.start(processes: wanted, into: meetingPipeline)
-        meetingAudioIssue = nil
-      } catch {
-        meetingPipeline.stop()
-        activeMeetingApps = []
-        meetingAudioIssue = error.localizedDescription
-        Self.logger.error("Meeting audio unavailable: \(error.localizedDescription, privacy: .public)")
-        return
-      }
-    }
-    activeMeetingApps = wanted.isEmpty
-      ? []
-      : MeetingAudioActivity.activeApps(playingNames: names, lastSoundAt: meetingPipeline.lastSoundAt, now: now)
   }
 
   /// Pauses below 2 GB free and warns below 10 GB. Never deletes recordings to make room.

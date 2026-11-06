@@ -47,7 +47,7 @@ struct DeviceMarkList: View {
     switch tag {
     case .important: .recording
     case .todo: .event
-    case .idea: .sourceMeeting
+    case .idea: .sourceOther
     }
   }
 }

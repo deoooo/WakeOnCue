@@ -1,5 +1,4 @@
 import AVFoundation
-import EventKit
 import SwiftUI
 
 /// First run in three steps: what all-day recording means (and the consent it needs), the
@@ -9,7 +8,6 @@ struct OnboardingView: View {
   @State private var step = 1
   @State private var agreed = false
   @State private var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
-  @State private var meetingAudioAsked = false
   @State private var launchAtLogin = true
 
   var body: some View {
@@ -51,7 +49,7 @@ struct OnboardingView: View {
   private var intro: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("WakeOnCue 会全天录音").font(.title2.weight(.semibold))
-      Text("登录后一直录下 Mac 麦克风和会议 App 的声音，转录并整理成每小时和每天的总结，方便你回顾和发纪要。")
+      Text("登录后一直录下 Mac 麦克风的声音，转录并整理成每小时和每天的总结，方便你回顾。")
         .fixedSize(horizontal: false, vertical: true)
       VStack(alignment: .leading, spacing: 6) {
         Label("录音、转录和总结都只存在这台 Mac 上，不会上传。", systemImage: "lock")
@@ -84,23 +82,6 @@ struct OnboardingView: View {
           }
         } else {
           Button("去系统设置…") { AppModel.openPrivacySettings("Privacy_Microphone") }
-        }
-      }
-      permissionRow("会议 App 的声音", "录下飞书、腾讯会议等会议里对方的声音。没有它只能录到你这边。") {
-        if meetingAudioAsked {
-          Button("去系统设置…") { AppModel.openPrivacySettings("Privacy_AudioCapture") }
-        } else {
-          Button("打开…") {
-            MeetingAudioCapture.requestAccess()
-            meetingAudioAsked = true
-          }
-        }
-      }
-      permissionRow("日历", "用会议名命名这段录音，并把参会人作为纪要的收件人。可选。") {
-        if model.meetings.calendarAccess == .fullAccess {
-          Text("✓ 已打开").foregroundStyle(.green)
-        } else {
-          Button("打开…") { Task { await model.meetings.requestCalendarAccess() } }
         }
       }
       permissionRow("登录时启动", "开机后自动开始录音。") {
@@ -152,6 +133,7 @@ struct OnboardingView: View {
     model.launchesAtLogin = launchAtLogin
     model.preferences.onboarded = true
     model.preferences.alwaysRecord = true
+    CrashRecovery.registerIfNeeded()
     Task {
       await model.recorder.startIfAllowed()
       await model.transcription.start()

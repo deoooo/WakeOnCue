@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// Plays the day's audio from any moment, across segment files, mixing the microphone with
-/// the meeting app when both were recorded. Private and deleted ranges are skipped.
+/// forwarded Watch/iPhone audio when the Mac has no audio. Private and deleted ranges are skipped.
 @Observable
 final class Player {
   private(set) var isPlaying = false
@@ -41,9 +41,7 @@ final class Player {
 
     let window = DateInterval(start: start, duration: 86_400)
     let segments = store.segments(overlapping: window)
-    guard let first = segments.first(where: { $0.channel == .microphone && $0.end > start })
-      ?? segments.first(where: { $0.end > start })
-    else {
+    guard let first = Self.firstSegment(at: start, in: segments) else {
       isPlaying = false
       return
     }
@@ -147,6 +145,13 @@ final class Player {
     } else if changed, next.contains(where: { $0.start > segment.start }) {
       play(from: now)
     }
+  }
+
+  /// The segment covering `date`, or the first one after it. A Watch-only gap must not jump to
+  /// the next Mac microphone segment when forwarded audio exists at that moment.
+  nonisolated static func firstSegment(at date: Date, in segments: [AudioSegment]) -> AudioSegment? {
+    segments.first(where: { $0.start <= date && $0.end > date })
+      ?? segments.first(where: { $0.end > date })
   }
 
   private static func label(for segments: [AudioSegment]) -> String {

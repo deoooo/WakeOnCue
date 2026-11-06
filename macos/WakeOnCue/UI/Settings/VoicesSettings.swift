@@ -51,7 +51,9 @@ struct VoicesSettings: View {
           }
         }
         if voices.myVoice == nil {
-          learnedStatus(voices)
+          Text("还没有录入时，麦克风录到的话都算“我”。录入后按声音区分“我”和“他人”，也用于以后手表和 iPhone 的录音。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         if voices.isRecheckingPast {
           HStack(spacing: 6) {
@@ -129,24 +131,4 @@ struct VoicesSettings: View {
     model.voices.setRemembering(on)
     if on { Task { await model.voices.prepareModel() } }
   }
-
-  /// Without enrolling, the voice is learned from what the microphone hears in online meetings.
-  @ViewBuilder private func learnedStatus(_ voices: Voices) -> some View {
-    if let learned = voices.learnedVoice {
-      HStack {
-        Text(learned.isUsable
-          ? (voices.learnedVoiceReady
-            ? "已从线上会议里学到你的声音（\(learned.sentences) 句），用来区分“我”和“他人”。录入后改用录入的声音。"
-            : "已从线上会议里学到声音（\(learned.sentences) 句），正在用最近的录音确认它是不是你…")
-          : "正在从线上会议里学你的声音：\(learned.sentences)/\(LearnedVoice.minimumSentences) 句。")
-        Spacer()
-        Button("忘掉") { voices.forgetLearnedVoice() }
-      }
-      .font(.caption).foregroundStyle(.secondary)
-    } else {
-      Text("还没有录入时，麦克风录到的话都算“我”，总结里写成“现场”，不当成你说的。开线上会议时会自动学你的声音（需要先下载声纹模型）。")
-        .font(.caption).foregroundStyle(.secondary)
-    }
-  }
-
 }

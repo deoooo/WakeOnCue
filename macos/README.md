@@ -22,7 +22,7 @@ xcodebuild -project WakeOnCue.xcodeproj -scheme WakeOnCue -configuration Debug -
 
 ### 签名和权限
 
-macOS 按 App 的代码签名记住麦克风、系统声音和日历权限。ad-hoc 签名每次编译都会变，系统就会每次重新询问。首次构建前运行一次：
+macOS 按 App 的代码签名记住麦克风权限。ad-hoc 签名每次编译都会变，系统就会每次重新询问。首次构建前运行一次：
 
 ```bash
 scripts/setup-signing.sh
@@ -36,14 +36,13 @@ scripts/setup-signing.sh
 
 | 目录 | 内容 |
 | --- | --- |
-| `Capture` | 麦克风（AVCaptureSession，固定用内建麦克风）、按 App 录声音（Core Audio process tap）、分段写入（16 kHz、32 kbps AAC，ADTS 格式，崩溃后仍可读）、暂停、休眠恢复、磁盘空间检查 |
-| `Transcription` | `SpeechAnalyzer` 实时中文转录，按标点切句，丢掉噪声里听出的单个字母和「Thank you」（`TranscriptFilter`）；说话人分「我」「会议对方」「他人」；外放时去掉麦克风录到的会议声音。可下载的模型（`ASRModels.swift` 里的清单，目前是 Qwen3-ASR 0.6B）通过 sherpa-onnx 按句重新转录。小时、当天和会议都能手动「重新转录」，用当前选的模型（没选时用 Apple 语音整句重转），文字变了的小时和会议会自动重新总结。模型回复里的特殊符号和其后编出来的文字会被截掉，没有中文或没听出内容的回复不会覆盖实时转录 |
-| `Storage` | SQLite（句子、分段、私人和删除时段、录不了的原因、总结、会议） |
-| `Intelligence` | 每小时总结和要点句、当天总结、会议要点，都带引用。送去总结前去掉「嗯」「对」这类应答；只有零星几句的小时不生成总结；当天总结给每个小时同样的篇幅，要点覆盖全天；模型说上下文放不下时把这一段对半再试（`SummaryMaterial`）。引擎是本机 Apple 智能（Foundation Models），或用户配置的 OpenAI 兼容网关（API Key 存钥匙串）。换了引擎后，旧总结旁会注明由哪个引擎生成，可以按小时、当天或会议重新生成 |
-| `Meetings` | 日历关联，按实际说话调整起止；没有日历的会议 App 通话；手动标成会议 |
+| `Capture` | 麦克风（AVCaptureSession，固定用内建麦克风）、分段写入（16 kHz、32 kbps AAC，ADTS 格式，崩溃后仍可读）、暂停、休眠恢复、磁盘空间检查 |
+| `Transcription` | `SpeechAnalyzer` 实时中文转录，按标点切句，丢掉噪声里听出的单个字母和「Thank you」（`TranscriptFilter`）；说话人分「我」「他人」。可下载的模型（`ASRModels.swift` 里的清单，目前是 Qwen3-ASR 0.6B）通过 sherpa-onnx 按句重新转录。小时和当天都能手动「重新转录」，用当前选的模型（没选时用 Apple 语音整句重转），文字变了的小时会自动重新总结。模型回复里的特殊符号和其后编出来的文字会被截掉，没有中文或没听出内容的回复不会覆盖实时转录 |
+| `Storage` | SQLite（句子、分段、私人和删除时段、录不了的原因、总结） |
+| `Intelligence` | 每小时总结和要点句、当天总结，都带引用。送去总结前去掉「嗯」「对」这类应答；只有零星几句的小时不生成总结；当天总结给每个小时同样的篇幅，要点覆盖全天；模型说上下文放不下时把这一段对半再试（`SummaryMaterial`）。引擎是本机 Apple 智能（Foundation Models），或用户配置的 OpenAI 兼容网关（API Key 存钥匙串）。换了引擎后，旧总结旁会注明由哪个引擎生成，可以按小时或当天重新生成 |
 | `Sync` | 接收已配对 iPhone 转来的手表和 iPhone 录音：扫码配对、TLS-PSK 加密、断点续传、SHA-256 校验后入库，协议见 [docs/sync-protocol.md](../docs/sync-protocol.md) |
-| `Playback` | 跨分段连续播放，麦克风和会议声音同时播放，跳过私人和已删除的时段 |
-| `UI` | 主窗口、会议面板和纪要、搜索、最近删除、菜单栏、首次使用、设置 |
+| `Playback` | 跨分段连续播放，麦克风和手表/iPhone 回传音频同时播放，跳过私人和已删除的时段 |
+| `UI` | 主窗口、搜索、最近删除、菜单栏、首次使用、设置 |
 
 数据存放在 `~/Library/Application Support/WakeOnCue`，下载的模型在其中的 `Models/`。
 
@@ -56,20 +55,17 @@ scripts/setup-signing.sh
 App 里带了一个只读的命令行工具 `WakeOnCue.app/Contents/Helpers/wakeoncue`（源码在 `WakeOnCueCLI/`，和 App 共用 `Storage` 的代码）。在设置 › 存储 › 命令行里点「安装」，就会在 `~/.local/bin` 下建一个链接。
 
 ```bash
-wakeoncue day                      # 今天的总结、重点事件和每小时总结
+wakeoncue day                      # 今天的总结和每小时总结
 wakeoncue day 昨天 --json
 wakeoncue transcript --hour 10     # 今天 10 点这一小时的原文
 wakeoncue transcript 11-03 --from 14:30 --to 15:00
-wakeoncue search 告警 灰度 --days 7 --speaker 会议对方
-wakeoncue meetings
-wakeoncue meeting 3
-wakeoncue export 昨天 > 昨天.md     # 整天：当天总结、重点事件、每小时总结和全部转录
+wakeoncue search 告警 灰度 --days 7 --speaker 他人
+wakeoncue export 昨天 > 昨天.md     # 整天：当天总结、每小时总结和全部转录
 wakeoncue export --hour 10 --format srt > 10点.srt   # 字幕时间从 10:00 算起
-wakeoncue export --meeting 3 --format txt            # 一场会议的纯转录
 wakeoncue health --days 3          # 全天录音体检：没有原因的空档、有转录没总结、回传进度
 ```
 
-`export` 输出的内容和 App 里「导出…」（工具栏、文件 › 导出这一天… ⌘E、小时的「…」菜单、会议面板）保存的文件完全一样，格式化代码在 `Export/Export.swift`，单元测试在 `WakeOnCueTests/`（`xcodebuild … test`，不启动 App）。格式：`md`（默认，带总结、时间和说话人）、`txt`（纯转录）、`srt`（时间相对所选范围的起点）。
+`export` 输出的内容和 App 里「导出…」（工具栏、文件 › 导出这一天… ⌘E、小时的「…」菜单）保存的文件完全一样，格式化代码在 `Export/Export.swift`，单元测试在 `WakeOnCueTests/`（`xcodebuild … test`，不启动 App）。格式：`md`（默认，带总结、时间和说话人）、`txt`（纯转录）、`srt`（时间相对所选范围的起点）。
 
 所有命令都可以加 `--json`，方便脚本和 Claude 等 AI 工具使用。标为私人或已删除的时段不会出现在任何结果里。它只读打开数据库，App 运行时也可以用。
 

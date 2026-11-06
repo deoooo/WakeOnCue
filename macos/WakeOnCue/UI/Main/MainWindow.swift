@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// The main window: one page per day, the calendar sidebar, the meeting panel as an inspector
-/// (it overlays the content when the window is narrow) and the player along the bottom.
+/// The main window: one page per day, the calendar sidebar and the player along the bottom.
 struct MainWindow: View {
   @Environment(AppModel.self) private var model
   @FocusState private var searchFocused: Bool
@@ -22,12 +21,12 @@ struct MainWindow: View {
             page(data).frame(maxWidth: .infinity, maxHeight: .infinity)
             if panelShown && !overlay {
               Divider()
-              sidePanel(data).frame(width: 400)
+              sidePanel().frame(width: 400)
             }
           }
           .overlay(alignment: .trailing) {
             if panelShown && overlay {
-              sidePanel(data)
+              sidePanel()
                 .frame(width: min(400, geometry.size.width - 40))
                 .background(.background)
                 .shadow(color: .black.opacity(0.18), radius: 16)
@@ -58,15 +57,10 @@ struct MainWindow: View {
     }
   }
 
-  private var meetingShown: Bool { model.ui.meetingID != nil && model.ui.page == .day }
-  private var panelShown: Bool { meetingShown || model.ui.asking }
+  private var panelShown: Bool { model.ui.asking }
 
-  @ViewBuilder private func sidePanel(_ data: DayData) -> some View {
-    if model.ui.asking {
-      AskPanel()
-    } else {
-      MeetingPanel(data: data)
-    }
+  @ViewBuilder private func sidePanel() -> some View {
+    AskPanel()
   }
 
   @ViewBuilder private func page(_ data: DayData) -> some View {

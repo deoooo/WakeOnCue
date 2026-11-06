@@ -1,6 +1,6 @@
 # Realtime Processing
 
-> **iPhone 已不再接入 Gateway。** 实时字幕、说话人区分和声纹功能已从 iPhone App 移除，本文描述的协议现在只供 Mac 菜单栏 App 在本机使用；涉及 iPhone 配对、局域网发现和声纹登记的部分是旧设计。iPhone 的转写和摘要见[第三方服务说明](ai-providers.md)。
+> **iPhone 和 Mac App 都已不接入 Gateway。** 实时字幕、说话人区分和声纹功能已从 iPhone App 移除，旧的 Mac 菜单栏 App 及其线上会议录制已删除；本文描述的是保留给后续 API/Agent 阶段的服务端实现。iPhone 的转写和摘要见[第三方服务说明](ai-providers.md)。
 
 WakeOnCue 的实时分析是一条可失败的旁路，不能成为录音链路的依赖：
 
@@ -73,30 +73,6 @@ Processor 返回：
 
 Gateway 为每个会话分配单调递增的 revision，并保留最近 500 个可重放事件。音频帧不会在 Gateway 持久化；Processor 离线期间实时文字可能缺失，但本地录音不会缺失，完整录音可在结束后重新转写。
 
-## 多声道录音（Mac 线上会议）
-
-Mac 菜单栏 App 录线上会议时有两路声音：麦克风（用户本人）和这台 Mac 播放的声音（会议里的其他人）。协议用「每个声道一个会话」表示，而不是把两路混成一路：
-
-- 两个会话使用**同一个 `recording_id`**，创建时各带可选字段 `"channel": "microphone"` 或 `"channel": "system"`。不带 `channel` 的会话（iPhone 现有行为）完全不变；其他取值返回 422。
-- 两个会话的音频从同一时刻开始计时：较晚收到第一帧的声道在开头补静音，所以两边的 `start_ms` 在同一时间轴上，可以直接按时间合并。
-- **`microphone`**：本身就是用户，Gateway 强制关闭这个会话的 `speaker_diarization`、清空 `known_voiceprints`，并把发出的每条 `transcript.upsert` / `speaker.corrected` 的 `speaker` 改写为 `{"cluster_id": "microphone", "person_id": "self", "display_name": "Me"}`。不需要声纹。
-- **`system`**：只有其他参会者。用户开了区分说话人时照常匿名分簇（Speaker 1 / 2 / …）；Gateway 移除 `person_id = "self"` 的已保存声音，并把任何 `person_id: "self"` 的结果改回 `null`，防止扬声器回声把对方认成「我」。
-- Gateway 在 `session.started` 里把 `channel` 转给 Processor，并在发给客户端的事件上加 `channel`。`segment_id` 只在各自会话内唯一，客户端以 `(channel, segment_id)` 作为一句话的键，`revision` 仍按会话递增。
-
-```json
-{"protocol_version": 1, "recording_id": "rec_mac_3f2a…", "channel": "microphone",
- "audio": {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}}
-```
-
-```json
-{"protocol_version": 1, "type": "transcript.upsert", "recording_id": "rec_mac_3f2a…",
- "channel": "system", "segment_id": "seg_4200", "revision": 7, "start_ms": 4200, "end_ms": 7900,
- "text": "下周一上线。", "is_final": true,
- "speaker": {"cluster_id": "speaker_1", "person_id": null, "display_name": "Speaker 1"}}
-```
-
-选择两个会话的原因：Processor 不需要改动就能并行处理（每个会话独立的 ASR 缓冲和断句），旧 Processor 也能用，说话人标注由 Gateway 统一保证；代价是 Processor 的计算量翻倍。系统声音用 Core Audio process tap（macOS 14.4+，私有、不静音、单声道混音）录制，需要用户在「隐私与安全性 › 录屏与系统录音」允许。录音以本地 `microphone.caf` / `system.caf` 为准，网络或 Processor 故障只会缺少实时文字。
-
 ## Run the current Mac implementation
 
 ```bash
@@ -160,8 +136,6 @@ for explicit review. Verify and save calls the authenticated `/v1/realtime/valid
 endpoint before anything is persisted. A scanned or stored token alone is not treated
 as proof that the service is currently reachable. Local recording remains the source of
 truth if transcription is disabled or unavailable.
-
-也可以不用终端：Mac 菜单栏 App（`ios/WakeOnCueMac`，见 README）以相同的进程启动 Gateway 和 Processor，只监听本机。
 
 当前 Mac Processor 默认使用 `Qwen3-ASR-1.7B`。建议单独使用 Python 3.12 环境，避免 Qwen/PyTorch 与 MLX 的依赖互相影响：
 

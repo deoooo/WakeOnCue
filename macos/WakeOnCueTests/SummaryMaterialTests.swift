@@ -71,7 +71,6 @@ struct SummaryMaterialTests {
       func hour(_ prompt: String) async throws -> HourResult { HourResult(summary: "", keySentences: []) }
       func text(_ prompt: String) async throws -> String { "" }
       func day(_ prompt: String) async throws -> DayResult { DayResult(headline: CitedResult(text: "", sources: []), details: []) }
-      func points(_ prompt: String) async throws -> [CitedResult] { [] }
       func plan(_ prompt: String) async throws -> SearchPlan { SearchPlan(keywords: [], days: 0) }
       func answer(_ prompt: String) async throws -> [CitedResult] { [] }
     }

@@ -36,24 +36,6 @@ struct VoiceReferenceTests {
     #expect(abs(VoiceReference.similarity(adapted, voice(5))) < 0.01)
   }
 
-  @Test func learnedVoiceIsUsableAfterAboutAMinute() {
-    var learned = LearnedVoice.first(voice(0), seconds: 3)
-    for _ in 1..<(LearnedVoice.minimumSentences - 1) { learned = learned.adding(voice(0, toward: 2, tilt: 0.2), seconds: 3) }
-    #expect(!learned.isUsable)
-    learned = learned.adding(voice(0), seconds: 3)
-    #expect(learned.sentences == LearnedVoice.minimumSentences)
-    #expect(learned.isUsable)
-    // Fifteen two-second sentences are not enough speech yet.
-    var short = LearnedVoice.first(voice(0), seconds: 2)
-    for _ in 1..<LearnedVoice.minimumSentences { short = short.adding(voice(0), seconds: 2) }
-    #expect(!short.isUsable)
-  }
-
-  @Test func learnedVoiceIsARunningAverage() {
-    let learned = LearnedVoice.first(voice(0), seconds: 3).adding(voice(1), seconds: 3)
-    #expect(abs(learned.embedding[0] - learned.embedding[1]) < 0.001)
-    #expect(abs(VoiceReference.similarity(learned.embedding, learned.embedding) - 1) < 0.001)
-  }
 }
 
 struct SummarySpeakerTests {
@@ -67,11 +49,11 @@ struct SummarySpeakerTests {
 
   @Test func unknownVoiceIsNotTheUser() {
     let lines = [
-      sentence(.microphone, .me), sentence(.microphone, .other), sentence(.meeting, .remote),
+      sentence(.microphone, .me), sentence(.microphone, .other),
       sentence(.microphone, .other, name: "说话人 2"), sentence(.remote, .me),
     ]
     let labels = SummaryMaterial.forSummary(lines, knowsMyVoice: false).map(\.speakerLabel)
-    #expect(labels == ["现场", "他人", "会议对方", "说话人 2", "我"])
+    #expect(labels == ["现场", "他人", "说话人 2", "我"])
     #expect(SummaryMaterial.numbered(SummaryMaterial.forSummary(lines, knowsMyVoice: false)).contains("现场：把权限写进文档"))
   }
 

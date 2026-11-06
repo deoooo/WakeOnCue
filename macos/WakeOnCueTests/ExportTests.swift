@@ -44,18 +44,10 @@ struct ExportTests {
       HourSummary(hourStart: at(5, 10, 0), summary: "私人小时的总结", keySentenceIDs: [3], generatedAt: at(5, 11, 0), isFinal: true),
       HourSummary(hourStart: at(5, 11, 0), summary: "删除小时的总结", keySentenceIDs: [4], generatedAt: at(5, 12, 0), isFinal: true),
     ]
-    let meetings = [
-      Meeting(
-        id: 1, title: "灰度评审", start: at(5, 9, 0), end: at(5, 9, 30), origin: .manual, attendees: [], points: [],
-        userAdjusted: false),
-      Meeting(
-        id: 2, title: "私人会面", start: at(5, 10, 0), end: at(5, 10, 30), origin: .manual, attendees: [], points: [],
-        userAdjusted: false),
-    ]
     return ExportSource(
       scope: .day, range: range, sentences: sentences,
       marks: [mark(.privateRange, at(5, 10, 0), at(5, 11, 0)), mark(.deleted, at(5, 11, 0), at(5, 12, 0))],
-      daySummary: summary, hourSummaries: hours, meetings: meetings)
+      daySummary: summary, hourSummaries: hours)
   }
 
   @Test func privateAndDeletedNeverExported() {
@@ -63,7 +55,7 @@ struct ExportTests {
     for format in ExportFormat.allCases {
       let out = Exporter.render(source, as: format)
       #expect(out.contains("上线前先跑一遍灰度"), "\(format)")
-      for hidden in ["体检报告", "这段不要了", "私人小时的总结", "删除小时的总结", "体检结果", "删掉的话", "私人会面"] {
+      for hidden in ["体检报告", "这段不要了", "私人小时的总结", "删除小时的总结", "体检结果", "删掉的话"] {
         #expect(!out.contains(hidden), "\(format) 里出现了 \(hidden)")
       }
     }
@@ -73,7 +65,6 @@ struct ExportTests {
     let out = Exporter.render(daySource(), as: .markdown)
     #expect(out.contains("## 一句话\n\n上午定了灰度方案（09:03）"))
     #expect(out.contains("- 灰度先跑一遍（09:03、09:10）"))
-    #expect(out.contains("- 09:00–09:30 灰度评审"))
     #expect(out.contains("### 09:00–10:00\n\n讨论灰度"))
     #expect(out.contains("- 09:03:12 **林雨**：上线前先跑一遍灰度"))
     #expect(out.contains("- 09:10:00 **我**：好的"))
@@ -112,36 +103,6 @@ struct ExportTests {
     #expect(Exporter.srtTime(3_723.456) == "01:02:03,456")
     #expect(Exporter.srtTime(-5) == "00:00:00,000")
     #expect(Exporter.srtTime(90_000) == "25:00:00,000")
-  }
-
-  @Test func meetingAcrossMidnight() {
-    let meeting = Meeting(
-      id: 7, title: "跨夜发布", start: at(5, 23, 40), end: at(6, 0, 20), origin: .manual,
-      attendees: [Attendee(name: "林雨")],
-      points: [CitedLine(text: "零点切流", cites: [11]), CitedLine(text: "私下聊的", cites: [12])],
-      userAdjusted: false)
-    let sentences = [
-      sentence(10, at(5, 23, 50), "准备切流"),
-      sentence(11, at(6, 0, 5, 0.5), "切了", length: 2),
-      sentence(12, at(6, 0, 12), "私下说一句"),
-      sentence(13, at(6, 0, 30), "会后的话"),
-    ]
-    let source = ExportSource(
-      scope: .meeting(meeting), range: DateInterval(start: meeting.start, end: meeting.end), sentences: sentences,
-      marks: [mark(.privateRange, at(6, 0, 10), at(6, 0, 15))])
-    let srt = Exporter.render(source, as: .srt)
-    #expect(srt.contains("1\n00:10:00,000 --> 00:10:03,000\n我：准备切流"))
-    #expect(srt.contains("2\n00:25:00,500 --> 00:25:02,500\n我：切了"))
-    #expect(!srt.contains("私下") && !srt.contains("会后"))
-
-    let markdown = Exporter.render(source, as: .markdown)
-    #expect(markdown.contains("23:40–11-6 00:20"))
-    #expect(markdown.contains("参会人：林雨"))
-    #expect(markdown.contains("- 零点切流（11-6 00:05）"))
-    #expect(!markdown.contains("私下"))
-    #expect(markdown.contains("- 23:50:00 **我**：准备切流\n- 11-6 00:05:00 **我**：切了"))
-
-    #expect(Exporter.fileName(source, as: .srt) == "WakeOnCue 2026-11-05 跨夜发布.srt")
   }
 
   @Test func dayRangeEndsAt24() {

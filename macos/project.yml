@@ -45,10 +45,18 @@ targets:
           if [ "$CODE_SIGN_IDENTITY" = "-" ]; then
             echo "warning: 正在用 ad-hoc 签名，每次重新编译后 macOS 都会再次询问麦克风等权限。运行 macos/scripts/setup-signing.sh 改用稳定的签名。"
           fi
+    postBuildScripts:
+      - name: Embed crash watchdog launch agent
+        basedOnDependencyAnalysis: false
+        script: |
+          mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents"
+          cp "${SRCROOT}/Library/LaunchAgents/com.deoooo.WakeOnCue.watchdog.plist" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents/"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.deoooo.WakeOnCue.macos
         PRODUCT_NAME: WakeOnCue
+        # The post-build copy puts the crash-watchdog plist under Contents/Library/LaunchAgents.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         # Process taps on other apps' audio and an all-day recorder; not sandboxed in phase 1.
         ENABLE_APP_SANDBOX: false
         ENABLE_HARDENED_RUNTIME: true
@@ -70,8 +78,6 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSRequiresNativeExecution: true
         NSMicrophoneUsageDescription: WakeOnCue 会全天录下 Mac 麦克风的声音，转录和总结都只在这台 Mac 上进行。
-        NSAudioCaptureUsageDescription: WakeOnCue 只录你选中的会议 App 播放的声音，比如会议里对方说的话。
-        NSCalendarsFullAccessUsageDescription: WakeOnCue 用会议名命名这段录音，并把参会人作为纪要的收件人。日历数据只在这台 Mac 上使用。
         NSLocalNetworkUsageDescription: WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。
         NSBonjourServices:
           - _wakeoncue._tcp
@@ -83,7 +89,6 @@ targets:
       path: WakeOnCue/WakeOnCue.entitlements
       properties:
         com.apple.security.device.audio-input: true
-        com.apple.security.personal-information.calendars: true
         # The sherpa-onnx libraries are downloaded from its official releases (signed by their
         # publisher, checked against the published SHA-256) and loaded with dlopen.
         com.apple.security.cs.disable-library-validation: true
@@ -124,17 +129,13 @@ targets:
       - path: WakeOnCue/App/TimeText.swift
       - path: WakeOnCue/Sync/SyncProtocol.swift
       - path: WakeOnCue/UI/Main/DayData.swift
-      - path: WakeOnCue/Capture/AudioLevel.swift
+      - path: WakeOnCue/Playback/Player.swift
       - path: WakeOnCue/Capture/ChannelPipeline.swift
-      - path: WakeOnCue/Capture/MeetingAudioGate.swift
-      - path: WakeOnCue/Capture/MeetingAudioActivity.swift
       - path: WakeOnCue/Transcription/TranscriptFilter.swift
       - path: WakeOnCue/Transcription/SentenceSplitter.swift
       - path: WakeOnCue/Transcription/LiveLatency.swift
       - path: WakeOnCue/Transcription/SpeakerClustering.swift
-      - path: WakeOnCue/Transcription/VoiceMeetingSignal.swift
       - path: WakeOnCue/Transcription/VoiceReference.swift
-      - path: WakeOnCue/Transcription/VoiceRepair.swift
       - path: WakeOnCue/Intelligence/SummaryMaterial.swift
       - path: WakeOnCue/Intelligence/SummaryEngine.swift
       - path: WakeOnCue/Intelligence/GatewayEngine.swift

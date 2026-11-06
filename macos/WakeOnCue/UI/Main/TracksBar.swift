@@ -47,13 +47,10 @@ struct TracksBar: View {
           .monospacedDigit()
           .foregroundStyle(.secondary)
         }
-        // Only show a lane when this day actually has audio from that source; a microphone-only
-        // day has no "会议声音" track, so an empty lane would just be noise.
+        // Only show a lane when this day actually has audio from that source; an empty lane would
+        // just be noise.
         if hasAudio(.microphone) {
           lane("Mac 麦克风", channel: .microphone, color: .sourceMac, height: 14)
-        }
-        if hasAudio(.meeting) {
-          lane("会议声音", channel: .meeting, color: .sourceMeeting, height: 8)
         }
         if hasAudio(.remote) {
           lane("手表 / iPhone", channel: .remote, color: .sourceWatch, height: 8)

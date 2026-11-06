@@ -5,13 +5,11 @@ import Foundation
 enum CaptureError: LocalizedError {
   case microphoneDenied
   case noMicrophone
-  case meetingAudio(String, OSStatus)
 
   var errorDescription: String? {
     switch self {
     case .microphoneDenied: "麦克风权限已关闭"
     case .noMicrophone: "没有可用的麦克风"
-    case .meetingAudio(let step, let status): "无法录制会议 App 的声音（\(step)，错误 \(status)）"
     }
   }
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Speech per hour on a 0–24 axis. Bar height is minutes of speech; the share that belongs to a
-/// key event is drawn in the event colour. Empty states follow the design's legend.
+/// Speech per hour on a 0–24 axis. Bar height is minutes of speech. Empty states follow the
+/// design's legend.
 struct ActivityChart: View {
   @Environment(AppModel.self) private var model
   let data: DayData
@@ -11,12 +11,6 @@ struct ActivityChart: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
         Text("每小时").font(.system(size: 15, weight: .semibold))
-        HStack(spacing: 5) {
-          RoundedRectangle(cornerRadius: 2).fill(Color.event).frame(width: 12, height: 8)
-          Text("重点事件")
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
         Button {
           ui.showLegend.toggle()
         } label: {
@@ -56,11 +50,7 @@ struct ActivityChart: View {
         switch hour.state {
         case .speech:
           let height = max(8, hour.speechMinutes / maxMinutes * 44)
-          VStack(spacing: 0) {
-            Rectangle().fill(base).frame(height: height * (1 - hour.meetingShare))
-            Rectangle().fill(Color.event).frame(height: height * hour.meetingShare)
-          }
-          .clipShape(RoundedRectangle(cornerRadius: 4))
+          RoundedRectangle(cornerRadius: 4).fill(base).frame(height: height)
         case .quiet:
           RoundedRectangle(cornerRadius: 2).fill(Color.emptyBar).frame(height: 4)
         case .privateHour:
@@ -86,7 +76,6 @@ struct ActivityChart: View {
     let state: String =
       switch hour.state {
       case .speech: "有人说话约 \(Int(hour.speechMinutes.rounded())) 分钟"
-        + (hour.meetings.isEmpty ? "" : "，含" + hour.meetings.map(\.title).joined(separator: "、"))
       case .quiet: "录了，但没人说话"
       case .privateHour: "已标为私人"
       case .deleted: "已删除"
@@ -110,7 +99,6 @@ private struct Legend: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
       key(RoundedRectangle(cornerRadius: 2).fill(Color.activity), "有人说话，高度是说话时长")
-      key(RoundedRectangle(cornerRadius: 2).fill(Color.event), "其中属于重点事件的部分")
       key(RoundedRectangle(cornerRadius: 2).fill(Color.emptyBar).frame(height: 4), "录了，没人说话")
       key(Line().stroke(Color.hatch, style: StrokeStyle(lineWidth: 2, dash: [3, 3])).frame(height: 2), "没录音")
       key(Hatch(spacing: 4).stroke(Color.hatch, lineWidth: 1.5).clipShape(Rectangle()), "已标为私人")
@@ -129,8 +117,8 @@ private struct Legend: View {
   }
 }
 
-/// One hour: its summary (or why there is none), the meeting it belongs to, an in-place
-/// transcript that opens on the key sentences, and the "…" menu.
+/// One hour: its summary (or why there is none), an in-place transcript that opens on the key
+/// sentences, and the "…" menu.
 struct HourRow: View {
   @Environment(AppModel.self) private var model
   let hour: DayData.Hour
@@ -170,21 +158,6 @@ struct HourRow: View {
     switch hour.state {
     case .speech:
       VStack(alignment: .leading, spacing: 4) {
-        ForEach(hour.meetings) { meeting in
-          Button {
-            model.openMeeting(meeting.id)
-          } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-              Text(meeting.title + (meeting.start < hour.interval.start ? "（续）" : ""))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.event)
-              Text(TimeText.range(meeting.start, meeting.end) + " ›")
-                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-            }
-          }
-          .buttonStyle(.plain)
-          .help("打开整场：要点、完整转录和纪要")
-        }
         Button {
           toggle()
         } label: {
@@ -253,9 +226,6 @@ struct HourRow: View {
       if hour.state == .speech {
         Button("播放这一小时") {
           if let first = hour.sentences.first { model.play(first) }
-        }
-        if hour.meetings.isEmpty {
-          Button("标成一场会议…") { model.markMeeting(in: hour.interval) }
         }
         Button("重新生成总结") { model.summaries.regenerate(hour: hour.interval.start) }
           .disabled(model.summaries.engineName == nil)

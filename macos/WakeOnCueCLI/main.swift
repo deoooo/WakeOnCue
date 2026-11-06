@@ -7,14 +7,12 @@ let usage = """
   用法：wakeoncue <命令> [选项]
 
   命令：
-    day [日期]                      当天总结、重点事件、手表标记和每小时总结
+    day [日期]                      当天总结、手表标记和每小时总结
     transcript [日期] [--hour HH | --from HH:MM --to HH:MM]
                                    转录原文
-    search <词>... [--days N] [--speaker 我|会议对方|他人]
+    search <词>... [--days N] [--speaker 我|他人]
                                    全文搜索，多个词同时命中的排在前面
-    meetings [日期]                 会议列表
-    meeting <编号>                  一场会议的要点和完整转录
-    export [日期] [--hour HH | --meeting 编号] [--format md|txt|srt]
+    export [日期] [--hour HH] [--format md|txt|srt]
                                    导出成文件内容，输出到标准输出；默认导出整天的 Markdown
     health [--days N]               检查最近 N 天（默认 3）的全天录音：没有原因的空档、
                                    有音频没转录、有转录没总结、回传进度
@@ -115,16 +113,6 @@ struct CitedOut: Encodable {
   let cites: [SentenceOut]
 }
 
-struct MeetingOut: Encodable {
-  let id: Int64
-  let title: String
-  let start: String
-  let end: String
-  let attendees: [String]
-  let points: [CitedOut]?
-  let transcript: [SentenceOut]?
-}
-
 @MainActor
 struct Reader {
   let store: Store
@@ -150,13 +138,6 @@ struct Reader {
     return CitedOut(text: line.text, cites: sources.map(SentenceOut.init))
   }
 
-  func meeting(_ meeting: Meeting, transcript: Bool) -> MeetingOut {
-    MeetingOut(
-      id: meeting.id, title: meeting.title, start: Dates.iso.string(from: meeting.start), end: Dates.iso.string(from: meeting.end),
-      attendees: meeting.attendees.map { person in person.email.map { "\(person.name) <\($0)>" } ?? person.name },
-      points: meeting.points.compactMap(cited),
-      transcript: transcript ? sentences(in: DateInterval(start: meeting.start, end: max(meeting.end, meeting.start))).map(SentenceOut.init) : nil)
-  }
 }
 
 func printJSON<T: Encodable>(_ value: T) throws {
@@ -187,12 +168,10 @@ func run(_ raw: [String]) throws {
     let summary = reader.store.daySummary(for: day)
     let hours = reader.store.hourSummaries(in: interval).values
       .filter { reader.visible($0.hourStart) && !$0.summary.isEmpty }.sorted { $0.hourStart < $1.hourStart }
-    let meetings = reader.store.meetings(overlapping: interval).filter { reader.visible($0.start) }
     struct DayOut: Encodable {
       let date: String
       let headline: CitedOut?
       let details: [CitedOut]
-      let meetings: [MeetingOut]
       let marks: [MarkOut]
       let hours: [HourOut]
     }
@@ -213,7 +192,6 @@ func run(_ raw: [String]) throws {
       date: TimeText.dayFolder(day),
       headline: summary.flatMap { reader.cited($0.headline) },
       details: summary?.details.compactMap(reader.cited) ?? [],
-      meetings: meetings.map { reader.meeting($0, transcript: false) },
       marks: reader.store.deviceMarks(overlapping: interval).filter { reader.visible($0.start) }.map { mark in
         MarkOut(
           start: Dates.iso.string(from: mark.start), end: mark.end.map { Dates.iso.string(from: $0) },
@@ -230,12 +208,6 @@ func run(_ raw: [String]) throws {
     if !out.details.isEmpty {
       print("\n详情")
       for line in out.details { print("· \(line.text)\(cites(line))") }
-    }
-    if !out.meetings.isEmpty {
-      print("\n重点事件")
-      for meeting in out.meetings {
-        print("· #\(meeting.id) \(meeting.start.dropFirst(11).prefix(5))–\(meeting.end.dropFirst(11).prefix(5)) \(meeting.title)")
-      }
     }
     if !out.marks.isEmpty {
       print("\n标记")
@@ -288,51 +260,19 @@ func run(_ raw: [String]) throws {
     if out.isEmpty { print("没有找到。标为私人或已删除的时段不会出现在结果里。") }
     for sentence in out { print("\(sentence.start.prefix(10)) \(sentence.line)") }
 
-  case "meetings":
-    let reader = try Reader()
-    let day = try Dates.day(args.positionals.first)
-    let out = reader.store.meetings(overlapping: DateInterval(start: day, duration: 86_400))
-      .filter { reader.visible($0.start) }.map { reader.meeting($0, transcript: false) }
-    if args.json { return try printJSON(out) }
-    if out.isEmpty { print("这一天没有会议。") }
-    for meeting in out {
-      print("#\(meeting.id) \(meeting.start.dropFirst(11).prefix(5))–\(meeting.end.dropFirst(11).prefix(5)) \(meeting.title)")
-    }
-
-  case "meeting":
-    guard let id = args.positionals.first.flatMap(Int64.init) else { throw UsageError(message: "请给出会议编号，例如：wakeoncue meeting 3") }
-    let reader = try Reader()
-    guard let meeting = reader.store.meeting(id: id), reader.visible(meeting.start) else { throw UsageError(message: "没有编号为 \(id) 的会议") }
-    let out = reader.meeting(meeting, transcript: true)
-    if args.json { return try printJSON(out) }
-    print("\(out.title)  \(out.start.prefix(10)) \(out.start.dropFirst(11).prefix(5))–\(out.end.dropFirst(11).prefix(5))")
-    if !out.attendees.isEmpty { print("参会人：\(out.attendees.joined(separator: "、"))") }
-    print("\n要点")
-    if out.points?.isEmpty ?? true { print("（还没有生成）") }
-    for point in out.points ?? [] { print("· \(point.text)\(cites(point))") }
-    print("\n完整转录")
-    for sentence in out.transcript ?? [] { print(sentence.line) }
-
   case "export":
     let reader = try Reader()
     let formatText = args.options["format"] ?? "md"
     guard let format = ExportFormat(rawValue: formatText.lowercased()) else {
       throw UsageError(message: "不支持的格式：\(formatText)，可选 md、txt、srt")
     }
+    let day = try Dates.day(args.positionals.first)
     let source: ExportSource
-    if let text = args.options["meeting"] {
-      guard let id = Int64(text), let meeting = reader.store.meeting(id: id), reader.visible(meeting.start) else {
-        throw UsageError(message: "没有编号为 \(text) 的会议")
-      }
-      source = .meeting(meeting, store: reader.store)
+    if let text = args.options["hour"] {
+      guard let hour = Int(text), (0..<24).contains(hour) else { throw UsageError(message: "--hour 要在 0 到 23 之间") }
+      source = .hour(Calendar.current.date(byAdding: .hour, value: hour, to: day)!, store: reader.store)
     } else {
-      let day = try Dates.day(args.positionals.first)
-      if let text = args.options["hour"] {
-        guard let hour = Int(text), (0..<24).contains(hour) else { throw UsageError(message: "--hour 要在 0 到 23 之间") }
-        source = .hour(Calendar.current.date(byAdding: .hour, value: hour, to: day)!, store: reader.store)
-      } else {
-        source = .day(day, store: reader.store)
-      }
+      source = .day(day, store: reader.store)
     }
     if args.json { throw UsageError(message: "export 不支持 --json，请用 --format 选择格式") }
     FileHandle.standardOutput.write(Data(Exporter.render(source, as: format).utf8))

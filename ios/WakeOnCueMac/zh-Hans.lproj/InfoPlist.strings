@@ -1,3 +1,0 @@
-"CFBundleDisplayName" = "WakeOnCue";
-"NSMicrophoneUsageDescription" = "WakeOnCue 只在你开始的会议录音期间录制麦克风。";
-"NSAudioCaptureUsageDescription" = "WakeOnCue 只在你开始的录音期间录制这台 Mac 播放的声音，例如线上会议中对方的发言。";

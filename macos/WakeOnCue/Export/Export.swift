@@ -24,7 +24,6 @@ nonisolated struct ExportSource: Sendable {
   enum Scope: Hashable, Sendable {
     case day
     case hour
-    case meeting(Meeting)
   }
 
   var scope: Scope
@@ -35,7 +34,6 @@ nonisolated struct ExportSource: Sendable {
   var marks: [TimeMark]
   var daySummary: DaySummary? = nil
   var hourSummaries: [HourSummary] = []
-  var meetings: [Meeting] = []
 }
 
 /// Turns an `ExportSource` into Markdown, plain text or SRT. Pure: same input, same text.
@@ -49,16 +47,13 @@ nonisolated enum Exporter {
     }
   }
 
-  /// "WakeOnCue 2026-11-05.md", "WakeOnCue 2026-11-05 09 点.srt", "WakeOnCue 2026-11-05 周会.txt".
+  /// "WakeOnCue 2026-11-05.md", "WakeOnCue 2026-11-05 09 点.srt".
   static func fileName(_ source: ExportSource, as format: ExportFormat, calendar: Calendar = .current) -> String {
     let day = TimeText.dayFolder(source.range.start)
     let name: String
     switch source.scope {
     case .day: name = day
     case .hour: name = String(format: "%@ %02d 点", day, calendar.component(.hour, from: source.range.start))
-    case .meeting(let meeting):
-      let title = meeting.title.components(separatedBy: CharacterSet(charactersIn: "/:\\\n")).joined(separator: "-")
-      name = "\(day) \(title)"
     }
     return "WakeOnCue \(name).\(format.rawValue)"
   }
@@ -105,15 +100,6 @@ nonisolated enum Exporter {
     }
 
     var details: [CitedLine] { source.daySummary?.details.filter { keep($0) } ?? [] }
-
-    var meetings: [Meeting] {
-      source.meetings.filter { !isHidden($0.start) }.sorted { $0.start < $1.start }
-    }
-
-    var meetingPoints: [CitedLine] {
-      guard case .meeting(let meeting) = source.scope else { return [] }
-      return meeting.points.filter { keep($0) }
-    }
 
     /// Hours that have something to show, each with its summary when that is safe to show: an
     /// hour marked private or deleted at its start, or whose key sentences are hidden, has none.
@@ -170,12 +156,6 @@ nonisolated enum Exporter {
       out.append("# \(TimeText.day(source.range.start))")
     case .hour:
       out.append("# \(TimeText.day(source.range.start)) \(view.range(source.range))")
-    case .meeting(let meeting):
-      out.append("# \(meeting.title)")
-      out.append("")
-      var info = "\(TimeText.day(meeting.start)) \(view.range(source.range))"
-      if !meeting.attendees.isEmpty { info += " · 参会人：" + meeting.attendees.map(\.name).joined(separator: "、") }
-      out.append(info)
     }
     out.append("")
     out.append("> 由 WakeOnCue 导出。标为私人或已删除的时段不包含在内。")
@@ -189,35 +169,20 @@ nonisolated enum Exporter {
         out += ["", "## 详情总结", ""]
         out += details.map { "- \($0.text)\(view.cites($0))" }
       }
-      let meetings = view.meetings
-      if !meetings.isEmpty {
-        out += ["", "## 重点事件", ""]
-        out += meetings.map { "- \(view.range(DateInterval(start: $0.start, end: max($0.start, $0.end)))) \($0.title)" }
-      }
     }
 
-    if case .meeting = source.scope {
-      let points = view.meetingPoints
-      if !points.isEmpty {
-        out += ["", "## 要点", ""]
-        out += points.map { "- \($0.text)\(view.cites($0))" }
+    let hours = view.hours
+    if case .day = source.scope, !hours.isEmpty { out += ["", "## 每小时"] }
+    let level = source.scope == .day ? "###" : "##"
+    for hour in hours {
+      if source.scope == .day { out += ["", "\(level) \(view.range(hour.interval))"] }
+      if let summary = hour.summary {
+        out += ["", source.scope == .day ? summary.summary : "\(level) 总结\n\n\(summary.summary)"]
       }
-      out += ["", "## 完整转录", ""]
-      out += view.sentences.map { transcriptItem($0, view) }
-    } else {
-      let hours = view.hours
-      if case .day = source.scope, !hours.isEmpty { out += ["", "## 每小时"] }
-      let level = source.scope == .day ? "###" : "##"
-      for hour in hours {
-        if source.scope == .day { out += ["", "\(level) \(view.range(hour.interval))"] }
-        if let summary = hour.summary {
-          out += ["", source.scope == .day ? summary.summary : "\(level) 总结\n\n\(summary.summary)"]
-        }
-        if !hour.sentences.isEmpty {
-          if source.scope == .hour { out += ["", "\(level) 转录"] }
-          out.append("")
-          out += hour.sentences.map { transcriptItem($0, view) }
-        }
+      if !hour.sentences.isEmpty {
+        if source.scope == .hour { out += ["", "\(level) 转录"] }
+        out.append("")
+        out += hour.sentences.map { transcriptItem($0, view) }
       }
     }
     if view.sentences.isEmpty { out += ["", "这段时间没有可导出的转录。"] }

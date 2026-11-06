@@ -1,31 +1,6 @@
 import Foundation
 import Observation
 
-/// An app whose sound may be recorded. Helper processes share a bundle ID prefix, so audio
-/// from any process whose bundle ID starts with one of `bundlePrefixes` counts as this app.
-struct MeetingApp: Codable, Hashable, Identifiable {
-  var name: String
-  var bundlePrefixes: [String]
-  var enabled: Bool
-  var note: String = ""
-
-  var id: String { bundlePrefixes.first ?? name }
-
-  func matches(_ bundleID: String) -> Bool {
-    bundlePrefixes.contains { bundleID.hasPrefix($0) }
-  }
-
-  static let defaults: [MeetingApp] = [
-    MeetingApp(name: "飞书", bundlePrefixes: ["com.bytedance.macos.feishu", "com.electron.lark", "com.larksuite"], enabled: true),
-    MeetingApp(name: "腾讯会议", bundlePrefixes: ["com.tencent.meeting"], enabled: true),
-    MeetingApp(name: "钉钉", bundlePrefixes: ["com.alibaba.DingTalkMac", "com.alibaba.dingtalk"], enabled: true),
-    // FaceTime calls play through the conference daemon, not the app.
-    MeetingApp(name: "FaceTime", bundlePrefixes: ["com.apple.FaceTime", "com.apple.avconferenced"], enabled: true),
-    MeetingApp(name: "微信", bundlePrefixes: ["com.tencent.xinWeChat"], enabled: false, note: "也会录到视频和语音消息"),
-    MeetingApp(name: "Google Chrome", bundlePrefixes: ["com.google.Chrome"], enabled: false, note: "分不出标签页，音乐也会被录"),
-  ]
-}
-
 enum MicrophoneChoice: String, CaseIterable {
   case builtIn
   case systemDefault
@@ -59,9 +34,6 @@ final class Preferences {
 
   var alwaysRecord: Bool { didSet { defaults.set(alwaysRecord, forKey: "alwaysRecord") } }
   var microphone: MicrophoneChoice { didSet { defaults.set(microphone.rawValue, forKey: "microphone") } }
-  var meetingApps: [MeetingApp] {
-    didSet { defaults.set(try? JSONEncoder().encode(meetingApps), forKey: "meetingApps") }
-  }
   /// Days to keep audio; 0 keeps it forever.
   var audioRetentionDays: Int { didSet { defaults.set(audioRetentionDays, forKey: "audioRetentionDays") } }
   /// Days to keep transcripts and summaries; 0 keeps them forever.
@@ -96,14 +68,10 @@ final class Preferences {
   var transcriptionConsentHost: String? { didSet { defaults.set(transcriptionConsentHost, forKey: "transcriptionConsentHost") } }
   /// The gateway host the user agreed to send transcripts to; another host needs a new consent.
   var gatewayConsentHost: String? { didSet { defaults.set(gatewayConsentHost, forKey: "gatewayConsentHost") } }
-  /// One-time repair of data written by the old meeting and voice-learning code.
-  var voiceRepairVersion: Int { didSet { defaults.set(voiceRepairVersion, forKey: "voiceRepairVersion") } }
 
   init() {
     alwaysRecord = defaults.object(forKey: "alwaysRecord") as? Bool ?? true
     microphone = MicrophoneChoice(rawValue: defaults.string(forKey: "microphone") ?? "") ?? .builtIn
-    meetingApps = (defaults.data(forKey: "meetingApps")).flatMap { try? JSONDecoder().decode([MeetingApp].self, from: $0) }
-      ?? MeetingApp.defaults
     audioRetentionDays = defaults.object(forKey: "audioRetentionDays") as? Int ?? 0
     textRetentionDays = defaults.object(forKey: "textRetentionDays") as? Int ?? 0
     onboarded = defaults.bool(forKey: "onboarded")
@@ -124,7 +92,6 @@ final class Preferences {
     transcriptionModel = defaults.string(forKey: "transcriptionModel") ?? ""
     transcriptionConsentHost = defaults.string(forKey: "transcriptionConsentHost")
     gatewayConsentHost = defaults.string(forKey: "gatewayConsentHost")
-    voiceRepairVersion = defaults.object(forKey: "voiceRepairVersion") as? Int ?? 0
   }
 }
 

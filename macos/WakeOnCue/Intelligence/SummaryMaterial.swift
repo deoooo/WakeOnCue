@@ -155,13 +155,12 @@ nonisolated enum SummaryMaterial {
     return (lines.joined(separator: "\n"), sources)
   }
 
-  static func dayPrompt(material: String, meetings: [String]) -> String {
+  static func dayPrompt(material: String) -> String {
     """
     这是一天里每小时的总结和其中的原话，原话前有编号。先通读全天，再写出当天最重要的一句话和当天的要点。\
     要点是全天最重要的几件事：决定、发现的问题和待办，带上人名和数字。\
     后面几个小时和前面几个小时同样重要，不要只写前几个小时；每个小时最多一条，按时间顺序排列。\
     每条注明依据的原话编号。不要写「没有形成明确结论」这类话。
-    \(meetings.isEmpty ? "" : "当天的会议：\n\(meetings.joined(separator: "\n"))\n")
     \(material)
     """
   }

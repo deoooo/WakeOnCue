@@ -53,7 +53,6 @@ struct HealthDay: Encodable {
   /// Hours of the day checked so far (24, or less for today).
   let checkedHours: Double
   let microphoneHours: Double
-  let meetingAppHours: Double
   let remoteHours: Double
   let pausedHours: Double
   let privateOrDeletedHours: Double
@@ -90,7 +89,7 @@ func healthReport(store: Store, days: Int, now: Date = .now, modelSelected: Bool
       TimeRanges(segments.filter { $0.channel == channel }.map { DateInterval(start: $0.start, end: max($0.start, $0.end)) })
         .clipped(to: window)
     }
-    let microphone = ranges(.microphone), meeting = ranges(.meeting), remote = ranges(.remote)
+    let microphone = ranges(.microphone), remote = ranges(.remote)
     let paused = TimeRanges(marks.filter { $0.kind == .paused }.map { DateInterval(start: $0.start, end: max($0.start, $0.end)) })
       .clipped(to: window)
     let hidden = TimeRanges(marks.filter { $0.kind != .paused }.map { DateInterval(start: $0.start, end: max($0.start, $0.end)) })
@@ -108,7 +107,7 @@ func healthReport(store: Store, days: Int, now: Date = .now, modelSelected: Bool
     var hour = day
     while hour < window.end {
       let hourWindow = DateInterval(start: hour, duration: 3_600)
-      let audio = TimeRanges(microphone.ranges + meeting.ranges + remote.ranges).clipped(to: hourWindow).total
+      let audio = TimeRanges(microphone.ranges + remote.ranges).clipped(to: hourWindow).total
         - hidden.clipped(to: hourWindow).total
       let spoken = sentences.contains { sentence in
         hourWindow.contains(sentence.start) && !hidden.ranges.contains { $0.contains(sentence.start) }
@@ -134,7 +133,7 @@ func healthReport(store: Store, days: Int, now: Date = .now, modelSelected: Bool
     return HealthDay(
       date: TimeText.dayFolder(day),
       checkedHours: (window.duration / 360).rounded() / 10,
-      microphoneHours: hours(microphone), meetingAppHours: hours(meeting), remoteHours: hours(remote),
+      microphoneHours: hours(microphone), remoteHours: hours(remote),
       pausedHours: hours(paused), privateOrDeletedHours: hours(hidden),
       gaps: gaps.map { gap in
         span(DateInterval(start: max(gap.start, window.start), end: min(max(gap.start, gap.end ?? now), window.end)), gap.reason)
@@ -154,7 +153,7 @@ func printHealth(_ days: [HealthDay], remote: [String: (total: Int, waiting: Int
   var problems = 0
   for day in days {
     print("\(day.date)（检查了 \(day.checkedHours) 小时）")
-    print("  录音：麦克风 \(day.microphoneHours) 小时，会议 App \(day.meetingAppHours) 小时，手表和 iPhone \(day.remoteHours) 小时；音频 \(day.audioMegabytes) MB")
+    print("  录音：麦克风 \(day.microphoneHours) 小时，手表和 iPhone \(day.remoteHours) 小时；音频 \(day.audioMegabytes) MB")
     if day.pausedHours > 0 || day.privateOrDeletedHours > 0 {
       print("  暂停 \(day.pausedHours) 小时，私人或已删除 \(day.privateOrDeletedHours) 小时")
     }

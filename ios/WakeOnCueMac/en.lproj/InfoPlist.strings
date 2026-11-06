@@ -1,3 +1,0 @@
-"CFBundleDisplayName" = "WakeOnCue";
-"NSMicrophoneUsageDescription" = "WakeOnCue records your microphone only during a meeting recording you start.";
-"NSAudioCaptureUsageDescription" = "WakeOnCue records audio played on this Mac, such as the other side of an online meeting, only during a recording you start.";

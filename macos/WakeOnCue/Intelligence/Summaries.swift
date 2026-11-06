@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import OSLog
 
-/// Hour, day and meeting summaries. Each finished hour gets its summary and key sentences; the
+/// Hour and day summaries. Each finished hour gets its summary and key sentences; the
 /// running hour gets a provisional one every 15 minutes; the day summary follows the hours.
 /// Private and deleted ranges never reach the engine. The engine is Apple Intelligence when
 /// this Mac has it, otherwise the user's gateway (or always the gateway, if they chose so).
@@ -39,7 +39,6 @@ final class Summaries {
   private enum Job: Equatable {
     case hour(Date, final: Bool)
     case day(Date)
-    case meeting(Int64)
   }
 
   init(store: Store, preferences: Preferences) {
@@ -148,10 +147,6 @@ final class Summaries {
     for day in dirtyDays.sorted() { enqueue(.day(day)) }
   }
 
-  func regenerateMeeting(_ id: Int64) {
-    enqueue(.meeting(id))
-  }
-
   /// True when `engine` wrote a summary but another engine is chosen now, e.g. after switching
   /// from Apple Intelligence to the gateway. Old summaries stay until regenerated.
   func isOutdated(engine: String?) -> Bool {
@@ -213,8 +208,6 @@ final class Summaries {
         case .day(let day):
           try await summarizeDay(day, engine: engine)
           dirtyDays.remove(day)
-        case .meeting(let id):
-          try await summarizeMeeting(id, engine: engine)
         }
         lastError = nil
       } catch {
@@ -281,7 +274,6 @@ final class Summaries {
       .filter { s in !s.summary.isEmpty && !hidden.contains { $0.covers(s.hourStart) } }
       .sorted { $0.hourStart < $1.hourStart }
     guard !summaries.isEmpty else { return }
-    let meetings = store.meetings(overlapping: interval).filter { m in !hidden.contains { $0.covers(m.start) } }
     let hours = summaries.map { summary in
       SummaryMaterial.DayHour(
         start: summary.hourStart, summary: summary.summary,
@@ -309,35 +301,13 @@ final class Summaries {
     let (hourText, hourSources) = SummaryMaterial.dayMaterial(
       hours, budget: max(engine.partCharacters * 2 - marked.count, engine.partCharacters / 2), firstNumber: sources.count + 1)
     sources += hourSources
-    let result = try await engine.day(SummaryMaterial.dayPrompt(
-      material: marked + hourText, meetings: meetings.map { "\(TimeText.range($0.start, $0.end)) \($0.title)" }))
+    let result = try await engine.day(SummaryMaterial.dayPrompt(material: marked + hourText))
     let cite = { (numbers: [Int]) in numbers.compactMap { sources.indices.contains($0 - 1) ? sources[$0 - 1].id : nil } }
     store.saveDaySummary(DaySummary(
       day: day,
       headline: CitedLine(text: result.headline.text, cites: cite(result.headline.sources)),
       details: result.details.map { CitedLine(text: $0.text, cites: cite($0.sources)) }.filter { !$0.cites.isEmpty },
       generatedAt: .now, engine: engine.name))
-  }
-
-  private func summarizeMeeting(_ id: Int64, engine: any SummaryEngine) async throws {
-    guard var meeting = store.meeting(id: id) else { return }
-    let sentences = visibleSentences(in: DateInterval(start: meeting.start, end: max(meeting.end, meeting.start)))
-    guard !sentences.isEmpty else { return }
-    var points: [CitedLine] = []
-    for part in SummaryMaterial.parts(SummaryMaterial.meaningful(sentences), limit: engine.partCharacters) {
-      let results = try await SummaryMaterial.halving(part, engine: engine) {
-        try await engine.points(
-          "下面是会议「\(meeting.title)」的转录，每句前面有编号。列出会议要点：先写结论、决定和谁答应做什么；没有明确决定时，就写谈了哪些事、各自的进展或问题。每条注明依据的原话编号，至少列出一条。\n\n\(SummaryMaterial.numbered($0))")
-      }
-      for (result, piece) in results {
-        points += result.map { CitedLine(text: $0.text, cites: Self.ids($0.sources, in: piece)) }
-      }
-    }
-    meeting.points = Array(points.prefix(8))
-    meeting.minutes = Meetings.minutes(for: meeting)
-    meeting.pointsGeneratedAt = .now
-    meeting.pointsEngine = engine.name
-    store.saveMeeting(meeting)
   }
 }
 

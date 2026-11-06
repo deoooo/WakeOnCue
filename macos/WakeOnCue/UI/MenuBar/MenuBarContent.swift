@@ -41,12 +41,8 @@ struct MenuBarContent: View {
         Text("今天 \(TimeText.duration(model.todayRecordedSeconds))").font(.caption).foregroundStyle(.secondary)
       }
       HStack(spacing: 8) {
-        Text(model.preferences.microphone == .builtIn ? "内建麦克风" : model.recorder.microphoneName)
+        Text(model.recorder.microphoneFellBack ? model.recorder.microphoneName : (model.preferences.microphone == .builtIn ? "内建麦克风" : model.recorder.microphoneName))
         Meter(level: model.recorder.microphoneLevel)
-        if !model.recorder.activeMeetingApps.isEmpty {
-          Text(model.recorder.activeMeetingApps.joined(separator: "、"))
-          Meter(level: model.recorder.meetingLevel)
-        }
       }
       .font(.caption)
       .foregroundStyle(.secondary)

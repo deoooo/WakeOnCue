@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings with the phase 1 sections: recording, transcription, calendar, storage, permissions.
+/// Settings sections: recording, devices, transcription, voices, AI, storage and permissions.
 struct SettingsView: View {
   enum Section: String, CaseIterable, Identifiable {
     case recording = "录音"
@@ -11,7 +11,6 @@ struct SettingsView: View {
     case transcription = "转录模型"
     case voices = "声音"
     case ai = "AI 服务"
-    case calendar = "日历"
     case storage = "存储"
     case permissions = "权限"
     var id: String { rawValue }
@@ -33,7 +32,6 @@ struct SettingsView: View {
         case .transcription: TranscriptionSettings()
         case .voices: VoicesSettings()
         case .ai: AISettings()
-        case .calendar: CalendarSettings()
         case .storage: StorageSettings()
         case .permissions: PermissionSettings()
         }
@@ -58,6 +56,7 @@ private struct RecordingSettings: View {
         }
         .onChange(of: preferences.alwaysRecord) {
           if preferences.alwaysRecord {
+            CrashRecovery.registerIfNeeded()
             Task { await model.recorder.startIfAllowed() }
           } else {
             model.recorder.turnOff()
@@ -72,50 +71,11 @@ private struct RecordingSettings: View {
         }
         Text("使用 AirPods 麦克风时，播放的音质会下降，所以默认用内建麦克风。").font(.caption).foregroundStyle(.secondary)
       }
-      Section {
-        ForEach($preferences.meetingApps) { $app in
-          Toggle(isOn: $app.enabled) {
-            HStack(spacing: 6) {
-              Text(app.name)
-              if model.recorder.activeMeetingApps.contains(app.name) {
-                Text("正在录").foregroundStyle(.secondary)
-              } else if !app.note.isEmpty {
-                Text(app.note).foregroundStyle(.secondary)
-              }
-            }
-          }
-          .contextMenu {
-            if !MeetingApp.defaults.contains(where: { $0.id == app.id }) {
-              Button("从清单移除") { preferences.meetingApps.removeAll { $0.id == app.id } }
-            }
-          }
-        }
-      } header: {
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("录制这些 App 的声音")
-            Text("只录 App 播放的声音，你说的话由麦克风录下。").font(.caption).foregroundStyle(.secondary)
-          }
-          Spacer()
-          Button("添加 App…", action: addApp)
-        }
-      }
       Section("暂停") {
         LabeledContent("暂停或继续", value: "⌃⌥P")
         LabeledContent("暂停 1 小时、删除刚才的录音", value: "在菜单栏中")
       }
     }
-    .onChange(of: preferences.meetingApps) { model.recorder.refreshMeetingAudio() }
-  }
-
-  private func addApp() {
-    let panel = NSOpenPanel()
-    panel.allowedContentTypes = [.application]
-    panel.directoryURL = URL(fileURLWithPath: "/Applications")
-    guard panel.runModal() == .OK, let url = panel.url, let bundle = Bundle(url: url), let id = bundle.bundleIdentifier else { return }
-    let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
-    guard !model.preferences.meetingApps.contains(where: { $0.matches(id) }) else { return }
-    model.preferences.meetingApps.append(MeetingApp(name: name, bundlePrefixes: [id], enabled: true))
   }
 }
 
@@ -147,28 +107,7 @@ private struct TranscriptionSettings: View {
           .font(.caption).foregroundStyle(.secondary)
       }
       Section("说话人") {
-        Text("麦克风里是你的声音算「我」，会议 App 那一路算「会议对方」，麦克风里的其他人算「他人」。录入你的声音、区分说话人和记住声音在设置 › 声音里。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-    }
-  }
-}
-
-private struct CalendarSettings: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    Form {
-      Section {
-        LabeledContent("日历权限") {
-          if model.meetings.calendarAccess == .fullAccess {
-            Text("已打开").foregroundStyle(.green)
-          } else {
-            Button("打开…") { Task { await model.meetings.requestCalendarAccess() } }
-          }
-        }
-        Text("用会议名命名这段录音，并把参会人作为纪要的收件人。会议的起止时间按实际说话从日历时间延长或缩短，可在会议面板里手动调整。")
+        Text("麦克风里是你的声音算「我」，麦克风里的其他人算「他人」。录入你的声音、区分说话人和记住声音在设置 › 声音里。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -190,7 +129,7 @@ private struct StorageSettings: View {
         GeometryReader { geometry in
           HStack(spacing: 0) {
             Rectangle().fill(Color.sourceMac).frame(width: geometry.size.width * CGFloat(audioBytes) / CGFloat(total))
-            Rectangle().fill(Color.sourceMeeting)
+            Rectangle().fill(Color.sourceOther)
           }
           .clipShape(Capsule())
         }
@@ -198,7 +137,7 @@ private struct StorageSettings: View {
         .accessibilityLabel("音频 \(TimeText.bytes(audioBytes))，转录和总结 \(TimeText.bytes(text))")
         HStack(spacing: 16) {
           Label("音频 \(TimeText.bytes(audioBytes))", systemImage: "circle.fill").foregroundStyle(Color.sourceMac)
-          Label("转录和总结 \(TimeText.bytes(text))", systemImage: "circle.fill").foregroundStyle(Color.sourceMeeting)
+          Label("转录和总结 \(TimeText.bytes(text))", systemImage: "circle.fill").foregroundStyle(Color.sourceOther)
         }
         .font(.caption)
       } header: {
@@ -281,10 +220,6 @@ private struct PermissionSettings: View {
     Form {
       Section {
         row("麦克风", ok: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized, anchor: "Privacy_Microphone")
-        row(
-          "会议 App 的声音", ok: model.recorder.meetingAudioIssue == nil, anchor: "Privacy_AudioCapture",
-          note: model.recorder.meetingAudioIssue ?? "开会时自动开始录")
-        row("日历", ok: model.meetings.calendarAccess == .fullAccess, anchor: "Privacy_Calendars")
         LabeledContent("Apple 智能") {
           Text(AppleIntelligenceEngine.unavailableReason ?? "已打开")
             .foregroundStyle(AppleIntelligenceEngine.unavailableReason == nil ? .green : .secondary)

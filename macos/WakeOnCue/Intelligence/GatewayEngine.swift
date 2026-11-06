@@ -141,13 +141,6 @@ nonisolated struct GatewayEngine: SummaryEngine {
     return DayResult(headline: reply.headline.result, details: reply.details.prefix(8).map(\.result))
   }
 
-  func points(_ prompt: String) async throws -> [CitedResult] {
-    struct Reply: Decodable { var points: [Cited] }
-    let reply: Reply = try await json(
-      prompt, shape: #"{"points": [{"text": "一条会议要点", "sources": [依据的原话编号，一到三个]}]}"#)
-    return reply.points.prefix(8).map(\.result)
-  }
-
   func plan(_ prompt: String) async throws -> SearchPlan {
     struct Reply: Decodable {
       var keywords: [String]

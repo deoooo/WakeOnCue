@@ -16,12 +16,8 @@ final class MainState {
   var fullHours: Set<Date> = []
   /// The sentence a citation or the player points at.
   var highlighted: Int64?
-  var meetingID: Int64?
-  var draftingMinutes = false
-  /// The "提问" panel; it shares the right side with the meeting panel.
-  var asking = false {
-    didSet { if asking { meetingID = nil } }
-  }
+  /// The "提问" panel.
+  var asking = false
   /// The sentence whose speaker the user is naming ("这是谁…").
   var namingSentence: Sentence?
   var showTracks = false
@@ -39,8 +35,6 @@ final class MainState {
   func show(day: Date) {
     self.day = Calendar.current.startOfDay(for: day)
     page = .day
-    meetingID = nil
-    draftingMinutes = false
     highlighted = nil
   }
 

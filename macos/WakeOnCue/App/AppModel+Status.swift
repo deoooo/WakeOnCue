@@ -23,9 +23,13 @@ extension AppModel {
   var recordingStatus: RecordingStatus {
     switch recorder.state {
     case .recording:
-      var parts = [preferences.microphone == .builtIn ? "内建麦克风" : recorder.microphoneName]
-      parts += recorder.activeMeetingApps
-      return RecordingStatus(title: "录音中", detail: parts.joined(separator: " · "), isProblem: false)
+      let detail: String
+      if preferences.microphone == .builtIn, recorder.microphoneFellBack {
+        detail = "\(recorder.microphoneName)（内建麦克风不可用，已改用外接）"
+      } else {
+        detail = preferences.microphone == .builtIn ? "内建麦克风" : recorder.microphoneName
+      }
+      return RecordingStatus(title: "录音中", detail: detail, isProblem: false)
     case .paused(let until):
       return RecordingStatus(
         title: "已暂停", detail: until == .distantFuture ? "手动继续" : "\(TimeText.clock(until)) 自动继续", isProblem: false)
@@ -56,11 +60,6 @@ extension AppModel {
     if let warning = recorder.diskWarning {
       return Issue(title: warning, detail: "不到 2 GB 时会暂停录音，不会自动删除录音。", action: Issue.Action(title: "存储设置") { [weak self] in
         self?.openSettings?()
-      })
-    }
-    if recorder.isRecording, let issue = recorder.meetingAudioIssue {
-      return Issue(title: "没有录到会议 App 的声音", detail: issue, action: Issue.Action(title: "打开系统设置") {
-        Self.openPrivacySettings("Privacy_AudioCapture")
       })
     }
     return nil

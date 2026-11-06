@@ -86,7 +86,7 @@ struct AISettings: View {
       } header: {
         Text("网关")
       } footer: {
-        Text("API Key 只存在这台 Mac 的钥匙串里。使用网关时，每小时、当天和会议的转录文字会发送到网关生成总结；音频不会发送，标为私人或已删除的时段也不会发送。")
+        Text("API Key 只存在这台 Mac 的钥匙串里。使用网关时，每小时和当天的转录文字会发送到网关生成总结；音频不会发送，标为私人或已删除的时段也不会发送。")
           .font(.caption).foregroundStyle(.secondary)
       }
     }
@@ -134,7 +134,7 @@ struct AISettings: View {
     let alert = NSAlert()
     alert.messageText = "把转录文字发送到 \(host)？"
     alert.informativeText = """
-      开启后，生成每小时总结、当天总结和会议要点时，会把对应时段的转录文字发送到这个网关（模型：\(preferences.gatewayModel)）。\
+      开启后，生成每小时总结和当天总结时，会把对应时段的转录文字发送到这个网关（模型：\(preferences.gatewayModel)）。\
       网关的运营方能看到这些内容，其中可能包括别人说的话。
 
       音频不会发送，标为私人或已删除的时段也不会发送。随时可以在这里关闭。

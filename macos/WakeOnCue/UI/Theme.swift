@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Fixed colours from the design. The system accent is only for selection, links and things
-/// you can click; audio sources and key events have colours of their own.
+/// you can click; audio sources and marks have colours of their own.
 extension Color {
   private static func dynamic(_ light: UInt32, _ dark: UInt32) -> Color {
     Color(nsColor: NSColor(name: nil) { appearance in
@@ -15,7 +15,7 @@ extension Color {
 
   static let event = dynamic(0x7A4FD0, 0xB79CFF)
   static let sourceMac = dynamic(0x3D5A80, 0x8FB0D9)
-  static let sourceMeeting = dynamic(0x0B7F82, 0x4CC7C9)
+  static let sourceOther = dynamic(0x0B7F82, 0x4CC7C9)
   static let sourceWatch = dynamic(0xE8890C, 0xF2A33C)
   static let recording = dynamic(0xC8102E, 0xFF6B7F)
   static let activity = dynamic(0x5B5C61, 0xA9AAB1)

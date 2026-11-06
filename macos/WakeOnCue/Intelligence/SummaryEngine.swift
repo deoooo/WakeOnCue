@@ -38,7 +38,6 @@ protocol SummaryEngine: Sendable {
   func hour(_ prompt: String) async throws -> HourResult
   func text(_ prompt: String) async throws -> String
   func day(_ prompt: String) async throws -> DayResult
-  func points(_ prompt: String) async throws -> [CitedResult]
   /// "提问": search words for a question.
   func plan(_ prompt: String) async throws -> SearchPlan
   /// "提问": the answer in short paragraphs, each with the sentences it rests on.
@@ -48,9 +47,8 @@ protocol SummaryEngine: Sendable {
 nonisolated enum SummaryPrompts {
   static let instructions = """
     你在为录音的主人整理他们自己一天里的对话。只根据转录内容写，不编造人名、日期或决定。\
-    说话人是「我」（录音的主人）、「会议对方」（会议软件里的其他人）、「他人」（身边的其他人），\
+    说话人是「我」（录音的主人）或「他人」（身边的其他人），\
     认出声音时会写成具体人名或「说话人 2」这样的编号。\
-    「现场」是 Mac 麦克风录到、还没分清是谁的话，可能是主人，也可能是身边的人，不要当成主人自己说的。\
     用简体中文，句子简短、具体。
     """
 }
@@ -93,10 +91,6 @@ nonisolated struct AppleIntelligenceEngine: SummaryEngine {
   func day(_ prompt: String) async throws -> DayResult {
     let draft = try await session().respond(to: prompt, generating: DayDraft.self).content
     return DayResult(headline: draft.headline.result, details: draft.details.map(\.result))
-  }
-
-  func points(_ prompt: String) async throws -> [CitedResult] {
-    try await session().respond(to: prompt, generating: PointsDraft.self).content.points.map(\.result)
   }
 
   func plan(_ prompt: String) async throws -> SearchPlan {
@@ -147,10 +141,4 @@ struct DayDraft {
   var headline: CitedDraft
   @Guide(description: "当天的要点，每条一句话，每个小时最多一条", .count(1...8))
   var details: [CitedDraft]
-}
-
-@Generable
-struct PointsDraft {
-  @Guide(description: "会议要点，每条一句话", .count(1...6))
-  var points: [CitedDraft]
 }

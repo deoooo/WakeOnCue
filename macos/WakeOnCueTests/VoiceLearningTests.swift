@@ -10,31 +10,6 @@ nonisolated final class VoiceLearningTests: XCTestCase {
     return VoiceReference.normalized(vector)
   }
 
-  private func learned(samples: Int) -> LearnedVoice {
-    var voiceprint = LearnedVoice.first(voice(0), seconds: 3)
-    for _ in 1..<samples { voiceprint = voiceprint.adding(voice(0, toward: 2, tilt: 0.05), seconds: 3) }
-    return voiceprint
-  }
-
-  func testLearnedVoiceRejectsOutliersAfterFiveSamples() {
-    let voiceprint = learned(samples: 5)
-    XCTAssertTrue(voiceprint.accepts(voice(0, toward: 2, tilt: 0.1)))
-    XCTAssertFalse(voiceprint.accepts(voice(4)))
-  }
-
-  func testLearnedVoiceAcceptsAnythingBeforeFiveSamples() {
-    let voiceprint = learned(samples: 3)
-    XCTAssertTrue(voiceprint.accepts(voice(4)))
-  }
-
-  func testClearClusterNeedsAtLeastTwentyPercentCloseSentences() {
-    let close = [Float](repeating: 0.8, count: 2)
-    let far = [Float](repeating: 0.1, count: 8)
-    XCTAssertTrue(VoiceReference.hasClearCluster(close + far))
-    XCTAssertFalse(VoiceReference.hasClearCluster(Array(close.prefix(1)) + far))
-    XCTAssertFalse(VoiceReference.hasClearCluster([]))
-  }
-
   func testShortSentencesDoNotCreateASpeaker() {
     var clustering = SpeakerClustering()
     XCTAssertNil(clustering.assign(embedding: voice(0), day: day(0), seconds: 1.9))
@@ -85,30 +60,6 @@ nonisolated final class VoiceLearningTests: XCTestCase {
     let merges = clustering.consolidate(day: day(0))
     XCTAssertFalse(merges.contains { $0.from == "林雨" }, "a name the user gave must never be merged away")
     XCTAssertTrue(clustering.clusters.contains { $0.label == "林雨" })
-  }
-
-  func testMeetingNeedsSoundAndANearbyMeetingSentence() {
-    let start = Date(timeIntervalSince1970: 1_800_000_000)
-    let sentence = Sentence(
-      id: 1, start: start, end: start.addingTimeInterval(3), channel: .microphone,
-      speaker: .me, source: "Mac 麦克风", text: "我来说")
-    let segment = AudioSegment(
-      id: 1, channel: .meeting, start: start.addingTimeInterval(-5), end: start.addingTimeInterval(5),
-      path: "meeting.aac", source: "飞书")
-    let meetingSentence = Sentence(
-      id: 2, start: start.addingTimeInterval(-10), end: start.addingTimeInterval(-7), channel: .meeting,
-      speaker: .remote, source: "飞书", text: "对方在说话")
-    XCTAssertTrue(VoiceMeetingSignal.isDuringMeeting(
-      sentence: sentence, meetingSegments: [segment], nearbySentences: [meetingSentence]))
-    XCTAssertFalse(VoiceMeetingSignal.isDuringMeeting(
-      sentence: sentence, meetingSegments: [], nearbySentences: [meetingSentence]))
-    XCTAssertFalse(VoiceMeetingSignal.isDuringMeeting(
-      sentence: sentence, meetingSegments: [segment], nearbySentences: []))
-    let tooLate = Sentence(
-      id: 3, start: start.addingTimeInterval(70), end: start.addingTimeInterval(73), channel: .meeting,
-      speaker: .remote, source: "飞书", text: "太晚了")
-    XCTAssertFalse(VoiceMeetingSignal.isDuringMeeting(
-      sentence: sentence, meetingSegments: [segment], nearbySentences: [tooLate]))
   }
 
   private func day(_ offset: Int) -> Date {
