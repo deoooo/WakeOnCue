@@ -64,6 +64,17 @@ nonisolated enum VoiceReference {
     }
     return normalized(sum)
   }
+
+  /// The share of similarities at or above `meThreshold`: a learned voice is only trusted when a
+  /// clear group of recent microphone sentences looks like it.
+  static func closeShare(_ similarities: [Float]) -> Double {
+    guard !similarities.isEmpty else { return 0 }
+    return Double(similarities.count { $0 >= meThreshold }) / Double(similarities.count)
+  }
+
+  static func hasClearCluster(_ similarities: [Float], minimumShare: Double = 0.2) -> Bool {
+    closeShare(similarities) >= minimumShare
+  }
 }
 
 /// The user's voice learned without enrolling: during an online meeting the other side comes
@@ -77,8 +88,17 @@ nonisolated struct LearnedVoice: Codable, Equatable, Sendable {
   /// Enough of the user's speech to tell it from others: about a minute over 15 sentences.
   static let minimumSentences = 15
   static let minimumSeconds: TimeInterval = 45
+  /// Once this many sentences are averaged, a new sample too unlike the mean is discarded.
+  static let sampleGuardAfter = 5
+  static let sampleGuardSimilarity: Float = 0.5
 
   var isUsable: Bool { sentences >= Self.minimumSentences && seconds >= Self.minimumSeconds }
+
+  /// Whether a meeting sample belongs with what was learned so far.
+  func accepts(_ vector: [Float]) -> Bool {
+    sentences < Self.sampleGuardAfter
+      || VoiceReference.similarity(vector, embedding) >= Self.sampleGuardSimilarity
+  }
 
   /// Adds one sentence to the running average.
   func adding(_ vector: [Float], seconds duration: TimeInterval) -> LearnedVoice {

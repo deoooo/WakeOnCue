@@ -116,6 +116,7 @@ final class AppModel {
       return
     }
     await recorder.startIfAllowed()
+    await voices.repairLegacyIfNeeded()
     refiner.use(models.active, service: preferences.transcriptionService)
     transcription.setSentencesRetranscribed(models.active != nil)
     await transcription.start()

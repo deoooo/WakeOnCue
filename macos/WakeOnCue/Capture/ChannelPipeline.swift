@@ -35,6 +35,12 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
   private let queue: DispatchQueue
   private let onSegment: @Sendable (SegmentEvent) -> Void
   private let onAudio: @Sendable (TimedBuffer) -> Void
+  /// Called when a meeting segment closes or the channel stops, so live transcription can
+  /// finalize the words it was holding in volatile results.
+  private let onIdle: @Sendable () -> Void
+  /// Meeting audio is written only when it is actually audible; the microphone is always recorded.
+  private let gateEnabled: Bool
+  private let audioDirectory: URL
 
   private var converter: AVAudioConverter?
   private var file: AVAudioFile?
@@ -44,9 +50,19 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
   private var clock: Date?
   private var writtenEnd: Date?
   private var running = false
+  /// Recent buffers kept for the two seconds before the first sound of a meeting segment.
+  private var preRoll: [(buffer: AVAudioPCMBuffer, start: Date)] = []
+  private var preRollSeconds: TimeInterval = 0
+  private var gate = MeetingAudioGate()
 
   private let lock = NSLock()
   private var latestLevel: Float = 0
+  private var lastAudibleAt: Date?
+  /// Actual audible buffer ranges, so callers can tell whether a sentence really had sound
+  /// rather than merely sharing a five-minute segment with it.
+  private var audibleRanges: [(start: Date, end: Date)] = []
+  private var measuredFrom: Date?
+  private var measuredTo: Date?
   private var currentSource: String
   /// Recent loudness, ten values a second, so the transcriber can tell a near voice from a far one.
   private var loudness: [(Date, Float)] = []
@@ -54,17 +70,34 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
   init(
     channel: AudioChannel,
     source: String,
+    directory: URL = Store.audioDirectory,
     onSegment: @escaping @Sendable (SegmentEvent) -> Void,
-    onAudio: @escaping @Sendable (TimedBuffer) -> Void
+    onAudio: @escaping @Sendable (TimedBuffer) -> Void,
+    onIdle: @escaping @Sendable () -> Void = {}
   ) {
     self.channel = channel
     self.currentSource = source
+    self.audioDirectory = directory
     self.onSegment = onSegment
     self.onAudio = onAudio
+    self.onIdle = onIdle
+    gateEnabled = channel == .meeting
     queue = DispatchQueue(label: "com.deoooo.WakeOnCue.macos.pipeline.\(channel.rawValue)", qos: .userInitiated)
   }
 
   var level: Float { lock.withLock { latestLevel } }
+
+  /// The last time a buffer on this channel was louder than the silence floor.
+  var lastSoundAt: Date? { lock.withLock { lastAudibleAt } }
+
+  /// Whether this channel had audible audio between `start` and `end`, or nil when that range
+  /// is older than the in-memory history. Used for the "in a meeting" decision.
+  func hadSound(from start: Date, to end: Date) -> Bool? {
+    lock.withLock {
+      guard let measuredFrom, let measuredTo, start >= measuredFrom, end <= measuredTo else { return nil }
+      return audibleRanges.contains { $0.start < end && $0.end > start }
+    }
+  }
 
   var source: String {
     get { lock.withLock { currentSource } }
@@ -92,9 +125,19 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
     queue.sync {
       running = false
       closeFile()
+      gate.reset()
+      preRoll.removeAll()
+      preRollSeconds = 0
       clock = nil
     }
-    lock.withLock { latestLevel = 0 }
+    lock.withLock {
+      latestLevel = 0
+      lastAudibleAt = nil
+      audibleRanges.removeAll()
+      measuredFrom = nil
+      measuredTo = nil
+    }
+    onIdle()
   }
 
   /// Called from capture threads; the buffer is copied before returning.
@@ -113,8 +156,25 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
     if abs(start.timeIntervalSince(measured)) > 1 { start = measured }
     clock = start.addingTimeInterval(duration)
 
-    measure(converted, start: start)
-    write(converted, start: start)
+    let audible = measure(converted, start: start)
+    if gateEnabled {
+      switch gate.process(duration: duration, silent: !audible) {
+      case .skip:
+        rememberPreRoll(converted, start: start)
+      case .open:
+        writeWithPreRoll(converted, start: start)
+      case .append:
+        write(converted, start: start)
+      case .appendAndClose:
+        write(converted, start: start, allowOpen: false)
+        closeFile()
+        onIdle()
+      }
+      // Silence never reaches transcription: a muted meeting app produces no sentences.
+      guard audible else { return }
+    } else {
+      write(converted, start: start)
+    }
     onAudio(TimedBuffer(buffer: converted, start: start))
   }
 
@@ -142,31 +202,73 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
     return output
   }
 
-  private func measure(_ buffer: AVAudioPCMBuffer, start: Date) {
-    guard let samples = buffer.floatChannelData?[0] else { return }
+  /// Records loudness and returns whether this buffer has any sound above the silence floor.
+  private func measure(_ buffer: AVAudioPCMBuffer, start: Date) -> Bool {
+    guard let samples = buffer.floatChannelData?[0] else { return false }
     let count = Int(buffer.frameLength)
     let step = 1_600
     var values: [(Date, Float)] = []
     var total: Float = 0
+    var peak: Float = 0
     var offset = 0
     while offset < count {
       let end = min(count, offset + step)
       var sum: Float = 0
-      for index in offset..<end { sum += samples[index] * samples[index] }
+      for index in offset..<end {
+        sum += samples[index] * samples[index]
+        peak = max(peak, abs(samples[index]))
+      }
       let rms = sqrt(sum / Float(max(1, end - offset)))
       total = max(total, rms)
       values.append((start.addingTimeInterval(Double(offset) / Self.format.sampleRate), rms))
       offset = end
     }
+    let audible = !AudioLevel.isSilent(peak)
+    let bufferEnd = start.addingTimeInterval(Double(count) / Self.format.sampleRate)
     lock.withLock {
       latestLevel = min(1, total * 5)
+      if audible {
+        lastAudibleAt = Date()
+        audibleRanges.append((start, bufferEnd))
+        if audibleRanges.count > 6_000 { audibleRanges.removeFirst(audibleRanges.count - 6_000) }
+      }
+      measuredFrom = min(measuredFrom ?? start, start)
+      measuredTo = max(measuredTo ?? bufferEnd, bufferEnd)
       loudness.append(contentsOf: values)
       if loudness.count > 6_000 { loudness.removeFirst(loudness.count - 6_000) }
     }
+    return audible
   }
 
-  private func write(_ buffer: AVAudioPCMBuffer, start: Date) {
-    if file == nil || start >= fileEnd { openFile(at: start) }
+  private func rememberPreRoll(_ buffer: AVAudioPCMBuffer, start: Date) {
+    preRoll.append((buffer, start))
+    preRollSeconds += Double(buffer.frameLength) / Self.format.sampleRate
+    while preRollSeconds > MeetingAudioGate.preRoll, preRoll.count > 1 {
+      let first = preRoll.removeFirst()
+      preRollSeconds -= Double(first.buffer.frameLength) / Self.format.sampleRate
+    }
+  }
+
+  /// Opens a segment on the first sound and writes the recent pre-roll before this buffer, so the
+  /// first word is not cut off.
+  private func writeWithPreRoll(_ buffer: AVAudioPCMBuffer, start: Date) {
+    let buffers = preRoll + [(buffer, start)]
+    preRoll.removeAll()
+    preRollSeconds = 0
+    guard let first = buffers.first else { return }
+    openFile(at: first.start, alignedTo: start)
+    for item in buffers { write(item.buffer, start: item.start) }
+  }
+
+  private func write(_ buffer: AVAudioPCMBuffer, start: Date, allowOpen: Bool = true) {
+    if file == nil {
+      guard allowOpen else { return }
+      openFile(at: start)
+    } else if start >= fileEnd {
+      closeFile()
+      guard allowOpen else { return }
+      openFile(at: start)
+    }
     guard let file else { return }
     do {
       try file.write(from: buffer)
@@ -176,15 +278,16 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
     }
   }
 
-  private func openFile(at start: Date) {
+  private func openFile(at start: Date, alignedTo align: Date? = nil) {
     closeFile()
     let calendar = Calendar.current
-    let day = calendar.startOfDay(for: start)
-    let sinceMidnight = start.timeIntervalSince(day)
+    let anchor = align ?? start
+    let day = calendar.startOfDay(for: anchor)
+    let sinceMidnight = anchor.timeIntervalSince(day)
     fileEnd = day.addingTimeInterval((floor(sinceMidnight / Self.segmentLength) + 1) * Self.segmentLength)
 
     let path = "\(TimeText.dayFolder(start))/\(channel.rawValue)-\(TimeText.fileStamp(start)).aac"
-    let url = Store.audioDirectory.appending(path: path)
+    let url = audioDirectory.appending(path: path)
     do {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       file = try AVAudioFile(

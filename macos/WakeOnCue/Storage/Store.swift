@@ -26,8 +26,13 @@ final class Store {
   private(set) var revision = 0
 
   @ObservationIgnored private let db: SQLiteDatabase
+  /// The library folder this instance owns, so repairs and tests never fall back to the real one.
+  @ObservationIgnored private let dataDirectory: URL
+
+  var audioDirectory: URL { dataDirectory.appending(path: "Audio", directoryHint: .isDirectory) }
 
   init(directory: URL = Store.rootDirectory, readOnly: Bool = false) throws {
+    dataDirectory = directory
     if readOnly {
       db = try SQLiteDatabase(url: directory.appending(path: "library.sqlite"), readOnly: true)
       return
@@ -194,6 +199,29 @@ final class Store {
     run("UPDATE sentence SET speaker_name = ? WHERE speaker_name = ? AND start >= ? AND start < ?",
         [.text(new), .text(old), .date(interval.start), .date(interval.end)])
     changed()
+  }
+
+  /// A tiny unnamed cluster that could not be merged into anyone else: back to plain "他人".
+  func revertSpeaker(name: String, in interval: DateInterval) {
+    run("UPDATE sentence SET speaker = 'other', speaker_name = NULL WHERE speaker_name = ? AND start >= ? AND start < ?",
+        [.text(name), .date(interval.start), .date(interval.end)])
+    changed()
+  }
+
+  /// Puts back to "我" the microphone sentences whose speaker was never named by hand: no name,
+  /// or an auto-generated "说话人 N". Returns the hours that changed, for their summaries.
+  func resetUnnamedMicrophoneSpeakers(in interval: DateInterval) -> [Date] {
+    let condition = """
+      channel = 'microphone' AND start >= ? AND start < ?
+        AND (speaker_name IS NULL OR speaker_name = '' OR speaker_name LIKE '说话人 %')
+        AND (speaker <> 'me' OR speaker_name IS NOT NULL)
+      """
+    let starts = fetch("SELECT DISTINCT start FROM sentence WHERE \(condition)",
+                       [.date(interval.start), .date(interval.end)]) { $0.date(0) }
+    guard !starts.isEmpty else { return [] }
+    run("UPDATE sentence SET speaker = 'me', speaker_name = NULL WHERE \(condition)",
+        [.date(interval.start), .date(interval.end)])
+    return Set(starts.map { Calendar.current.hourStart($0) }).sorted()
   }
 
   func deleteSentence(id: Int64) {
