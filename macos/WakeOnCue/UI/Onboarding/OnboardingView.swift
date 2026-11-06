@@ -56,7 +56,7 @@ struct OnboardingView: View {
       VStack(alignment: .leading, spacing: 6) {
         Label("录音、转录和总结都只存在这台 Mac 上，不会上传。", systemImage: "lock")
         Label("随时可以暂停，也可以把一段时间标为私人或删除。", systemImage: "pause.circle")
-        Label("音频默认保留 30 天，转录和总结一直保留，可在设置中修改。", systemImage: "externaldrive")
+        Label("音频默认一直保留，转录和总结也一直保留，可在设置中改为 30 天或 7 天后清理音频。", systemImage: "externaldrive")
       }
       .foregroundStyle(.secondary)
       (Text("会录到其他人的声音。").fontWeight(.semibold)

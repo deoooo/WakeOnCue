@@ -206,13 +206,12 @@ private struct StorageSettings: View {
       }
       Section("保留多久") {
         Picker(selection: $preferences.audioRetentionDays) {
-          Text("30 天（推荐）").tag(30)
+          Text("一直保留（推荐）").tag(0)
+          Text("30 天").tag(30)
           Text("7 天").tag(7)
-          Text("90 天").tag(90)
-          Text("一直保留").tag(0)
         } label: {
           Text("音频")
-          Text("每天约 170 MB。过期后只删音频，不能再回放，转录和总结还在。")
+          Text("默认一直保留。选 7 天或 30 天后，过期只删音频，不能再回放，转录和总结还在。每天约 170 MB。")
         }
         Picker(selection: $preferences.textRetentionDays) {
           Text("一直保留").tag(0)

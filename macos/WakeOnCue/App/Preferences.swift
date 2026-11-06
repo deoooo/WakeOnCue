@@ -104,7 +104,7 @@ final class Preferences {
     microphone = MicrophoneChoice(rawValue: defaults.string(forKey: "microphone") ?? "") ?? .builtIn
     meetingApps = (defaults.data(forKey: "meetingApps")).flatMap { try? JSONDecoder().decode([MeetingApp].self, from: $0) }
       ?? MeetingApp.defaults
-    audioRetentionDays = defaults.object(forKey: "audioRetentionDays") as? Int ?? 30
+    audioRetentionDays = defaults.object(forKey: "audioRetentionDays") as? Int ?? 0
     textRetentionDays = defaults.object(forKey: "textRetentionDays") as? Int ?? 0
     onboarded = defaults.bool(forKey: "onboarded")
     pausedUntil = defaults.object(forKey: "pausedUntil") as? Date
