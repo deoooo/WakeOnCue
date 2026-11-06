@@ -62,6 +62,10 @@ struct HealthDay: Encodable {
   let unexplained: [Span]
   let audioMegabytes: Double
   let sentences: Int
+  /// Sentences whose live text no model has replaced yet, and how many of them are longer than
+  /// 2.5 seconds. Nil when no model is chosen: then not re-transcribing is expected.
+  let notRefined: Int?
+  let notRefinedOver2_5: Int?
   /// Hours with at least 5 minutes of audio and no sentence at all: normal when the room was
   /// quiet, worth a look when someone was talking.
   let hoursWithoutTranscript: [String]
@@ -71,7 +75,7 @@ struct HealthDay: Encodable {
 }
 
 @MainActor
-func healthReport(store: Store, days: Int, now: Date = .now) -> [HealthDay] {
+func healthReport(store: Store, days: Int, now: Date = .now, modelSelected: Bool = false) -> [HealthDay] {
   let calendar = Calendar.current
   let today = calendar.startOfDay(for: now)
   let marks = store.marks()
@@ -97,6 +101,7 @@ func healthReport(store: Store, days: Int, now: Date = .now) -> [HealthDay] {
     let unexplained = explained.holes(in: window).filter { $0.duration >= 120 }
 
     let sentences = store.sentences(in: window)
+    let refinement = modelSelected ? store.unrefinedCounts(in: window) : nil
     let summaries = store.hourSummaries(in: DateInterval(start: day, end: dayEnd))
     var withoutTranscript: [String] = []
     var withoutSummary: [String] = []
@@ -137,6 +142,8 @@ func healthReport(store: Store, days: Int, now: Date = .now) -> [HealthDay] {
       unexplained: unexplained.map { span($0) },
       audioMegabytes: (Double(bytes) / 100_000).rounded() / 10,
       sentences: sentences.count,
+      notRefined: refinement?.total,
+      notRefinedOver2_5: refinement?.overTwoSeconds,
       hoursWithoutTranscript: withoutTranscript,
       hoursWithoutSummary: withoutSummary,
       hasDaySummary: store.daySummary(for: day) != nil)
@@ -164,6 +171,9 @@ func printHealth(_ days: [HealthDay], remote: [String: (total: Int, waiting: Int
       print("  ! 有转录但没有总结：\(day.hoursWithoutSummary.joined(separator: "、"))")
     }
     print("  转录 \(day.sentences) 句，当天总结：\(day.hasDaySummary ? "有" : "没有")")
+    if let notRefined = day.notRefined, let over = day.notRefinedOver2_5 {
+      print("  还没重转：\(notRefined) 句（超过 2.5 秒的 \(over) 句）")
+    }
   }
   if !remote.isEmpty {
     print("\n手表和 iPhone 回传")

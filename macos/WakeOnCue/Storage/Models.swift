@@ -37,6 +37,12 @@ nonisolated struct Sentence: Identifiable, Hashable, Sendable {
   var refinedBy: String? = nil
   /// A person's name, or "说话人 2" when speakers are told apart without names.
   var speakerName: String? = nil
+  /// How many times re-transcription failed.
+  var refineAttempts: Int = 0
+  /// When re-transcription may be tried again, if it failed before.
+  var refineNext: Date? = nil
+  /// The model that checked this sentence and chose to keep the live text.
+  var refineCheckedBy: String? = nil
 
   /// What to show as the speaker: the name when known, otherwise 我 / 会议对方 / 他人.
   var speakerLabel: String { speakerName ?? speaker.label }

@@ -340,7 +340,9 @@ func run(_ raw: [String]) throws {
   case "health":
     let reader = try Reader()
     let days = max(1, args.options["days"].flatMap(Int.init) ?? 3)
-    let out = healthReport(store: reader.store, days: days)
+    // The app stores the chosen model in its own preference domain; the CLI has another bundle.
+    let model = UserDefaults.standard.persistentDomain(forName: "com.deoooo.WakeOnCue.macos")?["asrModel"] as? String
+    let out = healthReport(store: reader.store, days: days, modelSelected: !(model ?? "").isEmpty)
     if args.json { return try printJSON(out) }
     printHealth(out, remote: reader.store.remoteSegmentCounts())
 

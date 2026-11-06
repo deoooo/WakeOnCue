@@ -99,6 +99,16 @@ final class Store {
     if !sentenceColumns.contains("speaker_name") {
       try db.execute("ALTER TABLE sentence ADD COLUMN speaker_name TEXT")
     }
+    // Added with background re-transcription: retries survive restarts.
+    if !sentenceColumns.contains("refine_attempts") {
+      try db.execute("ALTER TABLE sentence ADD COLUMN refine_attempts INTEGER NOT NULL DEFAULT 0")
+    }
+    if !sentenceColumns.contains("refine_next") {
+      try db.execute("ALTER TABLE sentence ADD COLUMN refine_next REAL")
+    }
+    if !sentenceColumns.contains("refine_checked_by") {
+      try db.execute("ALTER TABLE sentence ADD COLUMN refine_checked_by TEXT")
+    }
     // Watch and iPhone marks, in the device's clock; `clock_offset` moves them onto the Mac's.
     try db.execute("""
       CREATE TABLE IF NOT EXISTS device_mark (
@@ -142,7 +152,38 @@ final class Store {
 
   /// A better transcript of the same words; times and speaker stay as they were.
   func refineSentence(id: Int64, text: String, by model: String?) {
-    run("UPDATE sentence SET text = ?, refined_by = ? WHERE id = ?", [.text(text), model.map { .text($0) } ?? .null, .int(id)])
+    run(
+      "UPDATE sentence SET text = ?, refined_by = ?, refine_next = NULL, refine_checked_by = NULL WHERE id = ?",
+      [.text(text), model.map { .text($0) } ?? .null, .int(id)])
+    changed()
+  }
+
+  /// A failed re-transcription: remember the attempt and when to try again. A manually
+  /// re-transcribed sentence may still carry its old `refined_by` marker; clear it so the
+  /// background sweep can see the failed try even when the sentence was refined before.
+  func recordRefineFailure(id: Int64, attempt: Int, next: Date?) {
+    run("""
+      UPDATE sentence
+      SET refine_attempts = ?, refine_next = ?, refined_by = NULL, refine_checked_by = NULL
+      WHERE id = ?
+      """,
+      [.int(Int64(attempt)), .optionalDate(next), .int(id)])
+    changed()
+  }
+
+  /// Counts one failure from the latest stored state, not from a queued job's old snapshot.
+  @discardableResult
+  func bumpRefineFailure(id: Int64, now: Date = .now) -> Int {
+    guard let current = sentences(ids: [id]).first else { return 0 }
+    let attempt = current.refineAttempts + 1
+    recordRefineFailure(id: id, attempt: attempt, next: RefineSchedule.nextTry(after: attempt, now: now))
+    return attempt
+  }
+
+  /// The chosen model looked at this sentence and decided the live words are better. A later
+  /// model does not need to check it again.
+  func markRefineChecked(id: Int64, model: String) {
+    run("UPDATE sentence SET refine_checked_by = ? WHERE id = ?", [.text(model), .int(id)])
     changed()
   }
 
@@ -188,7 +229,18 @@ final class Store {
     changed()
   }
 
-  private static let sentenceColumns = "id, start, end, channel, speaker, source, text, refined_by, speaker_name"
+  /// The sentence columns, with defaults for a read-only library that has not been through the
+  /// latest migration yet (the CLI may open a library before the app has been launched again).
+  private var sentenceColumns: String {
+    let columns = (try? db.query("PRAGMA table_info(sentence)") { $0.text(1) }) ?? []
+    func value(_ name: String, fallback: String) -> String {
+      columns.contains(name) ? name : "\(fallback) AS \(name)"
+    }
+    return "id, start, end, channel, speaker, source, text, "
+      + "\(value("refined_by", fallback: "NULL")), \(value("speaker_name", fallback: "NULL")), "
+      + "\(value("refine_attempts", fallback: "0")), \(value("refine_next", fallback: "NULL")), "
+      + "\(value("refine_checked_by", fallback: "NULL"))"
+  }
 
   private static func sentence(_ row: SQLiteDatabase.Row) -> Sentence? {
     Sentence(
@@ -196,20 +248,67 @@ final class Store {
       channel: AudioChannel(rawValue: row.text(3)) ?? .microphone,
       speaker: Speaker(rawValue: row.text(4)) ?? .me,
       source: row.text(5), text: row.text(6), refinedBy: row.isNull(7) ? nil : row.text(7),
-      speakerName: row.isNull(8) ? nil : row.text(8))
+      speakerName: row.isNull(8) ? nil : row.text(8),
+      refineAttempts: Int(row.int(9)), refineNext: row.optionalDate(10),
+      refineCheckedBy: row.isNull(11) ? nil : row.text(11))
+  }
+
+  /// Sentences the background sweep should re-transcribe with `model`, oldest first. Missing are
+  /// private or deleted sentences, ones another model already checked, ones out of tries or still
+  /// waiting for their backoff, and sentences that are too old or too recent to have audio yet.
+  func sentencesNeedingRefinement(
+    model: String, now: Date = .now, limit: Int = 200, maxAttempts: Int = 4
+  ) -> [Sentence] {
+    let oldest = now.addingTimeInterval(-RefineSchedule.maximumAge)
+    let settled = now.addingTimeInterval(-RefineSchedule.settle)
+    return fetch(
+      """
+      SELECT \(sentenceColumns) FROM sentence
+      WHERE refined_by IS NULL
+        AND (refine_checked_by IS NULL OR refine_checked_by <> ?)
+        AND refine_attempts < ?
+        AND (refine_next IS NULL OR refine_next <= ?)
+        AND start >= ? AND end <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM mark
+          WHERE mark.kind IN ('private', 'deleted', 'paused')
+            AND mark.start < sentence.end AND mark.end > sentence.start)
+      ORDER BY start
+      LIMIT ?
+      """,
+      [.text(model), .int(Int64(maxAttempts)), .date(now), .date(oldest), .date(settled), .int(Int64(limit))],
+      map: Self.sentence)
+  }
+
+  /// How many sentences in the interval have no model text yet, and how many of those are longer
+  /// than 2.5 seconds. Private and deleted sentences are left out, as in `sentencesNeedingRefinement`.
+  func unrefinedCounts(in interval: DateInterval) -> (total: Int, overTwoSeconds: Int) {
+    let rows = fetch(
+      """
+      SELECT COUNT(*), COALESCE(SUM(CASE WHEN end - start > 2.5 THEN 1 ELSE 0 END), 0)
+      FROM sentence
+      WHERE refined_by IS NULL AND start >= ? AND start < ?
+        AND NOT EXISTS (
+          SELECT 1 FROM mark
+          WHERE mark.kind IN ('private', 'deleted', 'paused')
+            AND mark.start < sentence.end AND mark.end > sentence.start)
+      """,
+      [.date(interval.start), .date(interval.end)]
+    ) { row in (Int(row.int(0)), Int(row.int(1))) }
+    return rows.first ?? (0, 0)
   }
 
   /// Every sentence that starts in the interval, including private and deleted ones.
   func sentences(in interval: DateInterval) -> [Sentence] {
     fetch(
-      "SELECT \(Self.sentenceColumns) FROM sentence WHERE start >= ? AND start < ? ORDER BY start",
+      "SELECT \(sentenceColumns) FROM sentence WHERE start >= ? AND start < ? ORDER BY start",
       [.date(interval.start), .date(interval.end)], map: Self.sentence)
   }
 
   func sentences(ids: [Int64]) -> [Sentence] {
     guard !ids.isEmpty else { return [] }
     let list = ids.map(String.init).joined(separator: ",")
-    return fetch("SELECT \(Self.sentenceColumns) FROM sentence WHERE id IN (\(list)) ORDER BY start", map: Self.sentence)
+    return fetch("SELECT \(sentenceColumns) FROM sentence WHERE id IN (\(list)) ORDER BY start", map: Self.sentence)
   }
 
   /// Substring search, newest first. Private and deleted ranges are filtered by the caller.
@@ -217,7 +316,7 @@ final class Store {
     let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
     return fetch(
-      "SELECT \(Self.sentenceColumns) FROM sentence WHERE text LIKE ? ESCAPE '\\' ORDER BY start DESC LIMIT ?",
+      "SELECT \(sentenceColumns) FROM sentence WHERE text LIKE ? ESCAPE '\\' ORDER BY start DESC LIMIT ?",
       [.text("%\(escaped)%"), .int(Int64(limit))], map: Self.sentence)
   }
 
