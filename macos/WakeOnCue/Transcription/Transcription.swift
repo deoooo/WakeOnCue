@@ -66,6 +66,9 @@ final class Transcription {
     recorder.audioOut.connect { channel, buffer in
       transcribers[channel]?.feed(buffer)
     }
+    recorder.onMeetingIdle = { [weak self] in
+      Task { @MainActor in self?.transcribers[.meeting]?.finish() }
+    }
   }
 
   /// Whether a downloaded model or transcription service re-transcribes every sentence; then

@@ -135,7 +135,9 @@ struct VoicesSettings: View {
     if let learned = voices.learnedVoice {
       HStack {
         Text(learned.isUsable
-          ? "已从线上会议里学到你的声音（\(learned.sentences) 句），用来区分“我”和“他人”。录入后改用录入的声音。"
+          ? (voices.learnedVoiceReady
+            ? "已从线上会议里学到你的声音（\(learned.sentences) 句），用来区分“我”和“他人”。录入后改用录入的声音。"
+            : "已从线上会议里学到声音（\(learned.sentences) 句），正在用最近的录音确认它是不是你…")
           : "正在从线上会议里学你的声音：\(learned.sentences)/\(LearnedVoice.minimumSentences) 句。")
         Spacer()
         Button("忘掉") { voices.forgetLearnedVoice() }

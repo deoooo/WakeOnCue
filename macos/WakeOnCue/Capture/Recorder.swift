@@ -55,6 +55,8 @@ final class Recorder {
   @ObservationIgnored let audioOut = AudioFanout()
   /// Called whenever capture stops, so the transcriber can finalize what it heard.
   @ObservationIgnored var onCaptureStopped: (() -> Void)?
+  /// Called when the meeting channel closes after silence, so its live text is finalized.
+  @ObservationIgnored var onMeetingIdle: (() -> Void)?
 
   init(store: Store, preferences: Preferences) {
     self.store = store
@@ -68,7 +70,10 @@ final class Recorder {
       onAudio: { buffer in audioOut.send(.microphone, buffer) })
     meetingPipeline = ChannelPipeline(
       channel: .meeting, source: "会议 App", onSegment: onSegment,
-      onAudio: { buffer in audioOut.send(.meeting, buffer) })
+      onAudio: { buffer in audioOut.send(.meeting, buffer) },
+      onIdle: { [weak self] in
+        Task { @MainActor in self?.onMeetingIdle?() }
+      })
     recoverOpenSegments()
     store.closeOpenGaps(at: .now)
     recordDowntime()
@@ -263,7 +268,8 @@ final class Recorder {
   }
 
   /// Taps the enabled apps that played sound recently, and rebuilds the tap when that set or
-  /// the output device changes.
+  /// the output device changes. `activeMeetingApps` is narrower: an app counts as being recorded
+  /// only while its channel has actually been audible in the last 90 seconds.
   func refreshMeetingAudio() {
     guard state == .recording else { return }
     let now = Date()
@@ -278,22 +284,29 @@ final class Recorder {
     let names = Set(lastHeard.values.compactMap { entry in enabled.first { $0.matches(entry.bundleID) }?.name }).sorted()
     let outputChanged = meetingCapture.isRunning && meetingCapture.outputUID != AudioDevices.defaultOutputUID()
 
-    guard wanted != meetingCapture.processes || outputChanged else { return }
-    meetingCapture.stop()
-    meetingPipeline.stop()
-    activeMeetingApps = names
-    guard !wanted.isEmpty else { return }
-    meetingPipeline.source = names.joined(separator: "、")
-    meetingPipeline.start()
-    do {
-      try meetingCapture.start(processes: wanted, into: meetingPipeline)
-      meetingAudioIssue = nil
-    } catch {
+    if wanted != meetingCapture.processes || outputChanged {
+      meetingCapture.stop()
       meetingPipeline.stop()
-      activeMeetingApps = []
-      meetingAudioIssue = error.localizedDescription
-      Self.logger.error("Meeting audio unavailable: \(error.localizedDescription, privacy: .public)")
+      guard !wanted.isEmpty else {
+        activeMeetingApps = []
+        return
+      }
+      meetingPipeline.source = names.joined(separator: "、")
+      meetingPipeline.start()
+      do {
+        try meetingCapture.start(processes: wanted, into: meetingPipeline)
+        meetingAudioIssue = nil
+      } catch {
+        meetingPipeline.stop()
+        activeMeetingApps = []
+        meetingAudioIssue = error.localizedDescription
+        Self.logger.error("Meeting audio unavailable: \(error.localizedDescription, privacy: .public)")
+        return
+      }
     }
+    activeMeetingApps = wanted.isEmpty
+      ? []
+      : MeetingAudioActivity.activeApps(playingNames: names, lastSoundAt: meetingPipeline.lastSoundAt, now: now)
   }
 
   /// Pauses below 2 GB free and warns below 10 GB. Never deletes recordings to make room.

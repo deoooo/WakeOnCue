@@ -96,6 +96,8 @@ final class Preferences {
   var transcriptionConsentHost: String? { didSet { defaults.set(transcriptionConsentHost, forKey: "transcriptionConsentHost") } }
   /// The gateway host the user agreed to send transcripts to; another host needs a new consent.
   var gatewayConsentHost: String? { didSet { defaults.set(gatewayConsentHost, forKey: "gatewayConsentHost") } }
+  /// One-time repair of data written by the old meeting and voice-learning code.
+  var voiceRepairVersion: Int { didSet { defaults.set(voiceRepairVersion, forKey: "voiceRepairVersion") } }
 
   init() {
     alwaysRecord = defaults.object(forKey: "alwaysRecord") as? Bool ?? true
@@ -122,6 +124,7 @@ final class Preferences {
     transcriptionModel = defaults.string(forKey: "transcriptionModel") ?? ""
     transcriptionConsentHost = defaults.string(forKey: "transcriptionConsentHost")
     gatewayConsentHost = defaults.string(forKey: "gatewayConsentHost")
+    voiceRepairVersion = defaults.object(forKey: "voiceRepairVersion") as? Int ?? 0
   }
 }
 
