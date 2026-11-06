@@ -21,6 +21,7 @@
 		1A0AAB5EE1937529DCCCC10A /* SummaryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2208B6D8AEEE945200BCF6C /* SummaryEngine.swift */; };
 		1B19493A3D03387CF53D146B /* GatewayEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC8A5EA8147A87BA3A18DC3 /* GatewayEngine.swift */; };
 		1E5D46E231960422B3B42A6E /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C19587273510560E66BA295 /* ExportTests.swift */; };
+		21AF922B12468B0C16F25B6C /* RefinerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9DCC96508BB134061301033 /* RefinerTests.swift */; };
 		2431FCE5473ACAEF42887704 /* Shortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6B9B3E71D02879C96DC227 /* Shortcuts.swift */; };
 		259AA3DAF9C9AF2C86C1F4A5 /* CommandLineSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552926D70A21371A53F717CA /* CommandLineSection.swift */; };
 		304330D373267287F20FA7F9 /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E456DE2785EA45F6E29096 /* LiveTranscriber.swift */; };
@@ -72,6 +73,7 @@
 		A3C0192CFFD30E00A90AEB5C /* MenuBarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9697DEC0ACF8C07A9C9DD418 /* MenuBarContent.swift */; };
 		A69988B8F9DB3128495A5E71 /* SearchPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3394EEFF7218266678A53234 /* SearchPage.swift */; };
 		AD04BD1DC002973CBCDB5934 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7484986F4E8F19BDAB74E05A /* main.swift */; };
+		B115E281B746EB605EA29EDB /* RefineSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDCDF67DAD6E87243FCB071 /* RefineSchedule.swift */; };
 		B7C03903116C19A6F9624054 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB315D2686460BDB4B2A3070 /* Preferences.swift */; };
 		BA984F3D246180F63EFCDB53 /* DevicesSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F006A2E8B7A953979E93AB2 /* DevicesSettings.swift */; };
 		BD0E72560200F65691482B46 /* ExportSource+Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5BD17ED969464ED17E7A48 /* ExportSource+Store.swift */; };
@@ -91,6 +93,7 @@
 		D780F3F3F50768C06314FB67 /* TranscriptFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B01760CA300793518ACC4B /* TranscriptFilter.swift */; };
 		DA75124CA81A8EA5429B211E /* SherpaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 460846AA753F3705B00049DD /* SherpaRecognizer.swift */; };
 		DAB5E98BD02614A8D58131FC /* TimeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6946DDC3A37A77ED7B442F08 /* TimeText.swift */; };
+		DDBD093560B8747693EAB7CF /* RefineSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDCDF67DAD6E87243FCB071 /* RefineSchedule.swift */; };
 		DE9B431D4E21393A438DCF3C /* SentenceSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB49761AE06E6F71E338FCA1 /* SentenceSplitterTests.swift */; };
 		E1F33B0BC922222ADC6D56DC /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48052510BD5ECF149F85F0F5 /* Models.swift */; };
 		E2642DE7992F33954E065BBD /* SpeakerEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78F8F059CF1202C908BA757 /* SpeakerEmbedder.swift */; };
@@ -106,6 +109,7 @@
 		FAC8CA93B51B3959804B25EA /* GatewayEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC8A5EA8147A87BA3A18DC3 /* GatewayEngine.swift */; };
 		FD02201DAD49F3E59AC3BC55 /* SummaryMaterial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3F06E81B4D3ED4144C0DDF /* SummaryMaterial.swift */; };
 		FEEA930FB9FA71480FB13535 /* Merger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C95A8103DD66013DB71BB5C /* Merger.swift */; };
+		FF0495D64A3769D233322274 /* RefineSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDCDF67DAD6E87243FCB071 /* RefineSchedule.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -134,6 +138,7 @@
 
 /* Begin PBXFileReference section */
 		00EB5F2E91E7F6BEE26CE361 /* Meetings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meetings.swift; sourceTree = "<group>"; };
+		0DDCDF67DAD6E87243FCB071 /* RefineSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefineSchedule.swift; sourceTree = "<group>"; };
 		0F006A2E8B7A953979E93AB2 /* DevicesSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesSettings.swift; sourceTree = "<group>"; };
 		0FFAC588258A3CA40337869C /* HourViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HourViews.swift; sourceTree = "<group>"; };
 		1B881D8624658CB9AABB6272 /* ChannelPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelPipeline.swift; sourceTree = "<group>"; };
@@ -208,6 +213,7 @@
 		D4EA79AA5B9F035134E14B27 /* ExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportPanel.swift; sourceTree = "<group>"; };
 		DB26335672FB5FEDF4193D27 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		E78F8F059CF1202C908BA757 /* SpeakerEmbedder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerEmbedder.swift; sourceTree = "<group>"; };
+		E9DCC96508BB134061301033 /* RefinerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinerTests.swift; sourceTree = "<group>"; };
 		EA40BBF45DCB552073BB0B06 /* AskPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPanel.swift; sourceTree = "<group>"; };
 		F1E266453666E0C95A7FA1E1 /* DayData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayData.swift; sourceTree = "<group>"; };
 		F261B9BF4489419B9A0B63F8 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
@@ -216,7 +222,7 @@
 		F72C47A91F5199C598D60559 /* WakeOnCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeOnCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FB06B943002AB20B0D651094 /* LiveLatency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLatency.swift; sourceTree = "<group>"; };
 		FB49761AE06E6F71E338FCA1 /* SentenceSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceSplitterTests.swift; sourceTree = "<group>"; };
-		"TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		"TEMP_D9087C8E-3A06-4B38-AA65-8DD41FCA389C" /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -343,6 +349,7 @@
 			isa = PBXGroup;
 			children = (
 				48052510BD5ECF149F85F0F5 /* Models.swift */,
+				0DDCDF67DAD6E87243FCB071 /* RefineSchedule.swift */,
 				D0028A2E2AAF6205861E79EE /* SQLite.swift */,
 				7BE068CA12358B2AAD7D8040 /* Store.swift */,
 			);
@@ -444,6 +451,7 @@
 				8C60D6EB216CC966CC14EF01 /* DeviceMarkTests.swift */,
 				4C19587273510560E66BA295 /* ExportTests.swift */,
 				69AFDD8A064496D39C30EAA8 /* LiveLatencyTests.swift */,
+				E9DCC96508BB134061301033 /* RefinerTests.swift */,
 				FB49761AE06E6F71E338FCA1 /* SentenceSplitterTests.swift */,
 				6604BBDBCE3B86A7DBBCE085 /* SummaryMaterialTests.swift */,
 				1E060F9B0606E8F1D4577829 /* TranscriptFilterTests.swift */,
@@ -461,10 +469,10 @@
 			path = Export;
 			sourceTree = "<group>";
 		};
-		"TEMP_E7B6662D-2F8F-4B4E-9C48-27C654DC64B9" /* macos */ = {
+		"TEMP_59AD2296-1263-48B4-BEAB-776C251ACE62" /* macos */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */,
+				"TEMP_D9087C8E-3A06-4B38-AA65-8DD41FCA389C" /* Signing.xcconfig */,
 			);
 			path = macos;
 			sourceTree = "<group>";
@@ -648,6 +656,7 @@
 				923D7D41CB8B1FB62807B8A0 /* Player.swift in Sources */,
 				B7C03903116C19A6F9624054 /* Preferences.swift in Sources */,
 				EA3C518BA6DAB72E4CE20EDD /* Recorder.swift in Sources */,
+				DDBD093560B8747693EAB7CF /* RefineSchedule.swift in Sources */,
 				440F78833440E384DEDE44A9 /* Refiner.swift in Sources */,
 				F7C00606010EA6CC009D7DAD /* RemoteTranscriber.swift in Sources */,
 				6FA01ABF2484C0A3161EFB92 /* SQLite.swift in Sources */,
@@ -691,6 +700,8 @@
 				77C640CF34E1F08228340C6A /* LiveLatency.swift in Sources */,
 				E4D35B1C73B98BB387162D14 /* LiveLatencyTests.swift in Sources */,
 				E346E0F0CF791B53F5B0440B /* Models.swift in Sources */,
+				FF0495D64A3769D233322274 /* RefineSchedule.swift in Sources */,
+				21AF922B12468B0C16F25B6C /* RefinerTests.swift in Sources */,
 				89594A486C3C1CBD4FC078F1 /* SQLite.swift in Sources */,
 				4665CC9813B8519B244209E8 /* SentenceSplitter.swift in Sources */,
 				DE9B431D4E21393A438DCF3C /* SentenceSplitterTests.swift in Sources */,
@@ -715,6 +726,7 @@
 				BD582775DC8CB1B9EC399905 /* ExportSource+Store.swift in Sources */,
 				BF80A72D03C3065C64C790A8 /* Health.swift in Sources */,
 				E1F33B0BC922222ADC6D56DC /* Models.swift in Sources */,
+				B115E281B746EB605EA29EDB /* RefineSchedule.swift in Sources */,
 				D1BBD885B69E28D81C00959A /* SQLite.swift in Sources */,
 				A2D201B98494AE0F5B7B56A1 /* Store.swift in Sources */,
 				E4989DF3DE2102C13C19B233 /* SyncProtocol.swift in Sources */,
@@ -852,7 +864,7 @@
 		};
 		D0D0C164D8F1BE03C9087A05 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_D9087C8E-3A06-4B38-AA65-8DD41FCA389C" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
@@ -916,7 +928,7 @@
 		};
 		DFB6DB29A349CB804D5DF5A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F32F26AC-4AC4-4A15-B1BF-C91E8E1BB549" /* Signing.xcconfig */;
+			baseConfigurationReference = "TEMP_D9087C8E-3A06-4B38-AA65-8DD41FCA389C" /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
