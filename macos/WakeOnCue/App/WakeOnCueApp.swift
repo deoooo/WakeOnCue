@@ -11,7 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     UNUserNotificationCenter.current().delegate = self
     Task { await model.launch() }
     keyMonitor = PlaybackKeys.install(model: model)
-    hotKey.register { [model] in Task { await model.recorder.togglePause() } }
+    if !AppModel.replayOnly && !AppModel.viewOnly {
+      hotKey.register { [model] in Task { await model.recorder.togglePause() } }
+    }
     #if DEBUG
       DebugSnapshot.startIfRequested(model: model)
     #endif

@@ -95,8 +95,26 @@ final class AppModel {
     #endif
   }
 
+  /// Development aid: `WAKEONCUE_REPLAY` (with `WAKEONCUE_DATA_DIR`) runs only transcription,
+  /// re-transcription and summaries on a copy of the library, for the `replay` debug command:
+  /// no recording, no paired phones, no hot key. Always false in release builds.
+  nonisolated static var replayOnly: Bool {
+    #if DEBUG
+      ProcessInfo.processInfo.environment["WAKEONCUE_REPLAY"] != nil
+    #else
+      false
+    #endif
+  }
+
   func launch() async {
     if Self.viewOnly { return }
+    if Self.replayOnly {
+      refiner.use(models.active, service: preferences.transcriptionService)
+      transcription.setSentencesRetranscribed(models.active != nil)
+      await transcription.start()
+      summaries.start()
+      return
+    }
     await recorder.startIfAllowed()
     refiner.use(models.active, service: preferences.transcriptionService)
     transcription.setSentencesRetranscribed(models.active != nil)

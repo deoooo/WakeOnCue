@@ -1,4 +1,5 @@
 #if DEBUG
+  import AVFoundation
   import AppKit
   import Darwin
   import OSLog
@@ -93,6 +94,13 @@
           }
         // "retranscribe 14" / "regenerate 14": that hour of the day shown; "retranscribe day";
         // "redoday" re-transcribes the day shown and then writes all its summaries again.
+        // "replay <from> <to>" (Unix seconds): feeds the stored microphone audio of that stretch
+        // into live transcription with its original times, faster than real time. For
+        // WAKEONCUE_REPLAY on a copy whose sentences were cleared.
+        case "replay":
+          let bounds = argument.split(separator: " ").compactMap { Double($0) }
+          guard bounds.count == 2 else { break }
+          Task { await Replay.run(DateInterval(start: Date(timeIntervalSince1970: bounds[0]), end: Date(timeIntervalSince1970: bounds[1])), model: model) }
         case "retranscribe", "regenerate", "regenday", "redoday":
           let day = Calendar.current.startOfDay(for: model.ui.day)
           let interval = argument == "day" || parts[0] == "regenday" || parts[0] == "redoday"
@@ -138,6 +146,43 @@
         let name = index == 0 ? path : path.replacingOccurrences(of: ".png", with: "-\(index).png")
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: name))
       }
+    }
+  }
+  /// Feeds stored audio into live transcription. Keeps at most ten minutes of audio ahead of
+  /// what the analyzer has given back, so a day of audio is never held in memory at once.
+  enum Replay {
+    private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Replay")
+
+    @MainActor static func run(_ interval: DateInterval, model: AppModel) async {
+      let segments = model.store.segments(overlapping: interval).filter { $0.channel == .microphone }.sorted { $0.start < $1.start }
+      logger.notice("Replay: \(segments.count) segments")
+      var progress = Date.distantPast
+      var progressChanged = Date.now
+      for segment in segments {
+        guard let file = try? AVAudioFile(forReading: Store.audioDirectory.appending(path: segment.path)) else { continue }
+        let format = file.processingFormat
+        let chunk = AVAudioFrameCount(format.sampleRate)
+        var position: AVAudioFramePosition = 0
+        while position < file.length {
+          let start = segment.start.addingTimeInterval(Double(position) / format.sampleRate)
+          // Back pressure: the analyzer reports where it is through live text and sentences.
+          while true {
+            let heard = max(model.transcription.live[.microphone]?.start ?? .distantPast, model.transcription.lastSentence?.end ?? .distantPast)
+            if heard > progress { progress = heard; progressChanged = .now }
+            if start.timeIntervalSince(progress) < 600 || Date.now.timeIntervalSince(progressChanged) > 5 { break }
+            try? await Task.sleep(for: .milliseconds(50))
+          }
+          guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else { break }
+          file.framePosition = position
+          guard (try? file.read(into: buffer, frameCount: chunk)) != nil, buffer.frameLength > 0 else { break }
+          model.recorder.audioOut.send(.microphone, TimedBuffer(buffer: buffer, start: start))
+          position += AVAudioFramePosition(buffer.frameLength)
+          await Task.yield()
+        }
+        logger.notice("Replay: fed \(segment.path, privacy: .public)")
+      }
+      model.transcription.flush()
+      logger.notice("Replay: done")
     }
   }
 #endif
