@@ -347,7 +347,9 @@ final class Store {
   func segments(overlapping interval: DateInterval) -> [AudioSegment] {
     let now = Date().timeIntervalSince1970
     return fetch(
-      "SELECT id, channel, start, COALESCE(end, ?), path, source FROM segment WHERE start < ? AND COALESCE(end, ?) > ? ORDER BY start",
+      // A segment still being written ends "now", but never before its own start: the sample
+      // clock it was opened with may be a moment ahead of the wall clock.
+      "SELECT id, channel, start, MAX(COALESCE(end, ?), start), path, source FROM segment WHERE start < ? AND MAX(COALESCE(end, ?), start) > ? ORDER BY start",
       [.double(now), .date(interval.end), .double(now), .date(interval.start)]
     ) { row in
       AudioSegment(

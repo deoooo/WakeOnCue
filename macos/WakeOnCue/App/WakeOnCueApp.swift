@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
       return
     }
     UNUserNotificationCenter.current().delegate = self
+    // Says "running" to the crash watchdog until a normal quit removes it.
+    if !AppModel.replayOnly && !AppModel.viewOnly { RunningMarker.write() }
     Task { await model.launch() }
     keyMonitor = PlaybackKeys.install(model: model)
     if !AppModel.replayOnly && !AppModel.viewOnly {
@@ -32,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   func applicationWillTerminate(_ notification: Notification) {
+    RunningMarker.removeIfOwned()
     model.recorder.quit()
   }
 

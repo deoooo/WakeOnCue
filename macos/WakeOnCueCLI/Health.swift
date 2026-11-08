@@ -136,7 +136,8 @@ func healthReport(store: Store, days: Int, now: Date = .now, modelSelected: Bool
       microphoneHours: hours(microphone), remoteHours: hours(remote),
       pausedHours: hours(paused), privateOrDeletedHours: hours(hidden),
       gaps: gaps.map { gap in
-        span(DateInterval(start: max(gap.start, window.start), end: min(max(gap.start, gap.end ?? now), window.end)), gap.reason)
+        let start = max(gap.start, window.start)
+        return span(DateInterval(start: start, end: max(start, min(max(gap.start, gap.end ?? now), window.end))), gap.reason)
       },
       unexplained: unexplained.map { span($0) },
       audioMegabytes: (Double(bytes) / 100_000).rounded() / 10,

@@ -113,10 +113,12 @@ nonisolated final class ChannelPipeline: @unchecked Sendable {
   private func process(_ buffer: AVAudioPCMBuffer, arrival: Date) {
     guard running, let converted = convert(buffer) else { return }
     let duration = Double(converted.frameLength) / Self.format.sampleRate
-    // Re-anchor on the wall clock after a stall (sleep, device change) or drift over a second.
+    // Re-anchor on the wall clock after a stall (sleep, device change) or drift over a second,
+    // and never run ahead of it: a segment opened "in the future" ends before it starts while
+    // it is still being written (that crashed the day page on 2026-11-07).
     let measured = arrival.addingTimeInterval(-duration)
     var start = clock ?? measured
-    if abs(start.timeIntervalSince(measured)) > 1 { start = measured }
+    if start.timeIntervalSince(measured) > 0.05 || measured.timeIntervalSince(start) > 1 { start = measured }
     clock = start.addingTimeInterval(duration)
 
     measure(converted, start: start)

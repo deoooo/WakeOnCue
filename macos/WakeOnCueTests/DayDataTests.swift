@@ -20,4 +20,14 @@ struct DayDataTests {
     let interval = DateInterval(start: start, duration: 86_400)
     #expect(DayData.recordedDuration(segments: segments, in: interval) == 7_200)
   }
+
+  /// 2026-11-07 19:28: a segment opened at 19:25:00 by the sample clock, a moment before the
+  /// wall clock got there, ended "now" before it started and `DateInterval` trapped.
+  @Test func segmentEndingBeforeItStartsDoesNotCrash() {
+    let ahead = AudioSegment(
+      id: 1, channel: .microphone, start: start.addingTimeInterval(300), end: start.addingTimeInterval(298),
+      path: "a.aac", source: "")
+    let interval = DateInterval(start: start, duration: 86_400)
+    #expect(DayData.recordedDuration(segments: [segment(.microphone, 0, 300), ahead], in: interval) == 300)
+  }
 }
