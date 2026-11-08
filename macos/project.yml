@@ -50,6 +50,8 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents"
+          cp "${SRCROOT}/Library/LaunchAgents/com.deoooo.WakeOnCue.crashwatch.plist" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents/"
+          # Kept only so CrashRecovery can unregister the old KeepAlive watchdog.
           cp "${SRCROOT}/Library/LaunchAgents/com.deoooo.WakeOnCue.watchdog.plist" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents/"
     settings:
       base:

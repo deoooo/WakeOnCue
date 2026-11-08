@@ -286,6 +286,30 @@ func run(_ raw: [String]) throws {
     if args.json { return try printJSON(out) }
     printHealth(out, remote: reader.store.remoteSegmentCounts())
 
+  // Run by the crash watchdog launch agent every 30 seconds; see `RunningMarker`.
+  case "watchdog":
+    let pid = RunningMarker.read()
+    let running = pid.map(RunningMarker.isAppProcess) ?? false
+    switch RunningMarker.decide(markerPID: pid, isRunning: running, recentRelaunches: RunningMarker.relaunches(), now: .now) {
+    case .nothing:
+      return
+    case .givingUp:
+      FileHandle.standardError.write(Data("WakeOnCue 十分钟内已重启 \(RunningMarker.loopLimit) 次，不再自动重启\n".utf8))
+      return
+    case .relaunch:
+      // This tool lives in WakeOnCue.app/Contents/Helpers.
+      let tool = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
+      let app = tool.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      guard app.pathExtension == "app" else { throw UsageError(message: "找不到 WakeOnCue.app：\(tool.path)") }
+      RunningMarker.recordRelaunch(at: .now)
+      let open = Process()
+      open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+      open.arguments = ["-g", app.path]
+      try open.run()
+      open.waitUntilExit()
+      FileHandle.standardError.write(Data("WakeOnCue 上次没有正常退出（进程 \(pid ?? 0)），已重新打开\n".utf8))
+    }
+
   default:
     throw UsageError(message: "不认识的命令：\(command)\n\n\(usage)")
   }

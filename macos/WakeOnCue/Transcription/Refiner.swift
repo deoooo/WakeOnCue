@@ -377,7 +377,7 @@ final class Refiner {
     if store.marks(overlapping: span).contains(where: { $0.start < span.end && $0.end > span.start }) {
       return nil
     }
-    let segments = store.segments(overlapping: DateInterval(start: sentence.start.addingTimeInterval(-Self.margin), end: sentence.end.addingTimeInterval(Self.margin)))
+    let segments = store.segments(overlapping: DateInterval(start: sentence.start.addingTimeInterval(-Self.margin), end: max(sentence.end, sentence.start).addingTimeInterval(Self.margin)))
       .filter { $0.channel == sentence.channel }
     let start = sentence.start.addingTimeInterval(-Self.margin)
     let end = sentence.end.addingTimeInterval(Self.margin)

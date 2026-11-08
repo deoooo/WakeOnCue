@@ -98,8 +98,13 @@ struct DayData {
   /// Total time covered by any audio, merging overlapping Mac and forwarded segments so a Watch
   /// recording that fills a Mac gap is not counted twice.
   static func recordedDuration(segments: [AudioSegment], in interval: DateInterval) -> TimeInterval {
-    let ranges = segments.map { DateInterval(start: max($0.start, interval.start), end: min($0.end, interval.end)) }
-      .filter { $0.duration > 0 }
+    // A segment can end before it starts, e.g. one just opened whose start, counted in samples,
+    // is a moment ahead of the wall clock. `DateInterval` traps on that, so skip such ranges.
+    let ranges = segments.compactMap { segment -> DateInterval? in
+      let start = max(segment.start, interval.start)
+      let end = min(segment.end, interval.end)
+      return end > start ? DateInterval(start: start, end: end) : nil
+    }
       .sorted { $0.start < $1.start }
     var total: TimeInterval = 0
     var current: DateInterval?

@@ -2,22 +2,31 @@ import Foundation
 import OSLog
 import ServiceManagement
 
-/// Keeps the app alive after a crash without relaunching it after a normal quit.
+/// Relaunches the app after a crash, a force-quit or a power loss, never after a normal quit.
 ///
-/// macOS LaunchAgents registered with `SMAppService` support `KeepAlive` with
-/// `SuccessfulExit = false`: a normal `NSApp.terminate` exits with status 0 and stays closed,
-/// while a crash or force-kill is restarted. The plist is copied into the app bundle at
-/// `Contents/Library/LaunchAgents` during the build.
+/// A launchd agent runs `wakeoncue watchdog` (the command-line tool in Contents/Helpers) every
+/// 30 seconds. The app keeps `RunningMarker` while it runs and removes it when it quits
+/// normally; a marker whose process is gone means it did not quit normally, so the watchdog
+/// opens it again (three times in ten minutes at most, then it gives up on a crash loop).
+///
+/// This replaces a `KeepAlive` agent that launched the app executable itself: launchd only
+/// restarts processes it started, so the app opened from Finder or as a login item was never
+/// watched, and a crash on 2026-11-07 went unnoticed for 27 hours.
 enum CrashRecovery {
   private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "CrashRecovery")
-  static let plistName = "com.deoooo.WakeOnCue.watchdog.plist"
-  private static let label = "com.deoooo.WakeOnCue.watchdog"
+  static let plistName = "com.deoooo.WakeOnCue.crashwatch.plist"
+  private static let label = "com.deoooo.WakeOnCue.crashwatch"
+  private static let oldPlistName = "com.deoooo.WakeOnCue.watchdog.plist"
 
   static func registerIfNeeded() {
+    let old = SMAppService.agent(plistName: oldPlistName)
+    if old.status != .notRegistered {
+      try? old.unregister()
+      logger.notice("Unregistered the old KeepAlive watchdog")
+    }
     let service = SMAppService.agent(plistName: plistName)
-    // A previous version of the app may have marked the service enabled in ServiceManagement's
-    // database while the launchd job itself is gone (for example after booting it out while
-    // debugging). Check the actual job, not just the database status.
+    // ServiceManagement may say enabled while the launchd job is gone (for example after booting
+    // it out while debugging). Check the actual job, not just the database status.
     if service.status == .enabled, isJobLoaded() { return }
     do {
       if service.status == .enabled { try? service.unregister() }
