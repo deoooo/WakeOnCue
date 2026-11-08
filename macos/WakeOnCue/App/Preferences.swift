@@ -68,6 +68,14 @@ final class Preferences {
   var transcriptionConsentHost: String? { didSet { defaults.set(transcriptionConsentHost, forKey: "transcriptionConsentHost") } }
   /// The gateway host the user agreed to send transcripts to; another host needs a new consent.
   var gatewayConsentHost: String? { didSet { defaults.set(gatewayConsentHost, forKey: "gatewayConsentHost") } }
+  /// 常用词: names, products and jargon, as the user typed them; see `Vocabulary`.
+  var vocabularyText: String { didSet { defaults.set(vocabularyText, forKey: "vocabularyText") } }
+  /// 每日例会: the hour summaries that overlap it are written as meeting notes.
+  var meetingEnabled: Bool { didSet { defaults.set(meetingEnabled, forKey: "meetingEnabled") } }
+  /// Minutes after midnight.
+  var meetingStart: Int { didSet { defaults.set(meetingStart, forKey: "meetingStart") } }
+  var meetingEnd: Int { didSet { defaults.set(meetingEnd, forKey: "meetingEnd") } }
+  var meetingWeekdaysOnly: Bool { didSet { defaults.set(meetingWeekdaysOnly, forKey: "meetingWeekdaysOnly") } }
 
   init() {
     alwaysRecord = defaults.object(forKey: "alwaysRecord") as? Bool ?? true
@@ -92,6 +100,21 @@ final class Preferences {
     transcriptionModel = defaults.string(forKey: "transcriptionModel") ?? ""
     transcriptionConsentHost = defaults.string(forKey: "transcriptionConsentHost")
     gatewayConsentHost = defaults.string(forKey: "gatewayConsentHost")
+    vocabularyText = defaults.string(forKey: "vocabularyText") ?? ""
+    meetingEnabled = defaults.bool(forKey: "meetingEnabled")
+    meetingStart = defaults.object(forKey: "meetingStart") as? Int ?? 9 * 60
+    meetingEnd = defaults.object(forKey: "meetingEnd") as? Int ?? 10 * 60
+    meetingWeekdaysOnly = defaults.object(forKey: "meetingWeekdaysOnly") as? Bool ?? true
+  }
+
+  var vocabulary: [String] { Vocabulary.words(from: vocabularyText) }
+
+  /// What the summaries need to know about the user's work: their words and their daily meeting.
+  var summaryContext: SummaryContext {
+    SummaryContext(
+      vocabulary: vocabulary,
+      meeting: meetingEnabled && meetingEnd > meetingStart
+        ? DailyMeeting(start: meetingStart, end: meetingEnd, weekdaysOnly: meetingWeekdaysOnly) : nil)
   }
 }
 

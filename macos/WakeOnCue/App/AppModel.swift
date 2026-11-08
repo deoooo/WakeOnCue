@@ -43,7 +43,7 @@ final class AppModel {
     models = ASRModels(preferences: preferences)
     let preferences = preferences
     models.onActiveChange = { [weak refiner, weak transcription] in
-      refiner?.use($0, service: preferences.transcriptionService)
+      refiner?.use($0, service: preferences.transcriptionService, vocabulary: preferences.vocabulary)
       // Live sentences come out sooner when a model re-transcribes them anyway.
       transcription?.setSentencesRetranscribed($0 != nil)
     }
@@ -68,6 +68,13 @@ final class AppModel {
     refiner.onRetranscribed = { [weak self] _, _, _ in
       self?.summaries.releaseDays()
     }
+  }
+
+  /// 常用词 changed: the model is loaded again with the new hotwords. Sentences already done keep
+  /// their words until the user asks for "重新转录".
+  func applyVocabulary() {
+    guard !Self.viewOnly else { return }
+    refiner.use(models.active, service: preferences.transcriptionService, vocabulary: preferences.vocabulary)
   }
 
   /// Every summary of the stretch again: its hours and its day.
@@ -100,7 +107,7 @@ final class AppModel {
   func launch() async {
     if Self.viewOnly { return }
     if Self.replayOnly {
-      refiner.use(models.active, service: preferences.transcriptionService)
+      refiner.use(models.active, service: preferences.transcriptionService, vocabulary: preferences.vocabulary)
       transcription.setSentencesRetranscribed(models.active != nil)
       await transcription.start()
       summaries.start()
@@ -108,7 +115,7 @@ final class AppModel {
     }
     await recorder.startIfAllowed()
     if preferences.onboarded && preferences.alwaysRecord { CrashRecovery.registerIfNeeded() }
-    refiner.use(models.active, service: preferences.transcriptionService)
+    refiner.use(models.active, service: preferences.transcriptionService, vocabulary: preferences.vocabulary)
     transcription.setSentencesRetranscribed(models.active != nil)
     await transcription.start()
     summaries.start()

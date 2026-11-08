@@ -38,7 +38,9 @@ nonisolated final class SherpaRecognizer: @unchecked Sendable {
   /// - Parameters:
   ///   - runtime: the folder with `libsherpa-onnx-c-api.dylib` and `libonnxruntime.dylib`.
   ///   - files: the Qwen3-ASR files by role (`conv_frontend`, `encoder`, `decoder`, `tokenizer`).
-  init(runtime: URL, qwen3 files: [String: URL], threads: Int32 = 4) throws {
+  ///   - hotwords: the user's 常用词, comma-separated (`Vocabulary.hotwords`); Qwen3-ASR reads
+  ///     them as context and spells names and jargon the way they are written there.
+  init(runtime: URL, qwen3 files: [String: URL], threads: Int32 = 4, hotwords: String? = nil) throws {
     let path = runtime.appending(path: "libsherpa-onnx-c-api.dylib").path
     guard let library = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
       throw Failure.library(String(cString: dlerror()))
@@ -76,6 +78,7 @@ nonisolated final class SherpaRecognizer: @unchecked Sendable {
     config.model_config.qwen3_asr.max_total_len = 512
     config.model_config.qwen3_asr.max_new_tokens = 256
     config.model_config.qwen3_asr.top_p = 1
+    if let hotwords, !hotwords.isEmpty { config.model_config.qwen3_asr.hotwords = c(hotwords) }
     config.decoding_method = c("greedy_search")
     guard let recognizer = create(&config) else {
       dlclose(library)

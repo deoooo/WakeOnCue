@@ -91,6 +91,7 @@ private struct TranscriptionSettings: View {
         Text("Apple 语音一直负责边录边转。启用下载的模型后，每句话会在几秒后用它重新转录，替换 Apple 语音的结果；时间和说话人不变。")
           .font(.caption).foregroundStyle(.secondary)
       }
+      VocabularySection()
       Section("可用模型") {
         ModelList()
       }
@@ -242,6 +243,40 @@ private struct PermissionSettings: View {
     } label: {
       Text(title)
       if let note { Text(note) }
+    }
+  }
+}
+
+/// 常用词: typed freely, applied on "应用" so the model is not reloaded on every keystroke.
+private struct VocabularySection: View {
+  @Environment(AppModel.self) private var model
+  @State private var draft: String?
+
+  var body: some View {
+    let saved = model.preferences.vocabularyText
+    let text = Binding(get: { draft ?? saved }, set: { draft = $0 })
+    let words = Vocabulary.words(from: text.wrappedValue)
+    Section {
+      TextEditor(text: text)
+        .font(.body)
+        .frame(minHeight: 64)
+        .scrollContentBackground(.hidden)
+      HStack {
+        Text(words.count >= Vocabulary.maxWords ? "最多 \(Vocabulary.maxWords) 个词，后面的不会用上" : "\(words.count) 个词")
+          .font(.caption).foregroundStyle(.secondary)
+        Spacer()
+        Button("应用") {
+          model.preferences.vocabularyText = text.wrappedValue
+          draft = nil
+          model.applyVocabulary()
+        }
+        .disabled(text.wrappedValue == saved)
+      }
+    } header: {
+      Text("常用词")
+    } footer: {
+      Text("同事的名字、产品名和术语，用逗号或换行分开，比如「老罗，唐总，贝塔版，巡检」。下载的模型和转录服务会按这里的写法识别，总结也会参考。应用后新的句子马上用上，以前的句子可以「重新转录」。")
+        .font(.caption).foregroundStyle(.secondary)
     }
   }
 }

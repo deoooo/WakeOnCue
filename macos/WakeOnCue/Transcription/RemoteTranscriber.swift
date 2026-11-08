@@ -36,6 +36,8 @@ nonisolated struct TranscriptionServiceConfig: Sendable, Equatable {
 
 nonisolated struct RemoteTranscriber: SentenceRecognizer {
   let config: TranscriptionServiceConfig
+  /// The user's 常用词, sent as the request's `prompt` so the service spells them right.
+  var prompt: String?
 
   @concurrent func recognize(_ samples: [Float]) async throws -> String {
     var delay: Double = 2
@@ -73,6 +75,7 @@ nonisolated struct RemoteTranscriber: SentenceRecognizer {
     field("model", config.model)
     field("language", "zh")
     field("response_format", "json")
+    if let prompt, !prompt.isEmpty { field("prompt", prompt) }
     body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sentence.wav\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
     body.append(Self.wav(samples))
     body.append(Data("\r\n--\(boundary)--\r\n".utf8))

@@ -89,6 +89,8 @@ struct AISettings: View {
         Text("API Key 只存在这台 Mac 的钥匙串里。使用网关时，每小时和当天的转录文字会发送到网关生成总结；音频不会发送，标为私人或已删除的时段也不会发送。")
           .font(.caption).foregroundStyle(.secondary)
       }
+
+      MeetingSection()
     }
     .onAppear {
       savedKey = !GatewayKeychain.read().isEmpty
@@ -144,5 +146,50 @@ struct AISettings: View {
     guard alert.runModal() == .alertSecondButtonReturn else { return }
     preferences.gatewayConsentHost = host
     model.summaries.refreshEngine()
+  }
+}
+
+/// 每日例会: the hours it falls in are summarized as meeting notes instead of one or two lines.
+private struct MeetingSection: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    @Bindable var preferences = model.preferences
+    Section {
+      Toggle("每天有固定的例会", isOn: $preferences.meetingEnabled)
+      if preferences.meetingEnabled {
+        LabeledContent("时间") {
+          HStack {
+            MinutePicker(minutes: $preferences.meetingStart)
+            Text("到")
+            MinutePicker(minutes: $preferences.meetingEnd)
+          }
+        }
+        Toggle("只在工作日", isOn: $preferences.meetingWeekdaysOnly)
+        if preferences.meetingEnd <= preferences.meetingStart {
+          Text("结束时间要晚于开始时间").font(.caption).foregroundStyle(Color.recording)
+        }
+      }
+    } header: {
+      Text("每日例会")
+    } footer: {
+      Text("例会所在小时的总结写成纪要：每人的进展、今天的计划、卡住的问题和待办。之后生成的总结按这里的设置；以前的可以在小时菜单里重新生成。")
+        .font(.caption).foregroundStyle(.secondary)
+    }
+  }
+}
+
+/// A time of day as minutes after midnight, in 5-minute steps.
+private struct MinutePicker: View {
+  @Binding var minutes: Int
+
+  var body: some View {
+    Picker("", selection: $minutes) {
+      ForEach(Array(stride(from: 0, to: 24 * 60, by: 5)), id: \.self) { value in
+        Text(String(format: "%02d:%02d", value / 60, value % 60)).tag(value)
+      }
+    }
+    .labelsHidden()
+    .fixedSize()
   }
 }

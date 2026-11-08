@@ -122,7 +122,7 @@ nonisolated struct GatewayEngine: SummaryEngine {
       var summary: String
       var keySentences: [Int]?
     }
-    let reply: Reply = try await json(prompt, shape: #"{"summary": "谈了哪些事、有什么结论，一到两句话，直接从事情写起", "keySentences": [最能代表内容的二到五句原话的编号]}"#)
+    let reply: Reply = try await json(prompt, shape: #"{"summary": "谈了哪些事、有什么结论，篇幅和格式按上面的要求，直接从事情写起", "keySentences": [最能代表内容的二到五句原话的编号]}"#)
     return HourResult(summary: reply.summary, keySentences: reply.keySentences ?? [])
   }
 

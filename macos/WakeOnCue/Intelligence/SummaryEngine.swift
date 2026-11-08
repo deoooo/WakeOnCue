@@ -119,7 +119,7 @@ struct AnswerDraft {
 
 @Generable
 struct HourDraft {
-  @Guide(description: "谈了哪些事、有什么结论，一到两句话，直接从事情写起，不用「这一小时」开头")
+  @Guide(description: "谈了哪些事、有什么结论，篇幅和格式按要求写，直接从事情写起，不用「这一小时」开头")
   var summary: String
   @Guide(description: "最能代表内容的二到五句原话的编号", .count(0...5))
   var keySentences: [Int]

@@ -134,6 +134,8 @@ targets:
       - path: WakeOnCue/Playback/Player.swift
       - path: WakeOnCue/Capture/ChannelPipeline.swift
       - path: WakeOnCue/Transcription/TranscriptFilter.swift
+      - path: WakeOnCue/Transcription/Vocabulary.swift
+      - path: WakeOnCue/Transcription/SentenceGroups.swift
       - path: WakeOnCue/Transcription/SentenceSplitter.swift
       - path: WakeOnCue/Transcription/LiveLatency.swift
       - path: WakeOnCue/Transcription/SpeakerClustering.swift

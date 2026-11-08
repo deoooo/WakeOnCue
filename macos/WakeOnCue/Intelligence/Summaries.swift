@@ -248,10 +248,11 @@ final class Summaries {
       store.saveHourSummary(HourSummary(hourStart: hour, summary: "", keySentenceIDs: [], generatedAt: .now, isFinal: final, engine: engine.name))
       return
     }
+    let context = preferences.summaryContext
     var notes: [String] = []
     var keys: [Int64] = []
     for part in SummaryMaterial.parts(SummaryMaterial.meaningful(sentences), limit: engine.partCharacters) {
-      let results = try await SummaryMaterial.halving(part, engine: engine) { try await engine.hour(SummaryMaterial.hourPrompt(hour, part: $0)) }
+      let results = try await SummaryMaterial.halving(part, engine: engine) { try await engine.hour(SummaryMaterial.hourPrompt(hour, part: $0, context: context)) }
       for (result, piece) in results {
         notes.append(result.summary)
         keys += Self.ids(result.keySentences, in: piece)
@@ -259,7 +260,7 @@ final class Summaries {
     }
     var summary = notes.first ?? ""
     if notes.count > 1 {
-      summary = try await engine.text(SummaryMaterial.mergePrompt(notes))
+      summary = try await engine.text(SummaryMaterial.mergePrompt(notes, hour: hour, context: context))
     }
     store.saveHourSummary(HourSummary(
       hourStart: hour, summary: Self.tidy(summary),
@@ -301,7 +302,7 @@ final class Summaries {
     let (hourText, hourSources) = SummaryMaterial.dayMaterial(
       hours, budget: max(engine.partCharacters * 2 - marked.count, engine.partCharacters / 2), firstNumber: sources.count + 1)
     sources += hourSources
-    let result = try await engine.day(SummaryMaterial.dayPrompt(material: marked + hourText))
+    let result = try await engine.day(SummaryMaterial.dayPrompt(material: marked + hourText, vocabulary: preferences.vocabulary))
     let cite = { (numbers: [Int]) in numbers.compactMap { sources.indices.contains($0 - 1) ? sources[$0 - 1].id : nil } }
     store.saveDaySummary(DaySummary(
       day: day,
