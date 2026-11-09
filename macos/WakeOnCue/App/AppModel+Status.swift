@@ -65,17 +65,26 @@ extension AppModel {
     return nil
   }
 
+  /// Status dots read like an indicator light: green working, grey idle or offline, yellow
+  /// needs a look, red broken.
+  enum Light {
+    static let working = Color.green
+    static let idle = Color.gray
+    static let attention = Color.yellow
+    static let broken = Color.red
+  }
+
   var macStatus: (text: String, dot: Color) {
     switch recorder.state {
     case .recording:
       switch transcription.status {
-      case .ready: return ("录音中，转录已跟上", .recording)
-      case .preparing, .downloading: return ("录音中，转录正在准备", .recording)
-      case .failed: return ("录音中，没有转录", .recording)
+      case .ready: return ("录音中，转录已跟上", Light.working)
+      case .preparing, .downloading: return ("录音中，转录正在准备", Light.working)
+      case .failed: return ("录音中，但没有转录", Light.attention)
       }
-    case .paused: return ("已暂停", .secondary)
-    case .unavailable(let reason): return ("没有在录音，\(reason)", .orange)
-    case .off: return ("没有在录音", .secondary)
+    case .paused: return ("已暂停", Light.idle)
+    case .unavailable(let reason): return ("录不了：\(reason)", Light.broken)
+    case .off: return ("没有在录音", Light.idle)
     }
   }
 
@@ -101,13 +110,13 @@ extension AppModel {
       var dot: Color
       if case .some(let transfer) = sync.connected[device.id] {
         text = transfer.map { "正在接收 \(TimeText.bytes($0.received)) / \(TimeText.bytes($0.total))" } ?? "已连接"
-        dot = .green
+        dot = Light.working
       } else if let lastSeen = device.lastSeen {
-        text = "上次连接 \(TimeText.relativeDay(lastSeen)) \(TimeText.clock(lastSeen))"
-        dot = .secondary
+        text = "未连接，上次连接 \(TimeText.relativeDay(lastSeen)) \(TimeText.clock(lastSeen))"
+        dot = Light.idle
       } else {
-        text = "已配对，还没有连接过"
-        dot = .orange
+        text = "已配对，但还没有连接过"
+        dot = Light.attention
       }
       if let waiting = counts[device.id]?.waiting, waiting > 0 { text += "，\(waiting) 段等待合并" }
       return DeviceStatus(id: device.id, symbol: "iphone", text: "\(device.name)：\(text)", dot: dot)
@@ -116,7 +125,7 @@ extension AppModel {
       statuses.append(DeviceStatus(
         id: "watch", symbol: "applewatch",
         text: "Apple Watch：经 iPhone 转发，最近收到的录音到 \(TimeText.relativeDay(latest)) \(TimeText.clock(latest))",
-        dot: .secondary))
+        dot: Date.now.timeIntervalSince(latest) < 3_600 ? Light.working : Light.idle))
     }
     return statuses
   }
