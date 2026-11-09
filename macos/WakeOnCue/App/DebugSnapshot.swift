@@ -8,6 +8,9 @@
   /// the app capture its own windows into PNGs every few seconds, and run the commands it
   /// finds in `<path>.cmd` (one per line), so screens can be checked without a mouse.
   enum DebugSnapshot {
+    /// Posted with the rest of an `onboard …` command line for the first-run sheet.
+    static let onboarding = Notification.Name("DebugSnapshot.onboarding")
+
     static func startIfRequested(model: AppModel) {
       guard let path = UserDefaults.standard.string(forKey: "debugSnapshot") else { return }
       Task {
@@ -124,6 +127,9 @@
           if size.count == 2, let window = NSApp.windows.first(where: { $0.isVisible && $0.frame.width >= 900 }) {
             window.setContentSize(NSSize(width: size[0], height: size[1]))
           }
+        // "onboard agree|next|back|mic|step <n>|pick <model id>|login on|off": as if clicked in the
+        // first-run sheet.
+        case "onboard": NotificationCenter.default.post(name: onboarding, object: argument)
         case "settings": model.showSettings(SettingsView.Section(rawValue: argument) ?? .recording)
         default: break
         }

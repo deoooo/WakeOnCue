@@ -97,7 +97,7 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
   static let qwen3_1_7B = ASRModel(
     id: "qwen3-asr-1.7b-mlx-8bit",
     name: "Qwen3-ASR 1.7B",
-    detail: "比 0.6B 更准，人名、术语和中英混说尤其明显 · 用 GPU，需要 16 GB 内存以上",
+    detail: "人名、术语和中英混说比 0.6B 更准 · 用 GPU，需 16 GB 内存",
     size: "约 2.5 GB",
     source: "mlx-community（Hugging Face）",
     kind: .mlxQwen3(HubSnapshot(

@@ -34,12 +34,9 @@ struct OnboardingView: View {
         }
         Spacer()
         if step < 4 {
-          Button("继续") {
-            if step == 3 { applyModelChoice() }
-            step += 1
-          }
+          Button("继续") { goOn() }
             .buttonStyle(.borderedProminent)
-            .disabled(step == 1 ? !agreed : microphone != .authorized)
+            .disabled(!canGoOn)
             .keyboardShortcut(.defaultAction)
         } else {
           Button("开始录音") { finish() }
@@ -51,7 +48,50 @@ struct OnboardingView: View {
     .padding(28)
     .frame(width: 520, height: 520)
     .interactiveDismissDisabled()
+    #if DEBUG
+      .onReceive(NotificationCenter.default.publisher(for: DebugSnapshot.onboarding)) { note in
+        debugCommand(note.object as? String ?? "")
+      }
+    #endif
   }
+
+  private var canGoOn: Bool { step == 1 ? agreed : microphone == .authorized }
+
+  private func goOn() {
+    if step == 3 { applyModelChoice() }
+    step += 1
+  }
+
+  private func requestMicrophone() {
+    Task {
+      _ = await MicrophoneCapture.requestAccess()
+      microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+  }
+
+  #if DEBUG
+    /// What a click would do, for `DebugSnapshot`'s `onboard` command. 继续 only goes on when the
+    /// button is enabled (`step N` jumps regardless); 开始录音 is left out, since it registers the
+    /// login item and watchdog.
+    private func debugCommand(_ command: String) {
+      let words = command.split(separator: " ").map(String.init)
+      switch words.first {
+      case "agree": agreed = true
+      case "next": if step < 4, canGoOn { goOn() }
+      case "back": if step > 1 { step -= 1 }
+      case "pick": if let id = words.last, Self.modelOptions.contains(where: { $0.id == id }) { modelChoice = id }
+      case "mic": if microphone == .notDetermined { requestMicrophone() }
+      case "login": launchAtLogin = words.last == "on"
+      // Skips the gates, to look at a later step without granting the microphone again.
+      case "step":
+        if let n = Int(words.last ?? ""), (1...4).contains(n) {
+          if step <= 3, n == 4 { applyModelChoice() }
+          step = n
+        }
+      default: break
+      }
+    }
+  #endif
 
   private var intro: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -81,12 +121,7 @@ struct OnboardingView: View {
         if microphone == .authorized {
           Text("✓ 已打开").foregroundStyle(.green)
         } else if microphone == .notDetermined {
-          Button("打开…") {
-            Task {
-              _ = await MicrophoneCapture.requestAccess()
-              microphone = AVCaptureDevice.authorizationStatus(for: .audio)
-            }
-          }
+          Button("打开…") { requestMicrophone() }
         } else {
           Button("去系统设置…") { AppModel.openPrivacySettings("Privacy_Microphone") }
         }
@@ -140,11 +175,16 @@ struct OnboardingView: View {
               .foregroundStyle(.tint)
           }
         }
-        Text(option.isBuiltIn ? "不用下载，准确度一般" : "\(option.detail) · \(installed ? "已下载" : "下载\(option.size)")")
+        Text(option.isBuiltIn ? "不用下载，准确度一般" : option.detail)
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      Spacer(minLength: 0)
+      Spacer(minLength: 12)
+      // The size on its own, so the description never wraps around it.
+      if !option.isBuiltIn {
+        Text(installed ? "已下载" : option.size)
+          .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+      }
     }
     .padding(.vertical, 8)
     .contentShape(Rectangle())
@@ -158,40 +198,82 @@ struct OnboardingView: View {
     model.models.choose(option)
   }
 
+  /// Three rows of the same shape: what it is on the left, whether it is ready on the right.
   private var readiness: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("准备转录").font(.title2.weight(.semibold))
-      permissionRow("Apple 语音 · 中文", "系统自带，支持边录边转。") {
-        SpeechStatusText(status: model.transcription.status).font(.caption)
+      permissionRow("Apple 语音 · 中文", "系统自带，边录边转。") {
+        SpeechStatusText(status: model.transcription.status)
       }
       if let chosen = Self.modelOptions.first(where: { $0.id == modelChoice }), !chosen.isBuiltIn {
-        Form { ModelRow(entry: chosen) }
-          .formStyle(.columns)
-          .padding(.vertical, 6)
-          .overlay(alignment: .bottom) { Divider() }
+        chosenModelRow(chosen)
       }
-      permissionRow("总结", "优先由这台 Mac 上的 Apple 智能生成。不支持 Apple 智能的 Mac 可以在设置 › AI 服务里配置自己的网关。") {
-        if let engine = model.summaries.engineName {
-          Text("✓ \(engine)").foregroundStyle(.green)
-        } else {
-          VStack(alignment: .trailing, spacing: 4) {
-            Text(model.summaries.unavailableReason ?? "").foregroundStyle(.secondary).font(.caption)
-            Button("设置网关…") { model.showSettings(.ai) }
-          }
-        }
-      }
+      summaryRow
       Text("需要 macOS 26 和 Apple 芯片的 Mac。").font(.caption).foregroundStyle(.secondary)
     }
+    .font(.body)
     .task { await model.transcription.start() }
   }
 
-  private func permissionRow(_ title: String, _ detail: String, @ViewBuilder trailing: () -> some View) -> some View {
-    HStack(alignment: .center, spacing: 12) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).fontWeight(.semibold)
-        Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+  /// The model picked on the step before, with its download; picking again is done there.
+  private func chosenModelRow(_ chosen: ASRModel) -> some View {
+    let models = model.models
+    let state = models.state(of: chosen)
+    return row(title: chosen.name) {
+      switch state {
+      case .downloading(let fraction):
+        HStack(spacing: 6) {
+          ProgressView(value: fraction).frame(width: 100)
+          Text("下载中 \(Int(fraction * 100))%，下完自动启用").monospacedDigit()
+        }
+      case .verifying: Text("正在校验下载的文件…")
+      case .paused(let fraction): Text("已暂停在 \(Int(fraction * 100))%")
+      case .failed(let reason): Text(reason).foregroundStyle(Color.recording).lineLimit(2)
+      case .installed: Text("每句话会在几秒后重新转录。")
+      case .notDownloaded: Text("\(chosen.size)，等待下载")
       }
-      Spacer()
+    } trailing: {
+      switch state {
+      case .downloading: Button("暂停") { models.pause(chosen) }
+      case .paused: Button("继续下载") { models.choose(chosen) }
+      case .failed: Button("重试") { models.choose(chosen) }
+      case .installed: Text("✓ 已就绪").foregroundStyle(.green)
+      case .verifying, .notDownloaded: EmptyView()
+      }
+    }
+  }
+
+  /// Summaries come from Apple Intelligence on this Mac, or from the user's own gateway on Macs
+  /// without it. Recording and transcription work either way.
+  private var summaryRow: some View {
+    row(title: "总结") {
+      if let engine = model.summaries.engineName {
+        Text("由\(engine)生成每小时和每天的总结。")
+      } else {
+        Text("\(model.summaries.unavailableReason ?? "现在没有可用的总结方式")，可以配置自己的 AI 网关来生成总结。不配置也能照常录音和转录。")
+      }
+    } trailing: {
+      if model.summaries.engineName != nil {
+        Text("✓ 已就绪").foregroundStyle(.green)
+      } else {
+        Button("设置网关…") { model.showSettings(.ai) }
+      }
+    }
+  }
+
+  private func permissionRow(_ title: String, _ detail: String, @ViewBuilder trailing: () -> some View) -> some View {
+    row(title: title) { Text(detail) } trailing: { trailing() }
+  }
+
+  private func row(title: String, @ViewBuilder detail: () -> some View, @ViewBuilder trailing: () -> some View) -> some View {
+    HStack(alignment: .center, spacing: 16) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title).fontWeight(.semibold)
+        detail()
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
       trailing()
     }
     .padding(.vertical, 8)
