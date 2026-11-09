@@ -273,14 +273,16 @@ final class Store {
       map: Self.sentence)
   }
 
-  /// How many sentences in the interval have no model text yet, and how many of those are longer
-  /// than 2.5 seconds. Private and deleted sentences are left out, as in `sentencesNeedingRefinement`.
+  /// How many sentences in the interval no model has handled yet, and how many of those are
+  /// longer than 2.5 seconds. A sentence a model looked at and kept the live words for
+  /// (`refine_checked_by`) is handled, not waiting. Private and deleted sentences are left out, as
+  /// in `sentencesNeedingRefinement`.
   func unrefinedCounts(in interval: DateInterval) -> (total: Int, overTwoSeconds: Int) {
     let rows = fetch(
       """
       SELECT COUNT(*), COALESCE(SUM(CASE WHEN end - start > 2.5 THEN 1 ELSE 0 END), 0)
       FROM sentence
-      WHERE refined_by IS NULL AND start >= ? AND start < ?
+      WHERE refined_by IS NULL AND refine_checked_by IS NULL AND start >= ? AND start < ?
         AND NOT EXISTS (
           SELECT 1 FROM mark
           WHERE mark.kind IN ('private', 'deleted', 'paused')

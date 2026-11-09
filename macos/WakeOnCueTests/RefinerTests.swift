@@ -128,6 +128,9 @@ nonisolated final class RefinerTests: XCTestCase {
     store.refineSentence(id: refined, text: "模型文字", by: "Qwen3-ASR 0.6B")
     sentence(at: start.addingTimeInterval(240), seconds: 5)
     store.addMark(.privateRange, start: start.addingTimeInterval(235), end: start.addingTimeInterval(250))
+    // The model looked at it and kept the live words: handled, not waiting.
+    let kept = sentence(at: start.addingTimeInterval(300), seconds: 5)
+    store.markRefineChecked(id: kept, model: "Qwen3-ASR 0.6B")
 
     let counts = store.unrefinedCounts(in: DateInterval(start: day, duration: 86_400))
     XCTAssertEqual(counts.total, 3)
