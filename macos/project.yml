@@ -24,6 +24,16 @@ settings:
     ARCHS: arm64
     ONLY_ACTIVE_ARCH: YES
 
+# Qwen3-ASR 1.7B runs on the GPU through MLX. Pinned to a reviewed commit (v0.1.8); mlx-swift is
+# listed too so the app can build MLXArray itself, in the range mlx-audio-swift asks for.
+packages:
+  MLXAudio:
+    url: https://github.com/Blaizzy/mlx-audio-swift
+    revision: df2a2546705f50ca267037702a34cd63aa6e35a6
+  MLX:
+    url: https://github.com/ml-explore/mlx-swift
+    from: 0.33.0
+
 targets:
   WakeOnCue:
     type: application
@@ -31,6 +41,10 @@ targets:
     sources:
       - path: WakeOnCue
     dependencies:
+      - package: MLXAudio
+        product: MLXAudioSTT
+      - package: MLX
+        product: MLX
       # The command-line tool ships inside the app: WakeOnCue.app/Contents/Helpers/wakeoncue. Not in
       # Contents/MacOS, where it would replace "WakeOnCue" on a case-insensitive disk.
       - target: WakeOnCueCLI

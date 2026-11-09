@@ -96,7 +96,7 @@ struct OnboardingView: View {
       permissionRow("Apple 语音 · 中文", "系统自带，支持边录边转。") {
         SpeechStatusText(status: model.transcription.status).font(.caption)
       }
-      Form { ModelRow(entry: .qwen3_0_6B) }
+      Form { ModelRow(entry: ASRModel.recommended()) }
         .formStyle(.columns)
         .padding(.vertical, 6)
         .overlay(alignment: .bottom) { Divider() }

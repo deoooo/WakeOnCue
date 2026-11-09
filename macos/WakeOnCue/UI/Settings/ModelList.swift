@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The transcription model list: Apple speech, and models downloaded from their official
-/// release. One click downloads, verifies and turns a model on.
+/// release. One click downloads, verifies and turns a model on. The model that suits this Mac's
+/// memory is marked; Apple speech stays in use until the user downloads one.
 struct ModelList: View {
   @Environment(AppModel.self) private var model
 
@@ -47,15 +48,25 @@ struct ModelRow: View {
           } else {
             Button("使用") { models.activate(entry.isBuiltIn ? nil : entry) }
           }
-          if entry.package != nil {
+          if entry.isDownloadable {
             Button("删除") { models.delete(entry) }
           }
         }
       }
       .font(.callout)
     } label: {
-      Text(entry.name)
-      Text(entry.package == nil ? entry.detail : "\(entry.detail) · \(entry.size) · \(entry.source)")
+      HStack(spacing: 6) {
+        Text(entry.name)
+        if entry == ASRModel.recommended() {
+          Text("推荐这台 Mac 使用")
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(.tint.opacity(0.15), in: Capsule())
+            .foregroundStyle(.tint)
+        }
+      }
+      Text(entry.isDownloadable ? "\(entry.detail) · \(entry.size) · \(entry.source)" : entry.detail)
       if !entry.isBuiltIn, inUse {
         RefinerStatusText()
       }

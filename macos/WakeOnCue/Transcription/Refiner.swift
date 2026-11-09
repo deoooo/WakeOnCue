@@ -146,6 +146,10 @@ final class Refiner {
       start()
       return
     }
+    if let model, let folder = ASRModels.snapshotFolder(of: model) {
+      load(model, generation: current) { try await MLXRecognizer.load(folder: folder, words: words) }
+      return
+    }
     guard let model, let files = ASRModels.files(of: model) else {
       status = .off
       modelName = nil
@@ -153,14 +157,22 @@ final class Refiner {
       sweepTask = nil
       return
     }
+    load(model, generation: current) {
+      try await Task.detached(priority: .utility) {
+        try SherpaRecognizer(runtime: ASRModels.runtimeFolder, qwen3: files, hotwords: hotwords)
+      }.value
+    }
+  }
+
+  /// Loads a local model off the main actor and starts working once it is ready, unless another
+  /// model was chosen in the meantime.
+  private func load(_ model: ASRModel, generation current: Int, _ make: @escaping @Sendable () async throws -> any SentenceRecognizer) {
     status = .loading(model.name)
     sweepTask?.cancel()
     sweepTask = nil
     Task {
       do {
-        let loaded = try await Task.detached(priority: .utility) {
-          try SherpaRecognizer(runtime: ASRModels.runtimeFolder, qwen3: files, hotwords: hotwords)
-        }.value
+        let loaded = try await make()
         guard current == generation else { return }
         recognizer = loaded
         modelName = model.name

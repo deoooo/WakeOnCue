@@ -12,14 +12,38 @@ nonisolated struct ReleaseFile: Hashable, Sendable {
   let folder: String
 }
 
+/// A model published on Hugging Face as separate files, pinned to one commit, each file checked
+/// against its SHA-256 (the LFS hash for weights, our own for the small text files).
+nonisolated struct HubSnapshot: Hashable, Sendable {
+  struct File: Hashable, Sendable {
+    let path: String
+    let bytes: Int64
+    let sha256: String
+  }
+
+  let repo: String
+  let revision: String
+  /// The folder under Models the files go to.
+  let folder: String
+  let files: [File]
+
+  var bytes: Int64 { files.reduce(0) { $0 + $1.bytes } }
+
+  func url(of file: File) -> URL {
+    URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(file.path)")!
+  }
+}
+
 /// One entry of the transcription model list. Apple speech is built in; downloadable models come
-/// from their publisher's own releases only. Supporting another sherpa-onnx Qwen3-ASR package
-/// (e.g. an official 1.7B one) is one more entry in `catalog`.
+/// from their publisher's own releases only. Supporting another sherpa-onnx Qwen3-ASR package or
+/// MLX snapshot is one more entry in `catalog`.
 nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
   enum Kind: Hashable, Sendable {
     case appleSpeech
     /// sherpa-onnx Qwen3-ASR; files by role, relative to the package folder.
     case qwen3(files: [String: String])
+    /// Qwen3-ASR in MLX format, run on the GPU with mlx-audio-swift.
+    case mlxQwen3(HubSnapshot)
     /// The user's OpenAI-compatible transcription service; audio leaves this Mac.
     case remoteService
   }
@@ -35,6 +59,15 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
 
   var isBuiltIn: Bool { kind == .appleSpeech }
   var isRemote: Bool { kind == .remoteService }
+  /// Downloaded to this Mac: a sherpa-onnx package or an MLX snapshot.
+  var isDownloadable: Bool { package != nil || snapshot != nil }
+
+  var snapshot: HubSnapshot? {
+    if case .mlxQwen3(let snapshot) = kind { snapshot } else { nil }
+  }
+
+  /// The folder under Models the model unpacks or downloads to.
+  var folder: String? { package?.folder ?? snapshot?.folder }
 
   static let appleSpeech = ASRModel(
     id: "apple-speech", name: "Apple 语音（系统自带）", detail: "系统提供，边录边转", size: "", source: "macOS",
@@ -58,6 +91,32 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
       sha256: "393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96",
       folder: "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"))
 
+  /// On the 11-06 早会 it got names, jargon and mixed English right far more often than 0.6B
+  /// ("你和 AI 再 review 一次" for "你和他再聚一次", "防御性的编程" for "忙碌性的编程"), and on the
+  /// GPU it took 71 s where 0.6B on the CPU took 244 s for the same 25 minutes.
+  static let qwen3_1_7B = ASRModel(
+    id: "qwen3-asr-1.7b-mlx-8bit",
+    name: "Qwen3-ASR 1.7B",
+    detail: "比 0.6B 更准，人名、术语和中英混说尤其明显 · 用 GPU，需要 16 GB 内存以上",
+    size: "约 2.5 GB",
+    source: "mlx-community（Hugging Face）",
+    kind: .mlxQwen3(HubSnapshot(
+      repo: "mlx-community/Qwen3-ASR-1.7B-8bit",
+      revision: "a8379a2e2f9e313c9292cdf1af4055ab56d50d55",
+      folder: "mlx-qwen3-asr-1.7b-8bit-a8379a2",
+      files: [
+        .init(path: "config.json", bytes: 7_188, sha256: "1b76b3b6c655fc54595da025f7a96474ad9fa86363303fbdd61a7d8483ccfaf7"),
+        .init(path: "generation_config.json", bytes: 142, sha256: "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"),
+        .init(path: "chat_template.json", bytes: 1_161, sha256: "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"),
+        .init(path: "preprocessor_config.json", bytes: 330, sha256: "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"),
+        .init(path: "tokenizer_config.json", bytes: 12_487, sha256: "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"),
+        .init(path: "vocab.json", bytes: 2_776_833, sha256: "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"),
+        .init(path: "merges.txt", bytes: 1_671_853, sha256: "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"),
+        .init(path: "model.safetensors.index.json", bytes: 78_968, sha256: "0a5d0ec11188602242ff81a9969883d0fdeb98cd5d85cd1413089d897c201af5"),
+        .init(path: "model.safetensors", bytes: 2_463_307_541, sha256: "bf304b009cc7eca79283056f787b44c952d24ac22cec787b39732bba3c23c13c"),
+      ])),
+    package: nil)
+
   static let transcriptionService = ASRModel(
     id: "openai-compatible-transcription",
     name: "第三方转录服务（OpenAI 兼容）",
@@ -67,7 +126,14 @@ nonisolated struct ASRModel: Identifiable, Hashable, Sendable {
     kind: .remoteService,
     package: nil)
 
-  static let catalog: [ASRModel] = [.appleSpeech, .qwen3_0_6B, .transcriptionService]
+  static let catalog: [ASRModel] = [.appleSpeech, .qwen3_0_6B, .qwen3_1_7B, .transcriptionService]
+
+  /// The model to suggest on this Mac. 1.7B keeps 3–4 GB in memory all day next to
+  /// SpeechAnalyzer and the summaries, which an 8 GB Mac cannot spare; 0.6B is suggested there.
+  /// Nothing is downloaded or switched on without the user: Apple speech stays the default.
+  static func recommended(memory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> ASRModel {
+    memory >= 16 << 30 ? .qwen3_1_7B : .qwen3_0_6B
+  }
 
   /// The sherpa-onnx libraries every downloadable model runs on (Apple silicon, without TTS).
   static let runtime = ReleaseFile(
@@ -109,7 +175,7 @@ final class ASRModels {
   init(preferences: Preferences) {
     self.preferences = preferences
     try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-    for model in ASRModel.catalog where model.package != nil {
+    for model in ASRModel.catalog where model.isDownloadable {
       states[model.id] = isInstalled(model) ? .installed : resumeData(for: model) != nil ? .paused(fraction: savedFraction(model)) : .notDownloaded
     }
     let saved = defaults.string(forKey: "asrModel")
@@ -122,7 +188,7 @@ final class ASRModels {
     switch model.kind {
     case .appleSpeech: .installed
     case .remoteService: preferences.transcriptionServiceReady ? .installed : .notDownloaded
-    case .qwen3: states[model.id] ?? .notDownloaded
+    case .qwen3, .mlxQwen3: states[model.id] ?? .notDownloaded
     }
   }
 
@@ -143,7 +209,18 @@ final class ASRModels {
   nonisolated static var runtimeFolder: URL { directory.appending(path: ASRModel.runtime.folder).appending(path: "lib") }
 
   nonisolated static func folder(of model: ASRModel) -> URL? {
-    model.package.map { directory.appending(path: $0.folder, directoryHint: .isDirectory) }
+    model.folder.map { directory.appending(path: $0, directoryHint: .isDirectory) }
+  }
+
+  /// The MLX model's folder, if every file is there at its published size. Each file is checked
+  /// against its SHA-256 before it is moved in, so being there means it was verified.
+  nonisolated static func snapshotFolder(of model: ASRModel) -> URL? {
+    guard let snapshot = model.snapshot, let folder = folder(of: model) else { return nil }
+    let complete = snapshot.files.allSatisfy { file in
+      let size = (try? folder.appending(path: file.path).resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+      return size == file.bytes
+    }
+    return complete ? folder : nil
   }
 
   /// The model's files by role, if they are all there.
@@ -154,12 +231,21 @@ final class ASRModels {
   }
 
   private func isInstalled(_ model: ASRModel) -> Bool {
-    Self.files(of: model) != nil
+    if model.snapshot != nil { return Self.snapshotFolder(of: model) != nil }
+    return Self.files(of: model) != nil
       && FileManager.default.fileExists(atPath: Self.runtimeFolder.appending(path: "libsherpa-onnx-c-api.dylib").path)
   }
 
   private func resumeURL(_ file: ReleaseFile) -> URL { Self.directory.appending(path: file.folder + ".resume") }
-  private func resumeData(for model: ASRModel) -> Data? { model.package.flatMap { try? Data(contentsOf: resumeURL($0)) } }
+  private func resumeData(for model: ASRModel) -> Data? {
+    if let snapshot = model.snapshot {
+      return snapshot.files.lazy.compactMap { try? Data(contentsOf: self.resumeURL(snapshot, $0)) }.first
+    }
+    return model.package.flatMap { try? Data(contentsOf: resumeURL($0)) }
+  }
+  private func resumeURL(_ snapshot: HubSnapshot, _ file: HubSnapshot.File) -> URL {
+    Self.directory.appending(path: snapshot.folder + "." + file.path + ".resume")
+  }
   private func savedFraction(_ model: ASRModel) -> Double { defaults.double(forKey: "asrProgress.\(model.id)") }
 
   func bytesOnDisk() -> Int64 {
@@ -175,6 +261,10 @@ final class ASRModels {
   /// Downloads the runtime (once) and the model, verifies both, unpacks them and switches to the
   /// model. Resumes from where a pause or a failure left off.
   func download(_ model: ASRModel) {
+    if let snapshot = model.snapshot {
+      download(model, snapshot: snapshot)
+      return
+    }
     guard let package = model.package, downloader == nil else { return }
     states[model.id] = .downloading(fraction: savedFraction(model))
     Task {
@@ -200,17 +290,85 @@ final class ASRModels {
     }
   }
 
+  /// Downloads the snapshot's files one by one, skipping those already there. Each is checked
+  /// against its SHA-256 before it is moved into the model's folder.
+  private func download(_ model: ASRModel, snapshot: HubSnapshot) {
+    guard downloader == nil, let folder = Self.folder(of: model) else { return }
+    states[model.id] = .downloading(fraction: savedFraction(model))
+    Task {
+      do {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let total = Double(snapshot.bytes)
+        var done: Int64 = 0
+        for file in snapshot.files {
+          let target = folder.appending(path: file.path)
+          let size = (try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+          if size == file.bytes {
+            done += file.bytes
+            continue
+          }
+          try? FileManager.default.removeItem(at: target)
+          let offset = done
+          try await fetch(snapshot, file, into: target, model: model) { (Double(offset) + Double($0)) / total }
+          done += file.bytes
+        }
+        guard Self.snapshotFolder(of: model) != nil else { throw DownloadError.incomplete }
+        states[model.id] = .installed
+        defaults.removeObject(forKey: "asrProgress.\(model.id)")
+        activate(model)
+      } catch DownloadError.paused {
+        states[model.id] = .paused(fraction: savedFraction(model))
+      } catch {
+        Self.logger.error("Download failed: \(error.localizedDescription, privacy: .public)")
+        states[model.id] = .failed(error.localizedDescription)
+      }
+      downloader = nil
+    }
+  }
+
+  private func fetch(
+    _ snapshot: HubSnapshot, _ file: HubSnapshot.File, into target: URL, model: ASRModel, fraction: @escaping (Int64) -> Double
+  ) async throws {
+    let resume = resumeURL(snapshot, file)
+    let downloader = Downloader(url: snapshot.url(of: file), resumeData: try? Data(contentsOf: resume))
+    self.downloader = downloader
+    downloader.onProgress = { [weak self] written in
+      Task { @MainActor in
+        guard let self else { return }
+        let value = fraction(written)
+        self.states[model.id] = .downloading(fraction: value)
+        self.defaults.set(value, forKey: "asrProgress.\(model.id)")
+      }
+    }
+    switch await downloader.run() {
+    case .finished(let location):
+      try? FileManager.default.removeItem(at: resume)
+      defer { try? FileManager.default.removeItem(at: location) }
+      if file.bytes > 100_000_000 { states[model.id] = .verifying }
+      let hash = try await Task.detached(priority: .utility) { try Self.sha256(of: location) }.value
+      guard hash == file.sha256 else { throw DownloadError.checksum }
+      try FileManager.default.moveItem(at: location, to: target)
+    case .stopped(let resumeData, let paused):
+      if let resumeData { try? resumeData.write(to: resume) }
+      if paused { throw DownloadError.paused }
+      throw downloader.error ?? DownloadError.incomplete
+    }
+  }
+
   func pause(_ model: ASRModel) {
     downloader?.pause()
   }
 
   /// Removes the model and goes back to Apple speech. The shared runtime stays.
   func delete(_ model: ASRModel) {
-    guard let package = model.package else { return }
+    guard let folder = Self.folder(of: model) else { return }
     if activeID == model.id { activate(nil) }
     downloader?.cancel()
-    try? FileManager.default.removeItem(at: Self.directory.appending(path: package.folder))
-    try? FileManager.default.removeItem(at: resumeURL(package))
+    try? FileManager.default.removeItem(at: folder)
+    if let package = model.package { try? FileManager.default.removeItem(at: resumeURL(package)) }
+    if let snapshot = model.snapshot {
+      for file in snapshot.files { try? FileManager.default.removeItem(at: resumeURL(snapshot, file)) }
+    }
     defaults.removeObject(forKey: "asrProgress.\(model.id)")
     states[model.id] = .notDownloaded
   }
