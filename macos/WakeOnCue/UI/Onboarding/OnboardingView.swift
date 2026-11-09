@@ -1,22 +1,26 @@
 import AVFoundation
 import SwiftUI
 
-/// First run in three steps: what all-day recording means (and the consent it needs), the
-/// permissions, and getting transcription and summaries ready.
+/// First run in four steps: what all-day recording means (and the consent it needs), the
+/// permissions, the transcription model, and getting transcription and summaries ready.
 struct OnboardingView: View {
   @Environment(AppModel.self) private var model
   @State private var step = 1
   @State private var agreed = false
   @State private var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
   @State private var launchAtLogin = true
+  /// The model picked on the model step; the one suited to this Mac until the user picks another.
+  /// It is only downloaded when the user goes on from that step.
+  @State private var modelChoice = ASRModel.recommended().id
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Text("第 \(step) 步，共 3 步").font(.caption).foregroundStyle(.secondary).padding(.bottom, 6)
+      Text("第 \(step) 步，共 4 步").font(.caption).foregroundStyle(.secondary).padding(.bottom, 6)
       Group {
         switch step {
         case 1: intro
         case 2: permissions
+        case 3: modelStep
         default: readiness
         }
       }
@@ -29,8 +33,11 @@ struct OnboardingView: View {
           Button("返回") { step -= 1 }
         }
         Spacer()
-        if step < 3 {
-          Button("继续") { step += 1 }
+        if step < 4 {
+          Button("继续") {
+            if step == 3 { applyModelChoice() }
+            step += 1
+          }
             .buttonStyle(.borderedProminent)
             .disabled(step == 1 ? !agreed : microphone != .authorized)
             .keyboardShortcut(.defaultAction)
@@ -90,17 +97,79 @@ struct OnboardingView: View {
     }
   }
 
+  /// The models that run on this Mac. The transcription service needs an address and a key, so it
+  /// is left to 设置.
+  private static let modelOptions: [ASRModel] = [.appleSpeech, .qwen3_0_6B, .qwen3_1_7B]
+
+  private var modelStep: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("选择转录模型").font(.title2.weight(.semibold))
+      Text("Apple 语音一直负责边录边转。再选一个模型，每句话会在几秒后重新转录，人名、术语和小声说的话会准很多。")
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      VStack(spacing: 0) {
+        ForEach(Self.modelOptions) { option in
+          modelOption(option)
+          if option != Self.modelOptions.last { Divider() }
+        }
+      }
+      .padding(.horizontal, 12)
+      .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)))
+      Text("继续后在后台下载，下完自动启用，下载期间照常录音和转录。之后可以在设置 › 转录模型里换。")
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func modelOption(_ option: ASRModel) -> some View {
+    let selected = modelChoice == option.id
+    let installed = option.isDownloadable && model.models.state(of: option) == .installed
+    return HStack(alignment: .center, spacing: 10) {
+      Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+        .font(.title3)
+        .foregroundStyle(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
+          Text(option.isBuiltIn ? "只用 Apple 语音" : option.name).fontWeight(.medium)
+          if option == ASRModel.recommended() {
+            Text("推荐")
+              .font(.caption2.weight(.medium))
+              .padding(.horizontal, 5)
+              .padding(.vertical, 1)
+              .background(.tint.opacity(0.15), in: Capsule())
+              .foregroundStyle(.tint)
+          }
+        }
+        Text(option.isBuiltIn ? "不用下载，准确度一般" : "\(option.detail) · \(installed ? "已下载" : "下载\(option.size)")")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 8)
+    .contentShape(Rectangle())
+    .onTapGesture { modelChoice = option.id }
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+  }
+
+  private func applyModelChoice() {
+    guard let option = Self.modelOptions.first(where: { $0.id == modelChoice }) else { return }
+    model.models.choose(option)
+  }
+
   private var readiness: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("准备转录").font(.title2.weight(.semibold))
       permissionRow("Apple 语音 · 中文", "系统自带，支持边录边转。") {
         SpeechStatusText(status: model.transcription.status).font(.caption)
       }
-      Form { ModelRow(entry: ASRModel.recommended()) }
-        .formStyle(.columns)
-        .padding(.vertical, 6)
-        .overlay(alignment: .bottom) { Divider() }
-      Text("可选。点一下就会下载，下载完自动启用；也可以稍后在设置 › 转录模型里选。").font(.caption).foregroundStyle(.secondary)
+      if let chosen = Self.modelOptions.first(where: { $0.id == modelChoice }), !chosen.isBuiltIn {
+        Form { ModelRow(entry: chosen) }
+          .formStyle(.columns)
+          .padding(.vertical, 6)
+          .overlay(alignment: .bottom) { Divider() }
+      }
       permissionRow("总结", "优先由这台 Mac 上的 Apple 智能生成。不支持 Apple 智能的 Mac 可以在设置 › AI 服务里配置自己的网关。") {
         if let engine = model.summaries.engineName {
           Text("✓ \(engine)").foregroundStyle(.green)
