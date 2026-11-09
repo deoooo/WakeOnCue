@@ -3,13 +3,33 @@ import Foundation
 
 /// Durable bookkeeping for recordings made on the Watch. Each recording lives in
 /// `Documents/Recordings/<session-id>/` with a `state.json` and its `segment-NNNN.m4a` files.
-/// A segment file is deleted once the iPhone confirms it; the folder is deleted once the summary
-/// and every segment have been delivered.
+/// A segment file is deleted once the iPhone confirms it. `state.json` stays behind so the Watch
+/// can list what it recorded; it is pruned `historyRetention` after everything was delivered.
 struct WatchRecordingState: Codable, Equatable {
   var summary: WatchSessionSummary
   var isEnded = false
   var isSummaryQueued = false
   var isSummaryDelivered = false
+}
+
+/// What the Watch shows for one recording: how much it recorded and how much reached the iPhone.
+struct WatchRecordingStatus: Identifiable, Equatable {
+  let state: WatchRecordingState
+  /// Completed segments whose file is still on the Watch.
+  let pendingSegments: Int
+
+  var id: UUID { state.summary.sessionID }
+  var startedAt: Date { state.summary.startedAt }
+  var segmentCount: Int { state.summary.segmentCount }
+  var deliveredSegments: Int { max(0, segmentCount - pendingSegments) }
+  var isEnded: Bool { state.isEnded }
+  var isFullyDelivered: Bool { state.isEnded && state.isSummaryDelivered && pendingSegments == 0 }
+
+  /// Recorded length; an open recording counts up to `now`.
+  func duration(at now: Date) -> TimeInterval {
+    let end = state.isEnded ? state.summary.endedAt : now
+    return max(0, end.timeIntervalSince(state.summary.startedAt))
+  }
 }
 
 enum WatchRecordingStore {
@@ -47,6 +67,41 @@ enum WatchRecordingStore {
     change(&state)
     save(state)
     return state
+  }
+
+  static let historyRetention: TimeInterval = 7 * 24 * 3600
+
+  /// Every recording still known to the Watch, newest first.
+  static func statuses() -> [WatchRecordingStatus] {
+    allStates()
+      .map { WatchRecordingStatus(state: $0, pendingSegments: pendingSegmentCount(of: $0)) }
+      .sorted { $0.startedAt > $1.startedAt }
+  }
+
+  /// Counts completed segment files without opening them, so it stays cheap for long recordings.
+  static func pendingSegmentCount(of state: WatchRecordingState) -> Int {
+    let folder = root().appending(
+      path: state.summary.sessionID.uuidString.lowercased(), directoryHint: .isDirectory)
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    return names.filter { name in
+      guard name.hasSuffix(".m4a"),
+        let index = Int(name.dropFirst("segment-".count).dropLast(".m4a".count))
+      else { return false }
+      return index <= state.summary.segmentCount
+    }.count
+  }
+
+  /// Drops the bookkeeping of recordings that were fully delivered more than a week ago.
+  static func pruneHistory(now: Date = Date()) {
+    for state in allStates()
+    where state.isEnded && state.isSummaryDelivered
+      && now.timeIntervalSince(state.summary.endedAt) > historyRetention
+      && pendingSegmentCount(of: state) == 0
+    {
+      try? FileManager.default.removeItem(
+        at: root().appending(
+          path: state.summary.sessionID.uuidString.lowercased(), directoryHint: .isDirectory))
+    }
   }
 
   static func allStates() -> [WatchRecordingState] {
@@ -105,21 +160,9 @@ enum WatchRecordingStore {
 
   static func segmentDelivered(at url: URL) {
     try? FileManager.default.removeItem(at: url)
-    removeIfDelivered(directory: url.deletingLastPathComponent())
   }
 
   static func summaryDelivered(_ sessionID: UUID) {
     update(sessionID) { $0.isSummaryDelivered = true }
-    removeIfDelivered(directory: directory(for: sessionID))
-  }
-
-  private static func removeIfDelivered(directory: URL) {
-    guard let sessionID = UUID(uuidString: directory.lastPathComponent),
-      let state = load(sessionID), state.isSummaryDelivered
-    else { return }
-    let files = (try? FileManager.default.contentsOfDirectory(
-      at: directory, includingPropertiesForKeys: nil)) ?? []
-    guard !files.contains(where: { $0.pathExtension == "m4a" }) else { return }
-    try? FileManager.default.removeItem(at: directory)
   }
 }

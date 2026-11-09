@@ -8,14 +8,15 @@ extension Color {
 }
 
 enum WatchDurationText {
+  /// "4 hr 30 min", or just "40 min" under an hour.
   static func hoursMinutes(_ value: TimeInterval) -> String {
-    Duration.seconds(Int(value)).formatted(
-      .units(allowed: [.hours, .minutes], width: .abbreviated, zeroValueUnits: .show(length: 1)))
+    let allowed: Set<Duration.UnitsFormatStyle.Unit> = value < 3600 ? [.minutes] : [.hours, .minutes]
+    return Duration.seconds(Int(value)).formatted(
+      .units(allowed: allowed, width: .abbreviated, zeroValueUnits: .show(length: 1)))
   }
 
-  static func minutesSeconds(_ value: TimeInterval) -> String {
-    Duration.seconds(Int(value.rounded())).formatted(
-      .units(allowed: [.minutes, .seconds], width: .wide, maximumUnitCount: 1))
+  static func clock(_ value: TimeInterval) -> String {
+    Duration.seconds(Int(value)).formatted(.time(pattern: .hourMinuteSecond))
   }
 }
 
@@ -23,117 +24,87 @@ struct WatchHomeView: View {
   @Environment(WatchModel.self) private var model
 
   var body: some View {
-    @Bindable var model = model
-    ScrollView {
-      VStack(alignment: .leading, spacing: 8) {
-        WatchStatusHeader()
-        if model.isWatchRecording {
-          WatchLevelMeter(level: model.inputLevel)
-        }
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-          VStack(alignment: .leading, spacing: 0) {
-            Text(clockCaption)
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-            Text(clockText(at: context.date))
-              .font(.title3.weight(.semibold).monospacedDigit())
-          }
-        }
-
-        Button {
-          Task { await model.captureRecent() }
-        } label: {
-          VStack(spacing: 1) {
-            if model.isWorking {
-              ProgressView().tint(.black)
-            } else {
-              Text("Save that")
-                .font(.headline)
-              Text("Marks the last 2 minutes")
-                .font(.caption2.weight(.medium))
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+          WatchStatusHeader()
+          TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 0) {
+              Text(clockCaption)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+              Text(clockText(at: context.date))
+                .font(.title3.weight(.semibold).monospacedDigit())
+                .accessibilityIdentifier("watch-clock")
             }
           }
-          .frame(maxWidth: .infinity, minHeight: 50)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.cueAccent)
-        .foregroundStyle(.black)
-        .disabled(model.isWorking || !model.isRecording)
-        .accessibilityIdentifier("watch-capture-recent")
-
-        HStack(spacing: 8) {
-          Button {
-            Task { await model.togglePause() }
-          } label: {
-            Text(pauseTitle).frame(maxWidth: .infinity, minHeight: 40)
+          if model.isWatchRecording {
+            WatchLevelMeter(level: model.inputLevel)
           }
+
+          Button {
+            Task { await model.toggleRecording() }
+          } label: {
+            Group {
+              if model.isWorking {
+                ProgressView()
+              } else {
+                Label(
+                  model.isWatchRecording ? "Stop" : "Record",
+                  systemImage: model.isWatchRecording ? "stop.fill" : "record.circle")
+              }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity, minHeight: 44)
+          }
+          .buttonStyle(.borderedProminent)
+          .tint(model.isWatchRecording ? .cueControl : .cueAccent)
+          .foregroundStyle(model.isWatchRecording ? .white : .black)
+          .disabled(model.isWorking)
           .accessibilityIdentifier("watch-toggle-recording")
-          .disabled(model.isWorking || (model.phoneIsRecording && model.snapshot.phase == .finishing))
-          Button {
-            Task { await model.bookmark() }
-          } label: {
-            Text("Mark").frame(maxWidth: .infinity, minHeight: 40)
-          }
-          .disabled(!model.isRecording)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.cueControl)
-        .foregroundStyle(.white)
 
-        if let message = model.message {
-          Text(message)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        if model.isReachable && model.snapshot.isActive {
-          Button(role: .destructive) {
-            Task { await model.finish() }
-          } label: {
-            Text("Finish recording").frame(maxWidth: .infinity)
+          if let message = model.message {
+            Text(message)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
           }
-          .accessibilityIdentifier("watch-finish-recording")
+
+          WatchSyncSummary()
+
+          NavigationLink {
+            WatchRecordingsView()
+          } label: {
+            HStack {
+              Text("Recordings")
+              Spacer()
+              Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+          }
+          .accessibilityIdentifier("watch-recordings")
         }
       }
     }
     .task {
-      // Application context is the primary channel; polling while on screen covers a missed push.
+      // Delivery confirmations arrive in the background; refresh the counts while on screen.
       while !Task.isCancelled {
-        await model.refresh()
+        model.refresh()
         try? await Task.sleep(for: .seconds(5))
       }
-    }
-    .sheet(item: $model.captureResult, onDismiss: { model.finishCapture() }) { _ in
-      WatchSavedView()
-        .environment(model)
-    }
-  }
-
-  private var pauseTitle: LocalizedStringKey {
-    if model.isWatchRecording { return "Stop" }
-    switch model.phoneIsRecording ? model.snapshot.phase : .idle {
-    case .recording: return "Pause"
-    case .paused: return "Resume"
-    case .idle, .finishing: return "Record"
     }
   }
 
   private var clockCaption: LocalizedStringKey {
-    if model.isWatchRecording { return "Recording on Watch" }
-    return model.phoneIsRecording ? "Recording on iPhone" : "Recorded today · on device"
+    model.isWatchRecording ? "This recording" : "Recorded today on Watch"
   }
 
   private func clockText(at date: Date) -> String {
     if let startedAt = model.watchRecordingStartedAt {
-      return Duration.seconds(Int(date.timeIntervalSince(startedAt)))
-        .formatted(.time(pattern: .hourMinuteSecond))
+      return WatchDurationText.clock(date.timeIntervalSince(startedAt))
     }
-    if model.phoneIsRecording {
-      return Duration.seconds(Int(model.snapshot.elapsed(at: date)))
-        .formatted(.time(pattern: .hourMinuteSecond))
-    }
-    return WatchDurationText.hoursMinutes(model.snapshot.todayDuration(at: date))
+    return WatchDurationText.hoursMinutes(model.todayDuration(at: date))
   }
 }
 
@@ -145,32 +116,66 @@ struct WatchStatusHeader: View {
       Circle()
         .fill(color)
         .frame(width: 8, height: 8)
-      Text(title)
+      Text(model.isWatchRecording ? "Recording" : "Not recording")
         .font(.footnote.weight(.semibold))
         .foregroundStyle(color)
     }
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("watch-status")
-    .accessibilityValue(
-      model.isWatchRecording
-        ? "watch-recording" : (model.isReachable ? model.snapshot.phase.rawValue : "unreachable"))
+    .accessibilityValue(model.isWatchRecording ? "watch-recording" : "idle")
+  }
+
+  private var color: Color { model.isWatchRecording ? .cueRecording : .secondary }
+}
+
+/// One line on how much of the Watch audio has reached the iPhone.
+struct WatchSyncSummary: View {
+  @Environment(WatchModel.self) private var model
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Image(systemName: symbol)
+        .foregroundStyle(tint)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(title)
+          .font(.footnote.weight(.semibold))
+        if let detail {
+          Text(detail)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 6)
+    .padding(.horizontal, 8)
+    .background(Color.cueControl, in: RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("watch-sync")
+  }
+
+  private var isWaiting: Bool { model.pendingSegments > 0 || model.pendingSummaries > 0 }
+
+  private var symbol: String {
+    if !isWaiting { return "checkmark.circle.fill" }
+    return model.isReachable ? "arrow.up.circle" : "iphone.slash"
+  }
+
+  private var tint: Color {
+    if !isWaiting { return .cueSaved }
+    return model.isReachable ? .cueAccent : .secondary
   }
 
   private var title: LocalizedStringKey {
-    if model.isWatchRecording { return "Recording on Watch" }
-    if !model.isReachable { return "iPhone not connected" }
-    switch model.snapshot.phase {
-    case .recording: return "Recording"
-    case .paused: return "Paused"
-    case .finishing: return "Saving on iPhone"
-    case .idle: return "Not recording"
-    }
+    if !isWaiting { return "All sent to iPhone" }
+    if model.pendingSegments == 0 { return "Finishing up with iPhone" }
+    return "\(model.pendingSegments) min waiting to send"
   }
 
-  private var color: Color {
-    if model.isWatchRecording { return .cueRecording }
-    if model.isReachable && model.snapshot.phase == .recording { return .cueRecording }
-    return .secondary
+  private var detail: LocalizedStringKey? {
+    guard isWaiting else { return nil }
+    return model.isReachable ? "Sending to iPhone" : "Sends when iPhone is nearby"
   }
 }
 
@@ -192,81 +197,101 @@ struct WatchLevelMeter: View {
   }
 }
 
-struct WatchSavedView: View {
+/// Watch recordings by day, each with how much reached the iPhone.
+struct WatchRecordingsView: View {
   @Environment(WatchModel.self) private var model
-  @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    ScrollView {
-      VStack(spacing: 8) {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 36))
-          .foregroundStyle(Color.cueSaved)
-          .accessibilityLabel("Saved")
-        if let result = model.captureResult {
-          Text("Saved the last \(WatchDurationText.minutesSeconds(result.savedSeconds))")
-            .font(.headline)
-            .multilineTextAlignment(.center)
-          Text(subtitle(for: result))
-            .accessibilityIdentifier(savedIdentifier(for: result.destination))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-
-          Text("Add a tag (optional)")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 2)
-          HStack(spacing: 6) {
-            ForEach(RecordingMarkTag.allCases, id: \.self) { tag in
-              Button {
-                Task { await model.choose(tag: tag) }
-              } label: {
-                Text(tag.watchTitle)
-                  .font(.footnote.weight(result.tag == tag ? .semibold : .regular))
-                  .frame(maxWidth: .infinity, minHeight: 40)
-              }
-              .buttonStyle(.plain)
-              .background(Color.cueControl, in: RoundedRectangle(cornerRadius: 12))
-              .overlay {
-                if result.tag == tag {
-                  RoundedRectangle(cornerRadius: 12).stroke(Color.cueAccent, lineWidth: 1.5)
-                }
-              }
-              .accessibilityAddTraits(result.tag == tag ? .isSelected : [])
-              .accessibilityIdentifier("watch-tag-\(tag.rawValue)")
-            }
+    List {
+      if model.recordings.isEmpty {
+        Text("No recordings on this Watch in the last 7 days.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+      ForEach(days, id: \.self) { day in
+        Section {
+          ForEach(model.recordings.filter { Calendar.current.isDate($0.startedAt, inSameDayAs: day) }) {
+            WatchRecordingRow(recording: $0)
           }
+        } header: {
+          Text(dayTitle(day))
         }
-        Button("Done") { dismiss() }
-          .accessibilityIdentifier("watch-capture-done")
-          .padding(.top, 2)
       }
     }
+    .navigationTitle("Recordings")
   }
 
-  private func savedIdentifier(for destination: WatchCaptureResult.Destination) -> String {
-    switch destination {
-    case .phone: "watch-saved-on-phone"
-    case .watchRecording: "watch-saved-on-watch-recording"
-    }
+  private var days: [Date] {
+    var seen = Set<Date>()
+    return model.recordings.map { Calendar.current.startOfDay(for: $0.startedAt) }
+      .filter { seen.insert($0).inserted }
   }
 
-  private func subtitle(for result: WatchCaptureResult) -> LocalizedStringKey {
-    switch result.destination {
-    case .phone: "Marked in the iPhone recording"
-    case .watchRecording: "Marked in the Watch recording"
-    }
+  private func dayTitle(_ day: Date) -> String {
+    if Calendar.current.isDateInToday(day) { return String(localized: "Today") }
+    if Calendar.current.isDateInYesterday(day) { return String(localized: "Yesterday") }
+    return day.formatted(.dateTime.month().day().weekday(.abbreviated))
   }
 }
 
-extension RecordingMarkTag {
-  var watchTitle: LocalizedStringKey {
-    switch self {
-    case .todo: "To-do"
-    case .important: "Important"
-    case .idea: "Idea"
+struct WatchRecordingRow: View {
+  let recording: WatchRecordingStatus
+
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: recording.isEnded ? 3600 : 1)) { context in
+      VStack(alignment: .leading, spacing: 2) {
+        Text(timeRange(at: context.date))
+          .font(.footnote.weight(.semibold).monospacedDigit())
+        Text(WatchDurationText.hoursMinutes(recording.duration(at: context.date)))
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+        Label(status, systemImage: symbol)
+          .font(.caption2)
+          .foregroundStyle(tint)
+        if let ending {
+          Text(ending)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+      }
+    }
+    .accessibilityElement(children: .combine)
+  }
+
+  private func timeRange(at now: Date) -> String {
+    let start = recording.startedAt.formatted(date: .omitted, time: .shortened)
+    guard recording.isEnded else { return "\(start) –" }
+    let end = recording.startedAt.addingTimeInterval(recording.duration(at: now))
+    return "\(start) – \(end.formatted(date: .omitted, time: .shortened))"
+  }
+
+  private var status: LocalizedStringKey {
+    if !recording.isEnded {
+      return "Recording · \(recording.deliveredSegments)/\(recording.segmentCount) min sent"
+    }
+    if recording.isFullyDelivered { return "On iPhone" }
+    if recording.pendingSegments == 0 { return "Finishing up with iPhone" }
+    return "Sent \(recording.deliveredSegments)/\(recording.segmentCount) min"
+  }
+
+  private var symbol: String {
+    if !recording.isEnded { return "record.circle" }
+    return recording.isFullyDelivered ? "checkmark.circle.fill" : "arrow.up.circle"
+  }
+
+  private var tint: Color {
+    if !recording.isEnded { return .cueRecording }
+    return recording.isFullyDelivered ? .cueSaved : .cueAccent
+  }
+
+  /// Only unusual endings are called out.
+  private var ending: LocalizedStringKey? {
+    guard recording.isEnded else { return nil }
+    switch recording.state.summary.endReason {
+    case WatchCaptureStopReason.interruption.rawValue: return "Stopped by a call or Siri"
+    case WatchCaptureStopReason.writeFailure.rawValue: return "Stopped: couldn't save audio"
+    case "recovered": return "App closed; recovered what was saved"
+    default: return nil
     }
   }
 }

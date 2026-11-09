@@ -1,47 +1,40 @@
 # Apple Watch 接入
 
-Watch 的定位来自《个人助理产品实现方案（Apple 生态）》：iPhone 是中枢和主录音设备，Watch 负责**随身输入与确认**——遥控与标记、看状态；iPhone 开不了录音时由 Watch 自己全程录音。界面按《Watch 界面设计》画布实现。
+Watch 负责**离开电脑时的全天录音**：手表自己录，每分钟一段经 iPhone 回传到 Mac（见 [macos-app.md](macos-app.md)）。手表界面只做两件事：开始/结束录音，看录了多少、传到 iPhone 多少。
 
-> 2026-10-27 起去掉了早期的「手表回溯缓冲」（内存只保留最近 2 分钟、点按才落盘），改为全程录音；「记下刚才」只在录音进行中标记最近 2 分钟。
+> 2026-11-09 起手表界面重做：去掉「记下刚才」（标记最近 2 分钟与待办/重要/想法标签）、点标记、遥控 iPhone 录音和对应的表盘快捷入口，新增录音记录页。iPhone 和 Mac 仍能读取旧版本留下的标记（协议见 [sync-protocol.md](sync-protocol.md) 的 `marks`），手表不再产生新标记。iPhone 端的遥控处理代码暂时保留，手表不再调用。
 
-## 本期范围
+## 界面
 
-| 画布页面 | 状态 | 实现 |
-| --- | --- | --- |
-| 主界面 · 记录中 | ✅ | 状态点、今日已记录 / 录音计时、「开始录音」（iPhone 优先，开不了则手表录）、暂停/继续/结束、「记下刚才 · 标记最近 2 分钟」、标记 |
-| 回溯保存与标记 | ✅ | 标记确认、可选标签「待办 / 重要 / 想法」、完成 |
-| 表盘与小组件 | ✅ | 录音状态复杂功能（圆形/矩形/角落/行内，含实时计时）、「记下刚才」快捷复杂功能 |
-| 确认 Action | ⏸ | 依赖尚未存在的 Action 分级系统 |
-| 会前提醒 | ⏸ | 依赖日历与记忆库 |
-| 隐私提示（地点暂停） | ⏸ | 依赖位置与用户自定义地点 |
+| 页面 | 内容 |
+| --- | --- |
+| 主页 | 状态点（正在录音 / 未在录音）；录音中显示本次计时和音量条，空闲时显示「手表今日已录」；「开始录音 / 结束录音」；送达状态一行：已全部传到 iPhone / N 分钟待传（正在传到 iPhone，或 iPhone 在身边时自动传）/ 正在和 iPhone 收尾（分段已送达、结束摘要未送达）；「录音记录」入口 |
+| 录音记录 | 最近 7 天的手表录音按天分组：起止时间、时长、送达进度（已传 x/y 分钟、已传到 iPhone、录音中）；被来电或 Siri 打断、写入失败、App 意外退出后恢复会额外注明 |
+| 表盘复杂功能 | 只显示手表录音状态（圆形/矩形/角落/行内，录音中带实时计时） |
 
-## 开始录音：iPhone 优先，手表兜底
+送达状态只到 iPhone 为止：分段按 60 秒切，「分钟」就是分段数；iPhone 确认收到某段后手表删除该段文件，所以「待传」就是手表上还留着的已完成分段。是否已从 iPhone 转到 Mac 手表不知道，要显示需要 iPhone 在下发状态里补字段。
+
+录音全部送达后，手表只保留 `state.json`（几百字节）用于录音记录页，7 天后删除。
+
+## 手表录音
 
 ```text
-Watch 点「开始录音」
-  ├─ iPhone 可达 → sendMessage(start)
-  │    ├─ 成功（iPhone App 在前台）→ iPhone 录音，Watch 遥控暂停/继续/结束
-  │    └─ 失败（锁屏或后台：iOS 不允许后台 App 启动麦克风）→ 转手表录音
-  └─ iPhone 不可达 → 手表录音
-
-手表录音
+Watch 点「开始录音」→ 手表录音（不再先尝试让 iPhone 录）
   → 16 kHz 单声道 32 kbps AAC，每 60 秒一个 segment-NNNN.m4a（Documents/Recordings/<session>/）
-  → 每段写完即 transferFile 给 iPhone；送达确认后删除手表上的文件
-  → 「结束」后 transferUserInfo 发送会话摘要（起止时间、段数、书签与标签、结束原因）
-  → iPhone 暂存于 Application Support/WatchInbox/sessions/<session>/，段齐后合成一条本地录音
+  → 每段写完即 transferFile 给 iPhone；送达确认后删除手表上的音频文件
+  → 「结束」后 transferUserInfo 发送会话摘要（起止时间、段数、结束原因）
+  → iPhone 暂存于 Application Support/WatchInbox/sessions/<session>/，段齐后合成一条本地录音，并转发给 Mac
 ```
 
-- iPhone 端录音 ID 为 `rec_watchrec_<session>`，`metadata.source = apple_watch`，每段是一个 chunk；只保存在本机，不进入 S3 上传队列。
+- iPhone 端录音 ID 为 `rec_watchrec_<session>`，`metadata.source = apple_watch`，每段是一个 chunk。
 - 摘要到达 24 小时后仍缺段时，用已到的段合成，避免永远挂起。
 - 手表 App 意外退出（没电、被系统回收）：下次启动时把已写完的段结束成一条录音（`endReason=recovered`），最多丢失最后一段（≤60 秒）。
-- 来电、Siri 打断：结束这条录音（`endReason=interruption`），watchOS 不允许后台恢复录音，需回到 App 重新开始。
+- 来电、Siri 打断：结束这条录音（`endReason=interruption`），watchOS 不允许后台恢复录音，主页提示回到 App 重新开始。
 - 分段打开或写入持续失败（例如存储已满）：结束这条录音（`endReason=write_failure`），保存已完成的分段，手表震动并显示提示。详见下文「写入失败」。
-- 「记下刚才」：iPhone 录音中 → `markRecent` 在 iPhone 录音里加区间书签；手表录音中 → 书签写进会话摘要，合成时带入。没有在录音时按钮置灰。
-- 状态通过 `updateApplicationContext` 下发，只在阶段、录音 ID 或计时基准变化时发送；Watch 本地用 `capturedAt + elapsed` 走表。
 
 ## 代码位置
 
-- `ios/WatchShared/`：iPhone 与 Watch 共用的协议（`WatchBridgeProtocol.swift`）与复杂功能状态存储（`WatchSnapshotStore.swift`）。
+- `ios/WatchShared/`：iPhone 与 Watch 共用的协议（`WatchBridgeProtocol.swift`）与复杂功能读取的录音开始时间（`WatchSnapshotStore.swift`）。
 - `ios/WakeOnCue/Watch/`：`PhoneWatchBridge`（WCSession）与 `WatchRecordingImporter`（分段合成）。
 - `ios/WakeOnCueWatch/`：独立 watchOS App（SwiftUI）。`WatchAudioRecorder` 分段录音，`WatchRecordingStore` 负责持久化、补发与崩溃恢复，`WatchDiagnostics` 是 Debug 诊断日志。
 - `ios/WakeOnCueWatchWidgets/`：WidgetKit 复杂功能 / Smart Stack。
@@ -75,7 +68,7 @@ Watch 点「开始录音」
 
 免费个人团队签名：App Group 只能由 Xcode 图形界面注册。首次真机安装前，在 Xcode 的 Signing & Capabilities 里给 `WakeOnCue`、`WakeOnCueWidgets`、`WakeOnCueWatch`、`WakeOnCueWatchWidgets` 选 Team 并确认 `group.com.deoooo.WakeOnCue`；之后可用 `DEVELOPMENT_TEAM=<team> ios/install_device.sh <iPhone>` 构建。手表需开启开发者模式，并用手表为目标构建一次（`-allowProvisioningDeviceRegistration`），让手表 UDID 进入描述文件。
 
-### 真机验证（2026-10-25，iPhone Air + Apple Watch Series 9）
+### 真机验证（2026-10-25，iPhone Air + Apple Watch Series 9，旧版遥控与「记下刚才」，均已移除）
 
 | 场景 | 结果 |
 | --- | --- |
@@ -87,7 +80,7 @@ Watch 点「开始录音」
 
 已知现象：从手表远程开始录音后，iPhone 的实时活动会同步到手表并弹出提醒，短暂盖住 App，期间的点按会落在提醒上。
 
-端到端 UI 测试（默认跳过）：`TEST_RUNNER_WAKEONCUE_WATCH_E2E=1 xcodebuild test-without-building -scheme WakeOnCueWatch -only-testing:WakeOnCueWatchUITests/...`；加 `TEST_RUNNER_WAKEONCUE_WATCH_E2E_FINISH=1` 时测试最后会从手表结束录音。
+端到端 UI 测试（默认跳过，需要麦克风权限）：`TEST_RUNNER_WAKEONCUE_WATCH_E2E=1 xcodebuild test -scheme WakeOnCueWatch -only-testing:WakeOnCueWatchUITests/WatchCaptureUITests`，录 65 秒后结束并打开录音记录页。
 
 仍待真机验证的问题（与方案文档的风险清单一致）：
 

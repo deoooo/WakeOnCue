@@ -4,27 +4,12 @@ import WatchConnectivity
 
 private let logger = Logger(subsystem: "com.deoooo.WakeOnCue.watchkitapp", category: "bridge")
 
-enum WatchSessionError: LocalizedError {
-  case unreachable
-  case invalidReply
-  case timedOut
-
-  var errorDescription: String? {
-    switch self {
-    case .unreachable: String(localized: "iPhone is not reachable.")
-    case .invalidReply: String(localized: "iPhone sent an unexpected reply.")
-    case .timedOut: String(localized: "iPhone did not answer. Try again.")
-    }
-  }
-}
-
-/// Watch end of the iPhone link. State arrives as application context; commands go out as
-/// messages with replies; recording segments leave as queued file transfers that survive disconnects.
+/// Watch end of the iPhone link. Recording segments leave as queued file transfers and the
+/// end-of-recording summary as user info; both survive disconnects and relaunches.
 final class WatchSessionClient: NSObject, WCSessionDelegate, @unchecked Sendable {
   static let shared = WatchSessionClient()
 
   private let lock = NSLock()
-  private var snapshotHandler: (@Sendable (WatchRecordingSnapshot) -> Void)?
   private var reachabilityHandler: (@Sendable (Bool) -> Void)?
   /// The recording this process is writing right now; never treated as interrupted.
   private var activeSessionID: UUID?
@@ -35,14 +20,8 @@ final class WatchSessionClient: NSObject, WCSessionDelegate, @unchecked Sendable
 
   private override init() {}
 
-  func install(
-    snapshotHandler: @escaping @Sendable (WatchRecordingSnapshot) -> Void,
-    reachabilityHandler: @escaping @Sendable (Bool) -> Void
-  ) {
-    lock.withLock {
-      self.snapshotHandler = snapshotHandler
-      self.reachabilityHandler = reachabilityHandler
-    }
+  func install(reachabilityHandler: @escaping @Sendable (Bool) -> Void) {
+    lock.withLock { self.reachabilityHandler = reachabilityHandler }
   }
 
   func activate() {
@@ -53,41 +32,6 @@ final class WatchSessionClient: NSObject, WCSessionDelegate, @unchecked Sendable
   }
 
   var isReachable: Bool { WCSession.default.isReachable }
-
-  func send(
-    _ request: WatchBridgeRequest,
-    timeout: Duration = .seconds(15)
-  ) async throws -> WatchBridgeReply {
-    let session = WCSession.default
-    guard session.activationState == .activated, session.isReachable else {
-      throw WatchSessionError.unreachable
-    }
-    let message = try WatchBridgeCoding.message(WatchBridgeKey.request, request)
-    // WatchConnectivity may never call either handler if the iPhone app stalls, so whichever
-    // of reply, error, or timeout comes first resumes the caller exactly once.
-    let pending = PendingReply()
-    let response: Data = try await withCheckedThrowingContinuation { continuation in
-      pending.install(continuation)
-      session.sendMessage(
-        message,
-        replyHandler: { reply in
-          guard let data = reply[WatchBridgeKey.reply] as? Data else {
-            pending.resume(throwing: WatchSessionError.invalidReply)
-            return
-          }
-          pending.resume(returning: data)
-        },
-        errorHandler: { error in pending.resume(throwing: error) }
-      )
-      Task {
-        try? await Task.sleep(for: timeout)
-        pending.resume(throwing: WatchSessionError.timedOut)
-      }
-    }
-    let reply = try WatchBridgeCoding.decode(WatchBridgeReply.self, from: response)
-    if let snapshot = reply.snapshot { deliver(snapshot) }
-    return reply
-  }
 
   func transfer(segment: WatchSegmentMetadata, url: URL) {
     let session = WCSession.default
@@ -143,24 +87,9 @@ final class WatchSessionClient: NSObject, WCSessionDelegate, @unchecked Sendable
     error: Error?
   ) {
     guard activationState == .activated else { return }
-    if let snapshot = WatchBridgeCoding.value(
-      WatchRecordingSnapshot.self,
-      key: WatchBridgeKey.snapshot,
-      in: session.receivedApplicationContext
-    ) {
-      deliver(snapshot)
-    }
     lock.withLock { reachabilityHandler }?(session.isReachable)
     _ = WatchRecordingStore.recoverInterrupted(excluding: lock.withLock { activeSessionID })
     resendPendingRecordings()
-  }
-
-  func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
-    guard
-      let snapshot = WatchBridgeCoding.value(
-        WatchRecordingSnapshot.self, key: WatchBridgeKey.snapshot, in: context)
-    else { return }
-    deliver(snapshot)
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {
@@ -198,37 +127,5 @@ final class WatchSessionClient: NSObject, WCSessionDelegate, @unchecked Sendable
     }
     WatchDiagnostics.log("summary delivered session=\(summary.sessionID.uuidString.prefix(8))")
     WatchRecordingStore.summaryDelivered(summary.sessionID)
-  }
-
-  private func deliver(_ snapshot: WatchRecordingSnapshot) {
-    let stored = WatchSnapshotStore.load()
-    // Replies and application context can arrive out of order; keep the newest.
-    guard snapshot.capturedAt >= stored.capturedAt else { return }
-    WatchSnapshotStore.save(snapshot)
-    lock.withLock { snapshotHandler }?(snapshot)
-  }
-}
-
-private final class PendingReply: @unchecked Sendable {
-  private let lock = NSLock()
-  private var continuation: CheckedContinuation<Data, Error>?
-
-  func install(_ continuation: CheckedContinuation<Data, Error>) {
-    lock.withLock { self.continuation = continuation }
-  }
-
-  func resume(returning data: Data) {
-    take()?.resume(returning: data)
-  }
-
-  func resume(throwing error: Error) {
-    take()?.resume(throwing: error)
-  }
-
-  private func take() -> CheckedContinuation<Data, Error>? {
-    lock.withLock {
-      defer { continuation = nil }
-      return continuation
-    }
   }
 }

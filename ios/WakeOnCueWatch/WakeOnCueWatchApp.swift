@@ -9,9 +9,6 @@ struct WakeOnCueWatchApp: App {
     WindowGroup {
       WatchHomeView()
         .environment(model)
-        .onOpenURL { url in
-          Task { await model.handle(url: url) }
-        }
         .onChange(of: scenePhase) { _, phase in
           WatchDiagnostics.logBattery("scene \(phase) watchRecording=\(model.isWatchRecording)")
         }

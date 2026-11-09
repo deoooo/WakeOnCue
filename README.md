@@ -25,7 +25,7 @@ iPhone 不再上传到 S3。旧版本已备份到 S3 的录音，仍可用这台
 - Live Activity、App Shortcuts、iOS 18 Control Center / Lock Screen Control、可选 Action Button；
 - 本机合并并分享标准 AAC-LC M4A；
 - 本地完成后即可开始下一场；录音中展示真实收音电平、输入设备和中断状态；
-- Apple Watch：查看与遥控 iPhone 录音；iPhone 开不了时由手表全程录音（60 秒分段同步到 iPhone 合成）；录音中「记下刚才」标记最近 2 分钟并打待办/重要/想法标签；表盘复杂功能；
+- Apple Watch：手表全程录音（60 秒分段同步到 iPhone 合成，再转给 Mac）；查看今日已录、待传分钟数和最近 7 天的录音记录；表盘复杂功能；
 - 完整录音库、持久化命名、本地字幕搜索、重点标记及 TXT/SRT 导出；
 - 删除的录音先进入「最近删除」，保留 30 天后永久删除，期间可恢复；没有手动命名或日历会议名的录音，自动使用摘要标题，并在列表显示概述；
 - iOS 26+ 设备端免费转写（SpeechAnalyzer）与摘要（Apple 智能），不需要任何服务；支持 AirPods 高质量录音和导入音频文件；

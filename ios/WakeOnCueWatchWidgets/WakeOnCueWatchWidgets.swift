@@ -6,16 +6,13 @@ private let accentOrange = Color(red: 1, green: 159 / 255, blue: 10 / 255)
 
 struct WatchStatusEntry: TimelineEntry {
   let date: Date
-  let snapshot: WatchRecordingSnapshot
-  var watchRecordingStartedAt: Date? = nil
+  /// Start of the Watch recording, or nil when it is not recording.
+  var startedAt: Date?
 }
 
 struct WatchStatusProvider: TimelineProvider {
   func placeholder(in context: Context) -> WatchStatusEntry {
-    WatchStatusEntry(
-      date: .now,
-      snapshot: WatchRecordingSnapshot(phase: .recording, elapsed: 754)
-    )
+    WatchStatusEntry(date: .now, startedAt: Date().addingTimeInterval(-754))
   }
 
   func getSnapshot(in context: Context, completion: @escaping (WatchStatusEntry) -> Void) {
@@ -23,22 +20,12 @@ struct WatchStatusProvider: TimelineProvider {
   }
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<WatchStatusEntry>) -> Void) {
-    // The Watch app reloads timelines whenever the iPhone state changes.
+    // The Watch app reloads timelines whenever recording starts or stops.
     completion(Timeline(entries: [currentEntry()], policy: .never))
   }
 
   private func currentEntry() -> WatchStatusEntry {
-    var snapshot = WatchSnapshotStore.load()
-    let watchStart = WatchSnapshotStore.watchRecordingStartedAt
-    if let watchStart {
-      // A Watch recording shows exactly like an iPhone one: red ring and a running clock.
-      snapshot = WatchRecordingSnapshot(phase: .recording, elapsed: Date().timeIntervalSince(watchStart))
-    }
-    return WatchStatusEntry(
-      date: .now,
-      snapshot: snapshot,
-      watchRecordingStartedAt: watchStart
-    )
+    WatchStatusEntry(date: .now, startedAt: WatchSnapshotStore.watchRecordingStartedAt)
   }
 }
 
@@ -46,10 +33,10 @@ struct WatchStatusWidgetView: View {
   @Environment(\.widgetFamily) private var family
   let entry: WatchStatusEntry
 
-  private var phase: WatchRecordingPhase { entry.snapshot.phase }
-  private var tint: Color {
-    phase == .recording ? recordingRed : .secondary
-  }
+  private var isRecording: Bool { entry.startedAt != nil }
+  private var tint: Color { isRecording ? recordingRed : .secondary }
+  private var symbol: String { isRecording ? "record.circle.fill" : "mic" }
+  private var statusTitle: LocalizedStringKey { isRecording ? "Recording" : "Not recording" }
 
   var body: some View {
     switch family {
@@ -61,14 +48,20 @@ struct WatchStatusWidgetView: View {
         Text(statusTitle)
           .font(.headline)
           .widgetAccentable()
-        detail
-          .font(.caption2)
-          .foregroundStyle(.secondary)
+        Group {
+          if let startedAt = entry.startedAt {
+            Text(startedAt, style: .timer)
+          } else {
+            Text("Tap to open")
+          }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     case .accessoryInline:
-      if phase == .recording {
-        Text(entry.snapshot.timerStart, style: .timer)
+      if let startedAt = entry.startedAt {
+        Text(startedAt, style: .timer)
       } else {
         Text(statusTitle)
       }
@@ -81,42 +74,12 @@ struct WatchStatusWidgetView: View {
       ZStack {
         AccessoryWidgetBackground()
         Circle()
-          .strokeBorder(tint, lineWidth: phase == .recording ? 3 : 1.5)
+          .strokeBorder(tint, lineWidth: isRecording ? 3 : 1.5)
         Image(systemName: symbol)
           .font(.title3)
           .foregroundStyle(tint)
           .widgetAccentable()
       }
-    }
-  }
-
-  @ViewBuilder private var detail: some View {
-    switch phase {
-    case .recording:
-      Text(entry.snapshot.timerStart, style: .timer)
-    case .paused:
-      Text(Duration.seconds(Int(entry.snapshot.elapsed)).formatted(.time(pattern: .hourMinuteSecond)))
-    case .idle, .finishing:
-      Text("Tap to open")
-    }
-  }
-
-  private var statusTitle: LocalizedStringKey {
-    if entry.watchRecordingStartedAt != nil { return "Recording on Watch" }
-    switch phase {
-    case .recording: return "Recording"
-    case .paused: return "Paused"
-    case .finishing: return "Saving on iPhone"
-    case .idle: return "Not recording"
-    }
-  }
-
-  private var symbol: String {
-    switch phase {
-    case .recording: "record.circle.fill"
-    case .paused: "pause.circle"
-    case .finishing: "arrow.down.circle"
-    case .idle: "mic"
     }
   }
 }
@@ -129,28 +92,8 @@ struct WatchStatusWidget: Widget {
         .containerBackground(.black, for: .widget)
     }
     .configurationDisplayName("Recording status")
-    .description("Shows whether WakeOnCue is recording.")
+    .description("Shows whether the Watch is recording.")
     .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
-  }
-}
-
-struct WatchCaptureWidget: Widget {
-  var body: some WidgetConfiguration {
-    StaticConfiguration(kind: WatchSnapshotStore.captureWidgetKind, provider: WatchStatusProvider()) {
-      _ in
-      ZStack {
-        AccessoryWidgetBackground()
-        Image(systemName: "mic.fill")
-          .font(.title3)
-          .widgetAccentable()
-      }
-      .widgetLabel { Text("Save that") }
-      .widgetURL(WatchSnapshotStore.captureURL)
-      .containerBackground(.black, for: .widget)
-    }
-    .configurationDisplayName("Save that")
-    .description("Marks the last 2 minutes")
-    .supportedFamilies([.accessoryCircular, .accessoryCorner])
   }
 }
 
@@ -158,6 +101,5 @@ struct WatchCaptureWidget: Widget {
 struct WakeOnCueWatchWidgets: WidgetBundle {
   var body: some Widget {
     WatchStatusWidget()
-    WatchCaptureWidget()
   }
 }
