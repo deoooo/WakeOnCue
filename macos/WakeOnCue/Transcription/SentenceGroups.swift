@@ -33,6 +33,28 @@ nonisolated enum SentenceGroups {
     return sentences.filter { $0.id == id }
   }
 
+  /// Audio kept before the first sentence, so its first word is not clipped.
+  static let lead: TimeInterval = 0.25
+  /// Audio kept after the last sentence. Apple speech ends a sentence before its last word has
+  /// died away: on the 11-06 早会 the 1.7B model kept the last two characters of 16 of 138 groups
+  /// with 0.25 s, 79 with 0.8 s and 99 with 1.0 s. Beyond that it mostly picks up the next
+  /// speaker, so the tail also stops where the next sentence starts.
+  static let tail: TimeInterval = 1.0
+
+  /// The stretch of audio to recognize for `group`: a little before it, and up to `tail` after
+  /// it but never into `next` (the following sentence of the channel) or a private or deleted
+  /// mark starting after it (`stop`).
+  static func audioRange(of group: [Sentence], next: Date?, stop: Date? = nil) -> DateInterval? {
+    guard let first = group.first, let last = group.last else { return nil }
+    let lastEnd = max(last.end, last.start)
+    var end = lastEnd.addingTimeInterval(tail)
+    for limit in [next, stop].compactMap({ $0 }) where limit > lastEnd {
+      end = min(end, limit)
+    }
+    let start = first.start.addingTimeInterval(-lead)
+    return DateInterval(start: start, end: max(end, lastEnd))
+  }
+
   /// Whether the speech after `group` may still be going on: its last sentence ended so recently
   /// that the next one could still join it.
   static func mayGrow(_ group: [Sentence], now: Date, settle: TimeInterval) -> Bool {

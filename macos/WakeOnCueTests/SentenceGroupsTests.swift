@@ -29,6 +29,18 @@ struct SentenceGroupsTests {
     #expect(!SentenceGroups.mayGrow([sentence(1, 0, 21)], now: base.addingTimeInterval(22), settle: 8))
   }
 
+  @Test func theTailRunsOnButNotIntoTheNextSentenceOrPrivateTime() {
+    let group = [sentence(1, 0, 3), sentence(2, 3.4, 6)]
+    let free = SentenceGroups.audioRange(of: group, next: nil)
+    #expect(free == DateInterval(start: base.addingTimeInterval(-0.25), end: base.addingTimeInterval(7)))
+    let beforeNext = SentenceGroups.audioRange(of: group, next: base.addingTimeInterval(6.6))
+    #expect(beforeNext?.end == base.addingTimeInterval(6.6))
+    let beforeMark = SentenceGroups.audioRange(of: group, next: base.addingTimeInterval(6.8), stop: base.addingTimeInterval(6.3))
+    #expect(beforeMark?.end == base.addingTimeInterval(6.3))
+    // A "next" sentence that overlaps the last one does not cut into the group's own audio.
+    #expect(SentenceGroups.audioRange(of: group, next: base.addingTimeInterval(5))?.end == base.addingTimeInterval(7))
+  }
+
   /// From the 11-06 早会: the model's text for four sentences, split back along the live text.
   @Test func textIsSplitAtTheLiveBoundaries() {
     let live = ["我把它拿过来，买点小玩意儿。", "呃，这个路线产品，昨天自测发现了一些case，然后也在修，但。", "核心就大的流程上是没什么问题的，今天。", "也会妨碍贝塔数据。"]

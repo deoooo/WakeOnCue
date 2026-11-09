@@ -19,8 +19,6 @@ import OSLog
 @Observable
 final class Refiner {
   private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue.macos", category: "Refiner")
-  /// A little audio around each sentence so the first and last words are not clipped.
-  private static let margin: TimeInterval = 0.25
   /// How often the background sweep looks for sentences still needing the chosen model.
   private static let sweepInterval: TimeInterval = 300
   /// The same hour is summarized again at most this often when the sweep repairs its sentences.
@@ -407,9 +405,9 @@ final class Refiner {
       if more > 0 { try? await Task.sleep(for: .seconds(more)) }
       group = self.group(of: sentence)
     }
-    guard let first = group.first, let last = group.last else { return nil }
-    let start = first.start.addingTimeInterval(-Self.margin)
-    let end = max(last.end, last.start).addingTimeInterval(Self.margin)
+    guard let range = audioRange(of: group) else { return nil }
+    let start = range.start
+    let end = range.end
     let segments = store.segments(overlapping: DateInterval(start: start, end: end))
       .filter { $0.channel == sentence.channel }
     let began = Date()
@@ -474,11 +472,30 @@ final class Refiner {
     let nearby = store.sentences(in: window).filter { $0.channel == sentence.channel && $0.end >= $0.start }
     let group = SentenceGroups.group(containing: sentence.id, in: nearby)
     guard group.count > 1, let first = group.first, let last = group.last else { return group.isEmpty ? [sentence] : group }
-    let span = DateInterval(start: first.start.addingTimeInterval(-Self.margin), end: last.end.addingTimeInterval(Self.margin))
+    let span = DateInterval(start: first.start.addingTimeInterval(-SentenceGroups.lead), end: last.end)
     if store.marks(overlapping: span).contains(where: { $0.start < span.end && $0.end > span.start }) {
       return [sentence]
     }
     return group
+  }
+
+  /// The audio to recognize for `group`: its tail runs on after the last sentence, but stops at
+  /// the channel's next sentence and before any private or deleted time.
+  private func audioRange(of group: [Sentence]) -> DateInterval? {
+    guard let first = group.first, let last = group.last else { return nil }
+    let lastEnd = max(last.end, last.start)
+    let after = DateInterval(start: lastEnd, duration: SentenceGroups.tail)
+    let next = store.sentences(in: after)
+      .filter { $0.channel == last.channel && $0.id != last.id && $0.start > lastEnd }
+      .map(\.start).min()
+    let stop = store.marks(overlapping: after).map { max($0.start, lastEnd) }.min()
+    let lead = DateInterval(start: first.start.addingTimeInterval(-SentenceGroups.lead), end: first.start)
+    var range = SentenceGroups.audioRange(of: group, next: next, stop: stop)
+    // A mark just before the first sentence: start where it ends.
+    if let markEnd = store.marks(overlapping: lead).map(\.end).max(), markEnd > lead.start, let current = range {
+      range = DateInterval(start: min(markEnd, first.start), end: current.end)
+    }
+    return range
   }
 
   /// Stores one sentence's share of the recognized text. Returns whether its words changed, or
