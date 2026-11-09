@@ -552,6 +552,11 @@ final class Store {
     return Dictionary(rows.map { ($0.0, (total: $0.1, waiting: $0.2, latest: $0.3)) }, uniquingKeysWith: { a, _ in a })
   }
 
+  /// When the latest Watch audio received ends, if any came.
+  func latestWatchAudio() -> Date? {
+    fetch("SELECT MAX(start + duration) FROM remote_segment WHERE source = 'watch'") { $0.optionalDate(0) }.first ?? nil
+  }
+
   // MARK: Watch and iPhone marks
 
   /// Stores or updates marks from a phone and returns them on the Mac's timeline. Each takes the

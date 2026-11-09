@@ -37,6 +37,22 @@ struct Sidebar: View {
           }
           .help("这台 Mac：\(status.text)")
           .accessibilityLabel("这台 Mac：\(status.text)")
+        ForEach(model.deviceStatuses) { device in
+          Button { model.showSettings(.devices) } label: {
+            Image(systemName: device.symbol)
+              .font(.system(size: 16))
+              .foregroundStyle(device.dot == nil ? .tertiary : .primary)
+              .overlay(alignment: .topTrailing) {
+                if let dot = device.dot {
+                  Circle().fill(dot).frame(width: 7, height: 7).offset(x: 3, y: -2)
+                }
+              }
+          }
+          .buttonStyle(.borderless)
+          .help(device.text)
+          .accessibilityLabel(device.text)
+        }
+        .padding(.leading, 6)
         Spacer()
         SettingsLink {
           Image(systemName: "gearshape")

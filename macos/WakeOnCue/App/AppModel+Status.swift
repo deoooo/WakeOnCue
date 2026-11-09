@@ -79,6 +79,48 @@ extension AppModel {
     }
   }
 
+  /// One icon in the sidebar's status row: a paired iPhone, or the Watch behind it.
+  struct DeviceStatus: Identifiable {
+    let id: String
+    let symbol: String
+    let text: String
+    let dot: Color?
+  }
+
+  /// The paired phones and the Watch, for the sidebar. Without a paired phone, one grey iPhone
+  /// that leads to pairing.
+  var deviceStatuses: [DeviceStatus] {
+    _ = store.revision
+    let devices = sync.devices
+    guard !devices.isEmpty else {
+      return [DeviceStatus(id: "none", symbol: "iphone", text: "还没有配对的 iPhone，点此添加", dot: nil)]
+    }
+    let counts = store.remoteSegmentCounts()
+    var statuses = devices.map { device -> DeviceStatus in
+      var text: String
+      var dot: Color
+      if case .some(let transfer) = sync.connected[device.id] {
+        text = transfer.map { "正在接收 \(TimeText.bytes($0.received)) / \(TimeText.bytes($0.total))" } ?? "已连接"
+        dot = .green
+      } else if let lastSeen = device.lastSeen {
+        text = "上次连接 \(TimeText.relativeDay(lastSeen)) \(TimeText.clock(lastSeen))"
+        dot = .secondary
+      } else {
+        text = "已配对，还没有连接过"
+        dot = .orange
+      }
+      if let waiting = counts[device.id]?.waiting, waiting > 0 { text += "，\(waiting) 段等待合并" }
+      return DeviceStatus(id: device.id, symbol: "iphone", text: "\(device.name)：\(text)", dot: dot)
+    }
+    if let latest = store.latestWatchAudio() {
+      statuses.append(DeviceStatus(
+        id: "watch", symbol: "applewatch",
+        text: "Apple Watch：经 iPhone 转发，最近收到的录音到 \(TimeText.relativeDay(latest)) \(TimeText.clock(latest))",
+        dot: .secondary))
+    }
+    return statuses
+  }
+
   var deletedMarks: [TimeMark] {
     _ = store.revision
     return store.marks().filter { $0.kind == .deleted }
