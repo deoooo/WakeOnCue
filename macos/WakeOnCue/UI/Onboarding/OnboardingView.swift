@@ -100,7 +100,7 @@ struct OnboardingView: View {
         .formStyle(.columns)
         .padding(.vertical, 6)
         .overlay(alignment: .bottom) { Divider() }
-      Text("可选。可以稍后在设置 › 转录模型里下载。").font(.caption).foregroundStyle(.secondary)
+      Text("可选。点一下就会下载，下载完自动启用；也可以稍后在设置 › 转录模型里选。").font(.caption).foregroundStyle(.secondary)
       permissionRow("总结", "优先由这台 Mac 上的 Apple 智能生成。不支持 Apple 智能的 Mac 可以在设置 › AI 服务里配置自己的网关。") {
         if let engine = model.summaries.engineName {
           Text("✓ \(engine)").foregroundStyle(.green)

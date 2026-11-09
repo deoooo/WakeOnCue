@@ -92,8 +92,13 @@ private struct TranscriptionSettings: View {
           .font(.caption).foregroundStyle(.secondary)
       }
       VocabularySection()
-      Section("可用模型") {
+      Section {
         ModelList()
+      } header: {
+        Text("转录模型")
+      } footer: {
+        Text("点一下就换用这个模型。没下载过的会自动下载，完成后自动启用，下载期间继续用当前的模型。右键可以删除已下载的模型。")
+          .font(.caption).foregroundStyle(.secondary)
       }
       TranscriptionServiceSection()
       Section {

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The transcription model list: Apple speech, and models downloaded from their official
-/// release. One click downloads, verifies and turns a model on. The model that suits this Mac's
-/// memory is marked; Apple speech stays in use until the user downloads one.
+/// The transcription model list, one choice: clicking a model uses it, downloading it first if it
+/// is not on this Mac yet (the model in use keeps working until the download is done). The model
+/// that suits this Mac's memory is marked; Apple speech stays in use until the user picks another.
 struct ModelList: View {
   @Environment(AppModel.self) private var model
 
@@ -20,56 +20,86 @@ struct ModelRow: View {
   var body: some View {
     let models = model.models
     let state = models.state(of: entry)
+    let selected = models.selectedID == entry.id
     let inUse = entry.isBuiltIn ? models.activeID == nil : models.activeID == entry.id
-    LabeledContent {
-      HStack(spacing: 8) {
-        switch state {
-        case .notDownloaded where entry.isRemote:
-          Text("在下方填写并开启").foregroundStyle(.secondary)
-        case .notDownloaded:
-          Button("下载") { models.download(entry) }
-        case .downloading(let fraction):
-          ProgressView(value: fraction).frame(width: 90)
-          Text("\(Int(fraction * 100))%").monospacedDigit().foregroundStyle(.secondary)
-          Button("暂停") { models.pause(entry) }
-        case .paused(let fraction):
-          Text("已暂停 \(Int(fraction * 100))%").foregroundStyle(.secondary)
-          Button("继续") { models.download(entry) }
-          Button("删除") { models.delete(entry) }
-        case .verifying:
-          ProgressView().controlSize(.small)
-          Text("正在校验和解压…").foregroundStyle(.secondary)
-        case .failed(let reason):
-          Text(reason).foregroundStyle(Color.recording).lineLimit(2)
-          Button("重试") { models.download(entry) }
-        case .installed:
-          if inUse {
-            Text("使用中").foregroundStyle(.green)
-          } else {
-            Button("使用") { models.activate(entry.isBuiltIn ? nil : entry) }
-          }
-          if entry.isDownloadable {
-            Button("删除") { models.delete(entry) }
+    HStack(alignment: .center, spacing: 10) {
+      Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+        .font(.title3)
+        .foregroundStyle(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
+          Text(entry.name)
+          if entry == ASRModel.recommended() {
+            Text("推荐")
+              .font(.caption2.weight(.medium))
+              .padding(.horizontal, 5)
+              .padding(.vertical, 1)
+              .background(.tint.opacity(0.15), in: Capsule())
+              .foregroundStyle(.tint)
           }
         }
+        Text(entry.isDownloadable ? "\(entry.detail) · \(entry.size)" : entry.detail)
+          .font(.caption).foregroundStyle(.secondary)
+        status(state, selected: selected, inUse: inUse)
       }
-      .font(.callout)
-    } label: {
+      Spacer(minLength: 8)
+      trailing(state, inUse: inUse)
+        .font(.callout)
+    }
+    .contentShape(Rectangle())
+    .onTapGesture { models.choose(entry) }
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    .contextMenu {
+      if entry.isDownloadable, state != .notDownloaded {
+        Button("删除已下载的文件", role: .destructive) { models.delete(entry) }
+      }
+    }
+  }
+
+  /// One line under the description: what is happening with this model.
+  @ViewBuilder
+  private func status(_ state: ASRModels.State, selected: Bool, inUse: Bool) -> some View {
+    let models = model.models
+    switch state {
+    case .notDownloaded where entry.isRemote:
+      Text("在下方填写转录服务后可选").font(.caption).foregroundStyle(.secondary)
+    case .downloading(let fraction):
       HStack(spacing: 6) {
-        Text(entry.name)
-        if entry == ASRModel.recommended() {
-          Text("推荐这台 Mac 使用")
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(.tint.opacity(0.15), in: Capsule())
-            .foregroundStyle(.tint)
-        }
+        ProgressView(value: fraction).frame(width: 120)
+        Text("下载中 \(Int(fraction * 100))%\(selected ? "，完成后自动使用" : "")")
+          .monospacedDigit()
       }
-      Text(entry.isDownloadable ? "\(entry.detail) · \(entry.size) · \(entry.source)" : entry.detail)
-      if !entry.isBuiltIn, inUse {
-        RefinerStatusText()
-      }
+      .font(.caption).foregroundStyle(.secondary)
+    case .verifying:
+      Text("正在校验…").font(.caption).foregroundStyle(.secondary)
+    case .paused(let fraction):
+      Text("已暂停 \(Int(fraction * 100))%，再次选中会接着下载").font(.caption).foregroundStyle(.secondary)
+    case .failed(let reason):
+      Text(reason).font(.caption).foregroundStyle(Color.recording).lineLimit(2)
+    case .installed where inUse && !entry.isBuiltIn:
+      RefinerStatusText().font(.caption).foregroundStyle(.secondary)
+    case .notDownloaded where selected && models.downloadingID != nil:
+      Text("等当前下载暂停后开始下载").font(.caption).foregroundStyle(.secondary)
+    case .installed, .notDownloaded:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private func trailing(_ state: ASRModels.State, inUse: Bool) -> some View {
+    let models = model.models
+    switch state {
+    case .downloading:
+      Button("暂停") { models.pause(entry) }
+    case .failed:
+      Button("重试") { models.choose(entry) }
+    case .installed where inUse:
+      Text("使用中").foregroundStyle(.green)
+    case .notDownloaded where entry.isDownloadable:
+      Text("选中后下载").foregroundStyle(.secondary)
+    default:
+      EmptyView()
     }
   }
 }

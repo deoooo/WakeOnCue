@@ -164,9 +164,16 @@ final class ASRModels {
   private(set) var states: [String: State] = [:]
   /// The model that refines transcripts; Apple speech alone when nil.
   private(set) var activeID: String?
+  /// The model the user picked that is still downloading; it is switched on once it is ready.
+  /// Until then the model in use keeps working.
+  private(set) var chosenID: String?
+  /// The model whose files are coming down right now.
+  private(set) var downloadingID: String?
 
   @ObservationIgnored private let defaults = UserDefaults.standard
   @ObservationIgnored private var downloader: Downloader?
+  /// Set by a pause; the download stops before its next file.
+  @ObservationIgnored private var stopRequested = false
   /// Called when the active model changes, so the refiner can load or drop it.
   @ObservationIgnored var onActiveChange: ((ASRModel?) -> Void)?
 
@@ -196,6 +203,64 @@ final class ASRModels {
   func transcriptionServiceChanged() {
     guard active?.isRemote == true else { return }
     activate(state(of: .transcriptionService) == .installed ? .transcriptionService : nil)
+  }
+
+  /// The one selected in the list: the model waiting to be switched on, or the one in use.
+  var selectedID: String { chosenID ?? activeID ?? ASRModel.appleSpeech.id }
+
+  /// The user picked `model` in the list. One that is on this Mac is used at once; one that is not
+  /// is downloaded and used when it is ready. Another download in progress is paused (it resumes
+  /// from there if picked again).
+  func choose(_ model: ASRModel) {
+    switch model.kind {
+    case .appleSpeech:
+      chosenID = nil
+      pauseDownload()
+      activate(nil)
+    case .remoteService:
+      // Usable once its address and model are filled in below the list.
+      guard state(of: model) == .installed else { return }
+      chosenID = nil
+      pauseDownload()
+      activate(model)
+    case .qwen3, .mlxQwen3:
+      if state(of: model) == .installed {
+        chosenID = nil
+        pauseDownload()
+        activate(model)
+        return
+      }
+      chosenID = model.id
+      if let downloadingID, downloadingID != model.id {
+        // The paused download hands over to this one when it has stopped.
+        pauseDownload()
+      } else if downloadingID == nil {
+        download(model)
+      }
+    }
+  }
+
+  private func pauseDownload() {
+    guard downloadingID != nil else { return }
+    // Also between two files, when no transfer is running to cancel.
+    stopRequested = true
+    downloader?.pause()
+  }
+
+  /// A download stopped or finished: start the one the user picked meanwhile.
+  private func downloadEnded() {
+    downloader = nil
+    downloadingID = nil
+    if let chosenID, let next = ASRModel.catalog.first(where: { $0.id == chosenID }), state(of: next) != .installed {
+      download(next)
+    }
+  }
+
+  /// A download finished: switch to it if the user still wants it (or picked nothing else).
+  private func downloaded(_ model: ASRModel) {
+    guard chosenID == nil || chosenID == model.id else { return }
+    chosenID = nil
+    activate(model)
   }
 
   func activate(_ model: ASRModel?) {
@@ -266,6 +331,8 @@ final class ASRModels {
       return
     }
     guard let package = model.package, downloader == nil else { return }
+    downloadingID = model.id
+    stopRequested = false
     states[model.id] = .downloading(fraction: savedFraction(model))
     Task {
       do {
@@ -279,14 +346,14 @@ final class ASRModels {
         guard Self.files(of: model) != nil else { throw DownloadError.incomplete }
         states[model.id] = .installed
         defaults.removeObject(forKey: "asrProgress.\(model.id)")
-        activate(model)
+        downloaded(model)
       } catch DownloadError.paused {
         states[model.id] = .paused(fraction: savedFraction(model))
       } catch {
         Self.logger.error("Download failed: \(error.localizedDescription, privacy: .public)")
         states[model.id] = .failed(error.localizedDescription)
       }
-      downloader = nil
+      downloadEnded()
     }
   }
 
@@ -294,6 +361,8 @@ final class ASRModels {
   /// against its SHA-256 before it is moved into the model's folder.
   private func download(_ model: ASRModel, snapshot: HubSnapshot) {
     guard downloader == nil, let folder = Self.folder(of: model) else { return }
+    downloadingID = model.id
+    stopRequested = false
     states[model.id] = .downloading(fraction: savedFraction(model))
     Task {
       do {
@@ -315,20 +384,21 @@ final class ASRModels {
         guard Self.snapshotFolder(of: model) != nil else { throw DownloadError.incomplete }
         states[model.id] = .installed
         defaults.removeObject(forKey: "asrProgress.\(model.id)")
-        activate(model)
+        downloaded(model)
       } catch DownloadError.paused {
         states[model.id] = .paused(fraction: savedFraction(model))
       } catch {
         Self.logger.error("Download failed: \(error.localizedDescription, privacy: .public)")
         states[model.id] = .failed(error.localizedDescription)
       }
-      downloader = nil
+      downloadEnded()
     }
   }
 
   private func fetch(
     _ snapshot: HubSnapshot, _ file: HubSnapshot.File, into target: URL, model: ASRModel, fraction: @escaping (Int64) -> Double
   ) async throws {
+    if stopRequested { throw DownloadError.paused }
     let resume = resumeURL(snapshot, file)
     let downloader = Downloader(url: snapshot.url(of: file), resumeData: try? Data(contentsOf: resume))
     self.downloader = downloader
@@ -355,14 +425,17 @@ final class ASRModels {
     }
   }
 
+  /// The pause button: the download waits until the user picks the model again or presses 继续.
   func pause(_ model: ASRModel) {
-    downloader?.pause()
+    if chosenID == model.id { chosenID = nil }
+    pauseDownload()
   }
 
   /// Removes the model and goes back to Apple speech. The shared runtime stays.
   func delete(_ model: ASRModel) {
     guard let folder = Self.folder(of: model) else { return }
     if activeID == model.id { activate(nil) }
+    if chosenID == model.id { chosenID = nil }
     downloader?.cancel()
     try? FileManager.default.removeItem(at: folder)
     if let package = model.package { try? FileManager.default.removeItem(at: resumeURL(package)) }
@@ -390,6 +463,7 @@ final class ASRModels {
   }
 
   private func fetch(_ file: ReleaseFile, model: ASRModel, fraction: @escaping (Int64) -> Double) async throws {
+    if stopRequested { throw DownloadError.paused }
     let downloader = Downloader(url: file.url, resumeData: try? Data(contentsOf: resumeURL(file)))
     self.downloader = downloader
     downloader.onProgress = { [weak self] written in
