@@ -527,7 +527,10 @@ final class AppModel {
 
   func handle(url: URL) async {
     if url.scheme == "wakeoncue", url.host == "pair" {
-      _ = macUploader.pair(with: url)
+      // The Camera app scanned the Mac's QR code: ask before connecting, in Settings › Mac.
+      guard let code = SyncProtocol.Pairing(url: url) else { return }
+      settingsPresented = true
+      macUploader.flow.offer(code)
       return
     }
     guard url.scheme == "wakeoncue", url.host == "recording" else { return }

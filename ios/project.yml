@@ -57,6 +57,8 @@ targets:
         NSLocalNetworkUsageDescription: WakeOnCue connects to the transcription or AI service you configure on your local network, and forwards Watch and iPhone recordings to your paired Mac.
         NSBonjourServices:
           - _wakeoncue._tcp
+          - _wakeoncue-pair._tcp
+        NSCameraUsageDescription: WakeOnCue uses the camera only to scan the pairing code shown on your Mac.
         BGTaskSchedulerPermittedIdentifiers:
           - com.deoooo.WakeOnCue.mac-sync
         NSSupportsLiveActivities: true

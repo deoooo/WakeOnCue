@@ -55,6 +55,8 @@ final class Preferences {
   var rememberVoices: Bool { didSet { defaults.set(rememberVoices, forKey: "rememberVoices") } }
   /// 自动回传: paired phones may send Watch and iPhone audio.
   var autoSync: Bool { didSet { defaults.set(autoSync, forKey: "autoSync") } }
+  /// 允许附近的 iPhone 请求配对码: advertise the pair service and show codes on request.
+  var allowPairRequests: Bool { didSet { defaults.set(allowPairRequests, forKey: "allowPairRequests") } }
   /// 内容相同时自动合并 (used when merging).
   var mergeSameContent: Bool { didSet { defaults.set(mergeSameContent, forKey: "mergeSameContent") } }
   var summaryEngine: SummaryEngineChoice { didSet { defaults.set(summaryEngine.rawValue, forKey: "summaryEngine") } }
@@ -91,6 +93,7 @@ final class Preferences {
     rememberVoices = defaults.bool(forKey: "rememberVoices")
     autoSync = defaults.object(forKey: "autoSync") as? Bool ?? true
     mergeSameContent = defaults.object(forKey: "mergeSameContent") as? Bool ?? true
+    allowPairRequests = defaults.object(forKey: "allowPairRequests") as? Bool ?? true
     summaryEngine = SummaryEngineChoice(rawValue: defaults.string(forKey: "summaryEngine") ?? "") ?? .automatic
     gatewayProtocol = GatewayProtocol(rawValue: defaults.string(forKey: "gatewayProtocol") ?? "") ?? .chatCompletions
     gatewayBearerForAnthropic = defaults.bool(forKey: "gatewayBearerForAnthropic")

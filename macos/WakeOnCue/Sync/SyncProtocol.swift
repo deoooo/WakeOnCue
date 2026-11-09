@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 
@@ -27,6 +28,42 @@ nonisolated enum SyncProtocol {
   }
   /// Everything this build of the Mac understands.
   static let features = [Feature.marks]
+
+  // MARK: Pairing with a code
+
+  /// Macs that take code pairing requests advertise this next to `serviceType`, on a listener
+  /// of its own: its key is public, so nothing but `pairRequest` is answered there.
+  static let pairServiceType = "_wakeoncue-pair._tcp"
+  static let pairRequestIdentity = "wakeoncue-pair-request"
+  /// Public: it only hides the request from casual sniffing. The code is what proves the user.
+  static let pairRequestKey = Data(SHA256.hash(data: Data("WakeOnCue pair request v1".utf8)))
+  /// How long the code shown on the Mac works, and how many wrong tries it survives.
+  static let codeLifetime: TimeInterval = 120
+  static let codeAttempts = 5
+
+  /// A six-digit code, uniformly random.
+  static func newCode() -> String {
+    String(format: "%06d", Int.random(in: 0..<1_000_000))
+  }
+
+  static func codeIdentity(requestID: String) -> String { "pair-" + requestID }
+
+  /// The PSK both sides derive from the code. A wrong code fails the TLS handshake, so guessing
+  /// takes one live connection per try; the Mac drops the code after `codeAttempts` failures.
+  static func codeKey(code: String, requestID: String) -> Data {
+    let key = HKDF<SHA256>.deriveKey(
+      inputKeyMaterial: SymmetricKey(data: Data(code.utf8)), salt: Data(requestID.utf8),
+      info: Data("WakeOnCue pairing code".utf8), outputByteCount: 32)
+    return key.withUnsafeBytes { Data($0) }
+  }
+
+  /// The long-term key, from an X25519 exchange inside the code-authenticated channel: someone
+  /// who records the exchange and later brute-forces the code still cannot compute it.
+  static func pairingKey(_ secret: SharedSecret, requestID: String) -> Data {
+    let key = secret.hkdfDerivedSymmetricKey(
+      using: SHA256.self, salt: Data(requestID.utf8), sharedInfo: Data("WakeOnCue pairing key".utf8), outputByteCount: 32)
+    return key.withUnsafeBytes { Data($0) }
+  }
 
   /// TLS 1.2 with a pre-shared key; both sides use the same options.
   static func tlsOptions(keys: [(identity: String, key: Data)]) -> NWProtocolTLS.Options {
@@ -158,6 +195,16 @@ nonisolated enum SyncProtocol {
     case marks([MarkInfo])
     /// Mac → phone: these marks are stored; the phone may forget them.
     case marksStored(ids: [String])
+    /// Phone → Mac, on the pair listener: please show a code. `requestID` is fresh per request.
+    case pairRequest(requestID: String, deviceName: String)
+    /// Mac → phone: a code is on screen until `expires`; connect to `port` on this host with
+    /// `codeKey(code, requestID)` under `codeIdentity(requestID)`.
+    case pairPending(macName: String, expires: Date, port: UInt16)
+    /// Phone → Mac, on the code listener: the phone's X25519 public key.
+    case pairExchange(publicKey: Data)
+    /// Mac → phone: paired. The phone's PSK is `pairingKey` under `identity`; `service` is the
+    /// Bonjour name of the Mac's main listener and `port` its port.
+    case pairAccepted(macID: String, macName: String, service: String, identity: String, publicKey: Data, port: UInt16)
     /// Either way: something is wrong; `retry` says whether trying again later can help.
     case failure(segmentID: String?, reason: String, retry: Bool)
     case bye

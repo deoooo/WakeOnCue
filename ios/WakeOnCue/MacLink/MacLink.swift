@@ -272,22 +272,33 @@ final class MacUploader {
   /// Decides, per recording on this iPhone, whether its audio may go to the Mac. Unset, all goes.
   var disposition: (@MainActor @Sendable (String) async -> MacOutbox.Disposition)?
 
-  /// Handles `wakeoncue://pair?…` from the Mac's QR code.
-  func pair(with url: URL) -> Bool {
-    guard let code = SyncProtocol.Pairing(url: url), let key = Data(base64URL: code.key) else { return false }
-    Self.logger.notice("Pairing with \(code.macName, privacy: .public) at \(code.host, privacy: .public):\(code.port)")
-    guard code.expires > .now else {
-      status = .failed(AppLanguage.localized("This pairing code has expired. Refresh it on the Mac."))
-      return true
+  /// Connecting a Mac: the sheet, nearby Macs, the code and the QR code.
+  let flow = MacPairingFlow()
+
+  init() {
+    flow.uploader = self
+  }
+
+  /// Saves `candidate` only once the Mac answered it with `welcome`, so a pairing that never
+  /// reached the Mac is never kept. Waiting audio stays queued and goes to this Mac.
+  func confirm(_ candidate: MacPairing) async throws {
+    let channel = try await connect(candidate, timeout: 30)
+    defer { channel.connection.cancel() }
+    try await channel.send(.hello(deviceID: candidate.identity, deviceName: Self.deviceName, protocolVersion: SyncProtocol.version))
+    let first = try await channel.receive().0
+    guard case .welcome(let macName, _, _, _) = first else {
+      if case .failure(_, let reason, _) = first { throw MacLinkError.refused(reason) }
+      throw MacLinkError.unexpected
     }
-    let pairing = MacPairing(
-      macID: code.macID, macName: code.macName, service: code.service, host: code.host, port: code.port,
-      identity: code.identity, key: key, pairedAt: .now)
+    try? await channel.send(.bye)
+    var pairing = candidate
+    pairing.macName = macName
+    pairing.needsRepair = false
     MacPairing.save(pairing)
     self.pairing = pairing
     status = .idle
+    Self.logger.notice("Paired with \(macName, privacy: .public)")
     Task { await sync() }
-    return true
   }
 
   func unpair() {
@@ -352,6 +363,8 @@ final class MacUploader {
       status = .failed(AppLanguage.localized("The Mac no longer accepts this iPhone. Scan its pairing code again."))
     } catch MacLinkError.notFound {
       status = .unreachable
+    } catch MacLinkError.localNetworkDenied {
+      status = .failed(AppLanguage.localized("WakeOnCue needs Local Network access to reach the Mac."))
     } catch {
       Self.logger.error("Sync failed: \(String(describing: error), privacy: .public)")
       status = .failed(error.localizedDescription)
@@ -409,15 +422,17 @@ final class MacUploader {
     }
   }
 
-  private enum MacLinkError: LocalizedError {
+  enum MacLinkError: LocalizedError {
     case notFound
     case refusedKey
+    case localNetworkDenied
     case refused(String)
     case unexpected
 
     var errorDescription: String? {
       switch self {
       case .notFound: AppLanguage.localized("The Mac is not on this network.")
+      case .localNetworkDenied: AppLanguage.localized("WakeOnCue needs Local Network access to reach the Mac.")
       case .refusedKey: AppLanguage.localized("The Mac no longer accepts this iPhone.")
       case .refused(let reason): reason
       case .unexpected: AppLanguage.localized("The Mac sent an unexpected reply.")
@@ -426,49 +441,79 @@ final class MacUploader {
   }
 
   /// Finds the Mac by its Bonjour name, falling back to the address in the code, and completes
-  /// the TLS handshake with the pairing key. A wrong key leaves Network in `.waiting` rather than
-  /// `.failed`, so a TLS error there is treated as a refusal.
-  private func connect(_ pairing: MacPairing) async throws -> SyncChannel {
+  /// the TLS handshake with the pairing key.
+  private func connect(_ pairing: MacPairing, timeout: TimeInterval = 8) async throws -> SyncChannel {
     let parameters = SyncProtocol.parameters(keys: [(pairing.identity, pairing.key)])
     var endpoints: [NWEndpoint] = [.service(name: pairing.service, type: SyncProtocol.serviceType, domain: "local.", interface: nil)]
-    if let port = NWEndpoint.Port(rawValue: pairing.port), pairing.port > 0 {
+    if let port = NWEndpoint.Port(rawValue: pairing.port), pairing.port > 0, !pairing.host.isEmpty {
       endpoints.append(.hostPort(host: NWEndpoint.Host(pairing.host), port: port))
     }
     var refused = false
+    var denied = false
     for endpoint in endpoints {
-      let connection = NWConnection(to: endpoint, using: parameters)
-      let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<Bool?, Never>) in
-        let once = OnceFlag()
-        connection.stateUpdateHandler = { state in
-          switch state {
-          case .ready: if once.take() { continuation.resume(returning: true) }
-          case .failed: if once.take() { continuation.resume(returning: false) }
-          case .waiting(let error):
-            if case .tls = error {
-              if once.take() { continuation.resume(returning: nil) }
-            } else if once.take() {
-              continuation.resume(returning: false)
-            }
-          default: break
-          }
-        }
-        connection.start(queue: .global(qos: .utility))
-        DispatchQueue.global().asyncAfter(deadline: .now() + 8) { if once.take() { continuation.resume(returning: false) } }
-      }
-      Self.logger.notice("Endpoint \(String(describing: endpoint), privacy: .public) as \(pairing.identity.prefix(14), privacy: .public): \(outcome.map { $0 ? "ready" : "failed" } ?? "refused", privacy: .public)")
+      let outcome = await Self.open(endpoint, using: parameters, timeout: timeout)
+      Self.logger.notice("Endpoint \(String(describing: endpoint), privacy: .public) as \(pairing.identity.prefix(14), privacy: .public): \(String(describing: outcome), privacy: .public)")
       switch outcome {
-      case true: return SyncChannel(connection)
-      case nil:
-        refused = true
-        connection.cancel()
-      default:
-        connection.cancel()
+      case .ready(let connection): return SyncChannel(connection)
+      case .refused: refused = true
+      case .denied: denied = true
+      case .unreachable: break
       }
     }
-    throw refused ? MacLinkError.refusedKey : MacLinkError.notFound
+    if refused { throw MacLinkError.refusedKey }
+    throw denied ? MacLinkError.localNetworkDenied : MacLinkError.notFound
   }
 
-  private static var deviceName: String {
+  enum Outcome: CustomStringConvertible {
+    case ready(NWConnection)
+    /// The TLS handshake failed: the Mac does not take this key.
+    case refused
+    /// iOS did not allow Local Network access.
+    case denied
+    case unreachable
+
+    var description: String {
+      switch self {
+      case .ready: "ready"
+      case .refused: "refused"
+      case .denied: "local network denied"
+      case .unreachable: "unreachable"
+      }
+    }
+  }
+
+  /// Opens one connection. A wrong key leaves Network in `.waiting` rather than `.failed`, so a TLS
+  /// error there is a refusal. A Local Network denial also waits: the permission alert may still be
+  /// on screen, so it is reported only if the connection is not ready before `timeout`.
+  nonisolated static func open(_ endpoint: NWEndpoint, using parameters: NWParameters, timeout: TimeInterval) async -> Outcome {
+    let connection = NWConnection(to: endpoint, using: parameters)
+    let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<Outcome, Never>) in
+      let once = OnceFlag()
+      let denied = OnceFlag()
+      connection.stateUpdateHandler = { state in
+        switch state {
+        case .ready: if once.take() { continuation.resume(returning: .ready(connection)) }
+        case .failed: if once.take() { continuation.resume(returning: .unreachable) }
+        case .waiting(let error):
+          switch error {
+          case .tls: if once.take() { continuation.resume(returning: .refused) }
+          case .dns(let code) where code == -65570: _ = denied.take()  // kDNSServiceErr_PolicyDenied
+          default: break
+          }
+        default: break
+        }
+      }
+      connection.start(queue: .global(qos: .utility))
+      DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+        if once.take() { continuation.resume(returning: denied.isUsed ? .denied : .unreachable) }
+      }
+    }
+    if case .ready = outcome { return outcome }
+    connection.cancel()
+    return outcome
+  }
+
+  static var deviceName: String {
     #if canImport(UIKit)
       UIDevice.current.name
     #else
@@ -478,7 +523,7 @@ final class MacUploader {
 }
 
 /// Resumes a continuation once, whichever callback comes first.
-private final class OnceFlag: @unchecked Sendable {
+final class OnceFlag: @unchecked Sendable {
   private let lock = NSLock()
   private var used = false
 
@@ -488,4 +533,6 @@ private final class OnceFlag: @unchecked Sendable {
       return !used
     }
   }
+
+  var isUsed: Bool { lock.withLock { used } }
 }

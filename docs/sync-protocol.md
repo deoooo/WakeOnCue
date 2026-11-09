@@ -8,7 +8,19 @@
 
 ## 配对
 
-1. Mac 在 设置 › 设备与回传 显示二维码，内容是 `wakeoncue://pair?p=<base64url(JSON)>`，JSON 字段：
+iPhone 上的入口是 设置 › Mac › 连接 Mac：先列出附近的 Mac（配对码），也可以扫二维码（App 内扫码或系统相机）。两种方式都要等 Mac 用新密钥回了 `welcome`，iPhone 才保存配对；之前失败什么都不留。
+
+### 配对码（附近的 Mac）
+
+1. Mac 打开「允许附近的 iPhone 请求配对码」（默认开）时，另开一个监听，Bonjour 类型 `_wakeoncue-pair._tcp`，名称同 Mac。它用公开的 PSK（身份 `wakeoncue-pair-request`，密钥 `SHA256("WakeOnCue pair request v1")`），只回答 `pairRequest`，不接受 `hello`。
+2. iPhone 浏览 `_wakeoncue-pair._tcp` 列出 Mac，用户点一台：发 `pairRequest(requestID, deviceName)`。Mac 生成 6 位配对码，开一个只认 `codeKey(配对码, requestID)`（身份 `pair-<requestID>`）的临时监听，在浮窗里显示配对码，回 `pairPending(macName, expires, port)`。同一时间只开一个请求；被拒绝的设备 1 分钟内不能再请求。
+3. 用户在 iPhone 输入配对码，iPhone 用同样的方法推出密钥，连同一主机的 `port`。配对码不对 TLS 握手就失败；临时监听累计 5 次握手失败、超过 2 分钟或在 Mac 上点「拒绝」都会关闭。
+4. 握手成功后 iPhone 发 `pairExchange(X25519 公钥)`，Mac 回 `pairAccepted(macID, macName, service, identity, 公钥, port)`。两边用 `pairingKey(共享密钥, requestID)` 得到长期密钥，Mac 先把这台设备加进主监听再回复。之后 iPhone 用新密钥照常连接、发 `hello`。
+5. 安全性：猜配对码只能在线一次次握手，5 次即作废；事后抓包暴力破解配对码也算不出长期密钥（它来自 X25519）。
+
+### 二维码
+
+1. Mac 在 设置 › 设备与回传 › 用二维码配对 显示二维码，内容是 `wakeoncue://pair?p=<base64url(JSON)>`，JSON 字段：
 
    | 字段 | 说明 |
    | --- | --- |
@@ -20,7 +32,7 @@
    | `key` | 32 字节随机密钥，base64url |
    | `expires` | 二维码失效时间（5 分钟） |
 
-2. iPhone 扫码后把 `macID`、`identity`、`key` 存进自己的钥匙串，然后连接并发 `hello`。Mac 收到用这个身份发来的第一个 `hello` 就记为已配对，二维码随即作废；之后同一身份和密钥长期有效，直到在 Mac 上取消配对。
+2. iPhone 扫码后先确认，再用二维码里的密钥连接并发 `hello`，收到 `welcome` 后才把 `macID`、`identity`、`key` 存进钥匙串。Mac 收到用这个身份发来的第一个 `hello` 就记为已配对，二维码随即作废；之后同一身份和密钥长期有效，直到在 Mac 上取消配对。
 3. 每台 iPhone 一把独立的密钥。取消配对后，Mac 不再接受这把密钥。
 
 ## 传输层

@@ -5,3 +5,4 @@
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "WakeOnCue 只检查你是否到达或离开你设置的地点，以便在那里开始或结束录音。";
 "NSLocationWhenInUseUsageDescription" = "WakeOnCue 使用你的位置来设置自动开始或结束录音的地点。";
 "NSCalendarsFullAccessUsageDescription" = "WakeOnCue 读取你的日历，用会议名称命名录音，并在会议开始时提醒你。日历数据只保留在这台 iPhone 上。";
+"NSCameraUsageDescription" = "WakeOnCue 只用相机扫描 Mac 上的配对二维码。";

@@ -16,6 +16,7 @@ final class AppModel {
   let asking: Asking
   let voices: Voices
   let sync: SyncServer
+  let pairPanel: PairRequestPanel
   let merger: Merger
   let ui = MainState()
   /// SwiftUI's settings opener, handed over by the main window.
@@ -38,6 +39,7 @@ final class AppModel {
     summaries = Summaries(store: store, preferences: preferences)
     refiner = Refiner(store: store)
     sync = SyncServer(store: store, preferences: preferences)
+    pairPanel = PairRequestPanel(sync: sync)
     merger = Merger(store: store, preferences: preferences, summaries: summaries)
     asking = Asking(store: store, summaries: summaries)
     models = ASRModels(preferences: preferences)
@@ -125,6 +127,8 @@ final class AppModel {
     sync.onMarks = { [weak summaries] marks in
       for day in Set(marks.map { Calendar.current.startOfDay(for: $0.start) }) { summaries?.redoDay(containing: day) }
     }
+    sync.onPairRequest = { [pairPanel] in pairPanel.update($0) }
+    sync.onPaired = { device, byCode in if !byCode { PairRequestPanel.notifyPaired(device) } }
     sync.start()
     Task { await merger.mergePending() }
   }

@@ -8,6 +8,7 @@ struct SettingsView: View {
 
   var body: some View {
     @Bindable var settings = model.settings
+    @Bindable var macPairing = model.macUploader.flow
     NavigationStack {
       Form {
         Section {
@@ -219,6 +220,10 @@ struct SettingsView: View {
       .navigationBarTitleDisplayMode(.inline)
       .sheet(isPresented: $isActionButtonSetupPresented) {
         ActionButtonSetupView()
+      }
+      .sheet(isPresented: $macPairing.presented, onDismiss: { macPairing.dismissed() }) {
+        ConnectMacView(flow: macPairing, currentMac: model.macUploader.pairing?.macName)
+          .environment(\.locale, model.settings.language.locale)
       }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {

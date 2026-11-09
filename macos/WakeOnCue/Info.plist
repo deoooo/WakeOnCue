@@ -34,6 +34,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_wakeoncue._tcp</string>
+		<string>_wakeoncue-pair._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。</string>

@@ -97,6 +97,7 @@ targets:
         NSLocalNetworkUsageDescription: WakeOnCue 通过本地网络接收已配对 iPhone 转来的手表和 iPhone 录音，数据用配对时的密钥加密，不经过互联网。
         NSBonjourServices:
           - _wakeoncue._tcp
+          - _wakeoncue-pair._tcp
         # The summary gateway may be on the local network over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
