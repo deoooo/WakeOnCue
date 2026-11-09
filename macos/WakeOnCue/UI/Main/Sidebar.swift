@@ -37,6 +37,9 @@ struct Sidebar: View {
           }
           .help("这台 Mac：\(status.text)")
           .accessibilityLabel("这台 Mac：\(status.text)")
+        // Refreshed every minute: a phone's dot turns grey once it has not connected for a while.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+        HStack(spacing: 8) {
         ForEach(model.deviceStatuses) { device in
           Button { model.showSettings(.devices) } label: {
             Image(systemName: device.symbol)
@@ -51,6 +54,8 @@ struct Sidebar: View {
           .buttonStyle(.borderless)
           .help(device.text)
           .accessibilityLabel(device.text)
+        }
+        }
         }
         .padding(.leading, 6)
         Spacer()

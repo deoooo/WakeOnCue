@@ -112,8 +112,11 @@ extension AppModel {
         text = transfer.map { "正在接收 \(TimeText.bytes($0.received)) / \(TimeText.bytes($0.total))" } ?? "已连接"
         dot = Light.working
       } else if let lastSeen = device.lastSeen {
-        text = "未连接，上次连接 \(TimeText.relativeDay(lastSeen)) \(TimeText.clock(lastSeen))"
-        dot = Light.idle
+        // A phone connects only to hand over what is waiting, then hangs up: recently seen is
+        // as good as connected.
+        let recent = Date.now.timeIntervalSince(lastSeen) < 30 * 60
+        text = (recent ? "正常，" : "有一阵没连上了，") + "上次连接 \(TimeText.relativeDay(lastSeen)) \(TimeText.clock(lastSeen))"
+        dot = recent ? Light.working : Light.idle
       } else {
         text = "已配对，但还没有连接过"
         dot = Light.attention
