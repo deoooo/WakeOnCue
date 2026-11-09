@@ -34,6 +34,8 @@ final class SyncServer {
   @ObservationIgnored private let preferences: Preferences
   @ObservationIgnored private var listener: NWListener?
   @ObservationIgnored private var listenerReady = false
+  /// Restarts in a row that failed, e.g. while the previous listener still held the port.
+  @ObservationIgnored private var listenerRetries = 0
   /// Answers `pairRequest` with its public key; nothing else is served there.
   @ObservationIgnored private var pairListener: NWListener?
   /// Takes only the key derived from the code on screen.
@@ -96,6 +98,8 @@ final class SyncServer {
     var keys = devices.map { ($0.id, $0.key) }
     if let open = PairingKeychain.invitation { keys.append((open.identity, open.key)) }
     let parameters = SyncProtocol.parameters(keys: keys)
+    // The listener is rebuilt whenever keys change; the one just cancelled may still hold the port.
+    parameters.allowLocalEndpointReuse = true
     let saved = UInt16(UserDefaults.standard.integer(forKey: "syncPort"))
     let listener: NWListener
     do {
@@ -117,11 +121,24 @@ final class SyncServer {
         case .ready:
           self.port = listener.port?.rawValue
           self.listenerReady = true
+          self.listenerRetries = 0
           if let port = self.port { UserDefaults.standard.set(Int(port), forKey: "syncPort") }
           self.issue = nil
         case .failed(let error):
-          self.issue = "本地网络监听失败：\(error.localizedDescription)"
           Self.logger.error("Listener failed: \(error.localizedDescription, privacy: .public)")
+          // Try again shortly; after a few failures give up the saved port and take any free one
+          // (phones find the Mac by its Bonjour name).
+          guard self.listenerRetries < 6 else {
+            self.issue = "本地网络监听失败：\(error.localizedDescription)"
+            return
+          }
+          self.listenerRetries += 1
+          if self.listenerRetries >= 3 { UserDefaults.standard.removeObject(forKey: "syncPort") }
+          Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard listener === self.listener else { return }
+            self.restartListener()
+          }
         default: break
         }
       }
@@ -287,6 +304,8 @@ final class SyncServer {
       let device = PairedDevice(
         id: String(identity), name: request.deviceName, key: SyncProtocol.pairingKey(secret, requestID: requestID),
         pairedAt: .now, lastSeen: nil)
+      // A pairing from the same phone that never got as far as connecting is a leftover.
+      devices.removeAll { $0.name == request.deviceName && $0.lastSeen == nil }
       devices.append(device)
       PairingKeychain.devices = devices
       codeListener?.cancel()
@@ -297,7 +316,7 @@ final class SyncServer {
       setPairRequest(paired)
       // The phone connects with its new key right away: the listener must already take it.
       restartListener()
-      for _ in 0..<40 where !listenerReady { try? await Task.sleep(for: .milliseconds(50)) }
+      for _ in 0..<100 where !listenerReady { try? await Task.sleep(for: .milliseconds(50)) }
       try? await channel.send(.pairAccepted(
         macID: PairingKeychain.macID, macName: Self.macName, service: Self.macName, identity: String(identity),
         publicKey: ours.publicKey.rawRepresentation, port: port ?? 0))
