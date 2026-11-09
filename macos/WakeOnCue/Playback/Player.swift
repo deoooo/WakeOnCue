@@ -20,12 +20,19 @@ final class Player {
   private(set) var positionHour: Date?
   private(set) var sourceLabel = ""
   var rate: Float = 1 {
-    didSet { for player in players { player.rate = rate } }
+    didSet { for track in tracks { track.player.rate = rate } }
+  }
+
+  /// A player plus the wall-clock span it covers. The span comes from the database, which counts
+  /// recorded samples; `AVAudioPlayer.duration` is an estimate for ADTS AAC and can be 8–19% short.
+  private struct Track {
+    let player: AVAudioPlayer
+    let segment: AudioSegment
+    let duration: TimeInterval
   }
 
   @ObservationIgnored private let store: Store
-  @ObservationIgnored private var players: [AVAudioPlayer] = []
-  @ObservationIgnored private var playing: [AudioSegment] = []
+  @ObservationIgnored private var tracks: [Track] = []
   @ObservationIgnored private var ticker: Task<Void, Never>?
 
   init(store: Store) {
@@ -51,7 +58,7 @@ final class Player {
     let atStart = segments.filter { $0.start <= start.addingTimeInterval(0.5) && $0.end > start }
     let local = atStart.filter { $0.channel != .remote }
     let current = local.isEmpty ? Array(atStart.filter { $0.channel == .remote }.prefix(1)) : local
-    var started: [AVAudioPlayer] = []
+    var started: [Track] = []
     let deviceTime = current.isEmpty ? 0 : (try? AVAudioPlayer(contentsOf: url(of: current[0])))?.deviceCurrentTime ?? 0
     for segment in current {
       guard let player = try? AVAudioPlayer(contentsOf: url(of: segment)) else { continue }
@@ -59,18 +66,20 @@ final class Player {
       player.rate = rate
       player.currentTime = max(0, start.timeIntervalSince(segment.start))
       player.prepareToPlay()
-      started.append(player)
+      started.append(Track(
+        player: player,
+        segment: segment,
+        duration: max(0.05, segment.end.timeIntervalSince(segment.start))))
     }
     guard !started.isEmpty else {
       isPlaying = false
       return
     }
-    let at = (started.first?.deviceCurrentTime ?? deviceTime) + 0.05
-    for player in started { player.play(atTime: at) }
-    players = started
-    playing = current
+    let at = (started.first?.player.deviceCurrentTime ?? deviceTime) + 0.05
+    for track in started { track.player.play(atTime: at) }
+    tracks = started
     position = start
-    sourceLabel = Self.label(for: current)
+    sourceLabel = Self.label(for: started.map(\.segment))
     isPlaying = true
     startTicker()
   }
@@ -84,7 +93,7 @@ final class Player {
   }
 
   func pause() {
-    for player in players { player.pause() }
+    for track in tracks { track.player.pause() }
     isPlaying = false
     ticker?.cancel()
     ticker = nil
@@ -108,9 +117,8 @@ final class Player {
   private func stopPlayers() {
     ticker?.cancel()
     ticker = nil
-    for player in players { player.stop() }
-    players = []
-    playing = []
+    for track in tracks { track.player.stop() }
+    tracks = []
   }
 
   private func url(of segment: AudioSegment) -> URL {
@@ -129,17 +137,20 @@ final class Player {
   }
 
   private func tick() {
-    guard isPlaying, let lead = players.first, let segment = playing.first else { return }
-    let now = segment.start.addingTimeInterval(lead.currentTime)
+    guard isPlaying, let track = tracks.first else { return }
+    let player = track.player
+    let segment = track.segment
+    let now = segment.start.addingTimeInterval(player.currentTime)
     position = now
     if store.marks(overlapping: DateInterval(start: now, duration: 1)).contains(where: { $0.covers(now) }) {
       play(from: now)
       return
     }
-    // Move on when the lead file ends, or when another channel's segment starts.
-    let ended = !lead.isPlaying || lead.currentTime >= lead.duration - 0.05
+    // Move on when the lead file ends, or when another channel's segment starts. Use the span
+    // recorded in the database, not `player.duration`: for ADTS AAC that estimate is too short.
+    let ended = !player.isPlaying || player.currentTime >= track.duration - 0.05
     let next = store.segments(overlapping: DateInterval(start: now, duration: 1))
-    let changed = Set(next.map(\.id)) != Set(playing.map(\.id))
+    let changed = Set(next.map(\.id)) != Set(tracks.map { $0.segment.id })
     if ended {
       play(from: segment.end)
     } else if changed, next.contains(where: { $0.start > segment.start }) {
