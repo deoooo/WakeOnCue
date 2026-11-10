@@ -102,12 +102,11 @@ final class AppModel {
   /// Changes when recordings leave or return to the library, or their titles change.
   private(set) var libraryVersion = 0
   var errorMessage: String?
+  var selectedTab = AppTab.review
   var settingsPresented = false
   var shareItem: RecordingShareItem?
 
   let settings: AppSettings
-  let places = PlaceAutomation()
-  let meetings = CalendarAutomation()
   @ObservationIgnored var processingServices: RecordingProcessingServices
 
   @ObservationIgnored private let fileLayout: RecordingFileLayout
@@ -166,38 +165,6 @@ final class AppModel {
       }
     )
     PhoneWatchBridge.shared.activate()
-    places.onTrigger = { [weak self] action, place, arrived in
-      await self?.handlePlace(action, at: place, arrived: arrived)
-    }
-    places.onStartRequested = { [weak self] in
-      guard let self else { return }
-      await self.start()
-      if self.currentRecording == nil { await self.startRecording() }
-    }
-    places.start()
-    meetings.onStartRequested = places.onStartRequested
-    meetings.start()
-  }
-
-  private func handlePlace(
-    _ action: PlaceTriggerAction, at place: RecordingPlace, arrived: Bool
-  ) async {
-    await start()
-    switch action {
-    case .none:
-      return
-    case .start:
-      guard currentRecording == nil else { return }
-      if UIApplication.shared.applicationState == .active {
-        await startRecording()
-      } else {
-        await places.postStartPrompt(for: place)
-      }
-    case .finish:
-      guard currentRecording != nil else { return }
-      await finishRecording()
-      await places.postFinishedNotice(for: place, arrived: arrived)
-    }
   }
 
   static func bootstrap() -> AppModel {
@@ -258,6 +225,11 @@ final class AppModel {
     try? await library.backfillSummaryDetails()
     await refresh()
     libraryVersion += 1
+  }
+
+  /// Recordings that started within `interval`, newest first, for the Review tab.
+  func recordings(startedIn interval: DateInterval) async throws -> [RecordingRecord] {
+    try await library.recordings(startedIn: interval)
   }
 
   func requestMicrophonePermission() async -> Bool {
@@ -321,10 +293,6 @@ final class AppModel {
       consumeChunks(from: capture, recordingID: recordingID)
       publishSharedState(isRecording: true, isPaused: false, recordingID: recordingID)
       await liveActivity.start(recording: recording)
-      let meetingMetadata = meetings.recordingMetadata(startingAt: now)
-      if !meetingMetadata.isEmpty {
-        _ = try? await store.updateRecordingMetadata(recordingID: recordingID, values: meetingMetadata)
-      }
       await refresh()
       writeStartupDiagnostic("PASS | recording_id=\(recordingID)")
     } catch {
@@ -583,15 +551,6 @@ final class AppModel {
     }
   }
 
-  /// Recordings whose audio only exists in S3 can no longer be played after this.
-  func forgetLegacyS3Storage() {
-    do {
-      try settings.forgetLegacyS3Storage()
-    } catch {
-      errorMessage = error.localizedDescription
-    }
-  }
-
   func cancelSettings() {
     guard !isSavingSettings else { return }
     settings.restorePersistedSettings()
@@ -656,8 +615,7 @@ final class AppModel {
       let chunks = try await store.chunks(recordingID: recording.id)
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
         for: recording,
-        chunks: chunks,
-        s3Configuration: await s3Configuration(for: recording)
+        chunks: chunks
       )
       // Preparing can take a while, and a download can outlast the screen that asked for it.
       guard await !isRecordingDeleted(recording.id) else { return }
@@ -708,8 +666,7 @@ final class AppModel {
       let chunks = try await store.chunks(recordingID: recording.id)
       let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
         for: recording,
-        chunks: chunks,
-        s3Configuration: await s3Configuration(for: recording)
+        chunks: chunks
       )
       guard await !isRecordingDeleted(recording.id) else { return }
       shareItem = RecordingShareItem(url: file)
@@ -723,21 +680,7 @@ final class AppModel {
 
   func transcript(for recordingID: String) async throws -> [RealtimeTranscriptEvent] {
     let url = try fileLayout.transcriptURL(recordingID: recordingID)
-    if !FileManager.default.fileExists(atPath: url.path) {
-      let recording = try await store.recording(id: recordingID)
-      guard recording.uploadStatus == .completed,
-        let configuration = await s3Configuration(for: recording)
-      else { return [] }
-      do {
-        _ = try await S3StorageClient.downloadTranscript(
-          recordingID: recordingID,
-          configuration: configuration,
-          destinationURL: url
-        )
-      } catch S3StorageError.notFound {
-        return []
-      }
-    }
+    guard FileManager.default.fileExists(atPath: url.path) else { return [] }
     let segments = try JSONDecoder().decode(
       [RealtimeTranscriptEvent].self,
       from: Data(contentsOf: url)
@@ -770,8 +713,7 @@ final class AppModel {
         try await stopIfDeleted(recordingID: recording.id)
         let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
           for: recording,
-          chunks: try await store.chunks(recordingID: recording.id),
-          s3Configuration: await s3Configuration(for: recording)
+          chunks: try await store.chunks(recordingID: recording.id)
         )
         try await stopIfDeleted(recordingID: recording.id)
         let segments = try await processingServices.transcribe(file, recording.id)
@@ -1142,8 +1084,7 @@ final class AppModel {
           } else {
             file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
               for: recording,
-              chunks: try await store.chunks(recordingID: recording.id),
-              s3Configuration: await s3Configuration(for: recording)
+              chunks: try await store.chunks(recordingID: recording.id)
             )
           }
           try await stopIfDeleted(recordingID: recording.id)
@@ -1240,15 +1181,6 @@ final class AppModel {
     for task in await session.allTasks { task.cancel() }
     session.invalidateAndCancel()
     UserDefaults.standard.set(true, forKey: key)
-  }
-
-  /// Audio an older version already moved to S3 stays reachable; nothing new is uploaded.
-  private func s3Configuration(for recording: RecordingRecord) async -> S3Configuration? {
-    guard let configuration = settings.legacyS3Configuration,
-      configuration.matchesRecordedLocation(recording.metadata),
-      (try? await store.isBackedUpToS3(recordingID: recording.id)) == true
-    else { return nil }
-    return configuration
   }
 
   private func startTimer() {
@@ -1402,6 +1334,12 @@ extension AppModel {
       return WatchBridgeReply(failure: .failed(error.localizedDescription))
     }
   }
+}
+
+enum AppTab: Hashable {
+  case review
+  case record
+  case search
 }
 
 enum RecordingUIError: Error, LocalizedError {

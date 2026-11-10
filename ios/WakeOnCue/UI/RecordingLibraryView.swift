@@ -2,10 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WakeOnCueCore
 
+/// The Search tab: every recording, searched by title and transcript. Submitting a search also
+/// answers it as a question from the matching passages.
 struct RecordingLibraryView: View {
   @Environment(AppModel.self) private var model
-  @State private var isImporting = false
   @State private var showsRecentlyDeleted = false
+  @State private var answer = RecordingAnswerState()
 
   @State private var recordings: [RecordingRecord] = []
   @State private var totalCount = 0
@@ -31,7 +33,11 @@ struct RecordingLibraryView: View {
           Button("Try again") { Task { await reload() } }
         }
       } else if recordings.isEmpty {
-        VStack {
+        List {
+          if !query.isEmpty, answer.question != nil {
+            RecordingAnswerSection(state: answer)
+          }
+          Group {
           if query.isEmpty {
             ContentUnavailableView("No recordings yet", systemImage: "waveform")
           } else {
@@ -40,9 +46,15 @@ struct RecordingLibraryView: View {
           if let searchCoverage {
             Text(searchCoverage).font(.footnote).foregroundStyle(.secondary).padding()
           }
+          }
+          .listRowBackground(Color.clear)
         }
+        .listStyle(.insetGrouped)
       } else {
         List {
+          if !query.isEmpty, answer.question != nil {
+            RecordingAnswerSection(state: answer)
+          }
           if let searchCoverage, !query.isEmpty {
             Text(searchCoverage)
               .font(.caption)
@@ -56,6 +68,7 @@ struct RecordingLibraryView: View {
               .foregroundStyle(.orange)
           }
 
+          Section(query.isEmpty ? "All recordings" : "Recordings") {
           ForEach(recordings) { recording in
             recordingRow(recording)
           }
@@ -72,31 +85,17 @@ struct RecordingLibraryView: View {
             }
             .disabled(isLoading)
           }
+          }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
       }
     }
-    .background(Color(uiColor: .systemBackground))
-    .navigationTitle("All recordings")
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar(.visible, for: .navigationBar)
+    .background(Color(uiColor: .systemGroupedBackground))
+    .navigationTitle("Search")
+    .navigationBarTitleDisplayMode(.large)
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        NavigationLink {
-          AskRecordingsView().environment(model)
-        } label: {
-          Label("Ask recordings", systemImage: "text.bubble")
-        }
-        .accessibilityIdentifier("ask-recordings-link")
-      }
-      ToolbarItem(placement: .primaryAction) {
         Menu {
-          Button {
-            isImporting = true
-          } label: {
-            Label("Import audio", systemImage: "square.and.arrow.down")
-          }
-          .accessibilityIdentifier("import-audio")
           Button {
             showsRecentlyDeleted = true
           } label: {
@@ -112,18 +111,9 @@ struct RecordingLibraryView: View {
     .navigationDestination(isPresented: $showsRecentlyDeleted) {
       RecentlyDeletedView().environment(model)
     }
-    .fileImporter(
-      isPresented: $isImporting,
-      allowedContentTypes: [.audio],
-      allowsMultipleSelection: true
-    ) { result in
-      guard case .success(let urls) = result else { return }
-      Task {
-        await model.importAudioFiles(urls)
-        await reload()
-      }
-    }
-    .searchable(text: $query, prompt: "Search titles and local transcripts")
+    .searchable(text: $query, prompt: "Search or ask a question")
+    .onSubmit(of: .search) { answer.ask(query, model: model) }
+    .onChange(of: query) { if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { answer.clear() } }
     .accessibilityIdentifier("recording-library")
     .task(id: "\(query)-\(model.libraryVersion)") {
       do {
@@ -310,12 +300,7 @@ struct RecentlyDeletedView: View {
               row(recording)
             }
           } footer: {
-            VStack(alignment: .leading, spacing: 6) {
-              Text("Recordings stay here for 30 days, then are permanently deleted.")
-              if model.settings.hasLegacyS3Credentials {
-                Text("Copies backed up to S3 earlier stay in your bucket.")
-              }
-            }
+            Text("Recordings stay here for 30 days, then are permanently deleted.")
           }
         }
       }

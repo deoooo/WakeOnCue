@@ -8,9 +8,7 @@ final class RecordingStartupUITests: XCTestCase {
     app.launchEnvironment["WAKEONCUE_UI_TEST_LANGUAGE"] = "en"
     app.launch()
 
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
@@ -19,8 +17,7 @@ final class RecordingStartupUITests: XCTestCase {
     XCTAssertTrue(detailLink.waitForExistence(timeout: 20), "No recording detail link is visible")
     detailLink.tap()
 
-    XCTAssertTrue(app.navigationBars["Recording details"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Transcript"].waitForExistence(timeout: 5))
+    app.openTranscriptPage()
     XCTAssertTrue(
       app.sliders["recording-playback-slider"].waitForExistence(timeout: 5),
       "The recording detail did not show a seekable playback timeline"
@@ -40,14 +37,17 @@ final class RecordingStartupUITests: XCTestCase {
     app.launchEnvironment["WAKEONCUE_UI_TEST_LANGUAGE"] = "zh-Hans"
     app.launch()
 
-    XCTAssertTrue(app.staticTexts["不错过每次会议"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["最近的录音"].exists)
+    XCTAssertTrue(app.tabBars.buttons["回顾"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.tabBars.buttons["录音"].exists)
 
     let settings = app.buttons["设置"]
     XCTAssertTrue(settings.waitForExistence(timeout: 10), "Chinese settings control is missing")
     settings.tap()
 
-    XCTAssertTrue(app.staticTexts["语言"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+    let languageSection = app.staticTexts["语言"]
+    for _ in 0..<6 where !languageSection.exists { app.swipeUp() }
+    XCTAssertTrue(languageSection.exists)
     let appLanguagePicker = app.descendants(matching: .any).matching(
       NSPredicate(format: "label BEGINSWITH '应用语言'")
     ).firstMatch
@@ -55,8 +55,8 @@ final class RecordingStartupUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["设置"].exists)
 
     let transcriptionSection = app.staticTexts["录音后转写"]
-    for _ in 0..<4 where !transcriptionSection.exists {
-      app.swipeUp()
+    for _ in 0..<6 where !transcriptionSection.exists {
+      app.swipeDown()
     }
     XCTAssertTrue(transcriptionSection.exists, "Transcription settings are not fully localized")
   }
@@ -71,10 +71,7 @@ final class RecordingStartupUITests: XCTestCase {
     XCTAssertTrue(settings.waitForExistence(timeout: 10), "Settings control is missing")
     settings.tap()
 
-    XCTAssertTrue(
-      app.staticTexts["Language"].waitForExistence(timeout: 5),
-      "Language selector should be the first settings section"
-    )
+    XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
 
     let setup = app.buttons["Set Up Action Button, Start recording with one press"]
     for _ in 0..<6 where !setup.isHittable {
@@ -107,9 +104,8 @@ final class RecordingStartupUITests: XCTestCase {
     app.launchEnvironment["WAKEONCUE_TEST_AUDIO_FIXTURE_FILENAME"] = "experience-input.m4a"
 
     addUIInterruptionMonitor(withDescription: "Recording permissions") { alert in
-      let allowButton = alert.buttons["Allow"]
-      if allowButton.exists {
-        allowButton.tap()
+      for title in ["Allow", "允许"] where alert.buttons[title].exists {
+        alert.buttons[title].tap()
         return true
       }
       let allowWhileUsingButton = alert.buttons["Allow While Using App"]
@@ -122,12 +118,13 @@ final class RecordingStartupUITests: XCTestCase {
 
     app.launch()
 
+    app.openTab("Record")
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 10), "Start recording control is missing")
     start.tap()
     app.tap()
 
-    let recordingStatus = app.staticTexts["Recording status: Recording"]
+    let recordingStatus = app.descendants(matching: .any)["recording-status"]
     if !recordingStatus.waitForExistence(timeout: 5) {
       let alert = app.alerts.firstMatch
       if alert.exists {
@@ -154,6 +151,7 @@ final class RecordingStartupUITests: XCTestCase {
   @MainActor
   func testFinishingImmediatelyDoesNotGetStuck() throws {
     let app = launchForRecording()
+    app.openTab("Record")
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 10), "Start recording control is missing")
     start.tap()
@@ -181,14 +179,13 @@ final class RecordingStartupUITests: XCTestCase {
   @MainActor
   func testPlaybackDoesNotInterruptRecording() throws {
     let app = launchForRecording()
+    app.openTab("Record")
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 10), "Start recording control is missing")
     start.tap()
     app.tap()
 
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 10))
-    library.tap()
+    app.openTab("Search")
     // The first row is the recording in progress, so the second is one that can be played.
     let recording = app.buttons.matching(
       NSPredicate(format: "identifier BEGINSWITH 'library-recording-'")
@@ -207,8 +204,7 @@ final class RecordingStartupUITests: XCTestCase {
       alert.staticTexts["Finish the current recording before playing another one."].exists)
     alert.buttons.firstMatch.tap()
 
-    app.navigationBars.buttons.firstMatch.tap()
-    app.navigationBars.buttons.firstMatch.tap()
+    app.openTab("Record")
     let finish = app.buttons["finish-recording"]
     XCTAssertTrue(finish.waitForExistence(timeout: 5))
     finish.tap()
@@ -222,7 +218,7 @@ final class RecordingStartupUITests: XCTestCase {
     app.launchEnvironment["WAKEONCUE_EXPERIENCE_FIXTURES"] = "1"
     app.launchEnvironment["WAKEONCUE_TEST_AUDIO_FIXTURE_FILENAME"] = "experience-input.m4a"
     addUIInterruptionMonitor(withDescription: "Recording permissions") { alert in
-      for title in ["Allow", "Allow While Using App"] where alert.buttons[title].exists {
+      for title in ["Allow", "Allow While Using App", "允许"] where alert.buttons[title].exists {
         alert.buttons[title].tap()
         return true
       }

@@ -8,7 +8,7 @@ struct WakeOnCueApp: App {
 
   var body: some Scene {
     WindowGroup {
-      ContentView()
+      RootView()
         .environment(model)
         .preferredColorScheme(model.settings.appearance.colorScheme)
         .task {

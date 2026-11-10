@@ -45,14 +45,12 @@
 		<string>_wakeoncue._tcp</string>
 		<string>_wakeoncue-pair._tcp</string>
 	</array>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>WakeOnCue uses the camera only to scan the pairing code shown on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>WakeOnCue connects to the transcription or AI service you configure on your local network, and forwards Watch and iPhone recordings to your paired Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>WakeOnCue needs microphone access to record meetings you explicitly start.</string>
+	<string>WakeOnCue needs microphone access to record the conversations you start.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

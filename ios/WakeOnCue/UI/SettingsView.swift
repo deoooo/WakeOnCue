@@ -4,59 +4,13 @@ import SwiftUI
 struct SettingsView: View {
   @Environment(AppModel.self) private var model
   @State private var isActionButtonSetupPresented = false
-  @State private var isForgetS3Presented = false
 
   var body: some View {
     @Bindable var settings = model.settings
     @Bindable var macPairing = model.macUploader.flow
     NavigationStack {
       Form {
-        Section {
-          Picker("App language", selection: $settings.language) {
-            ForEach(AppLanguage.allCases) { language in
-              Text(language.title).tag(language)
-            }
-          }
-        } header: {
-          Text("Language")
-        } footer: {
-          Text("The app follows your iPhone language until you choose a language here.")
-        }
-
-        Section {
-          Picker("Appearance", selection: $settings.appearance) {
-            ForEach(AppAppearance.allCases) { appearance in
-              Text(appearance.title).tag(appearance)
-            }
-          }
-          .accessibilityIdentifier("settings.appearance")
-        } header: {
-          Text("Appearance")
-        } footer: {
-          Text("Follow System updates automatically when your iPhone changes between Light and Dark Mode.")
-        }
-
-        if settings.hasLegacyS3Credentials {
-          Section {
-            Button("Forget S3 credentials", role: .destructive) {
-              isForgetS3Presented = true
-            }
-            .accessibilityIdentifier("settings.storage.forget-s3")
-          } header: {
-            Text("Earlier S3 backups")
-          } footer: {
-            Text(
-              "New recordings stay on this iPhone. Recordings backed up earlier still download from S3 when you open them, using the credentials saved on this iPhone."
-            )
-          }
-          .confirmationDialog(
-            "Forget S3 credentials?", isPresented: $isForgetS3Presented, titleVisibility: .visible
-          ) {
-            Button("Forget S3 credentials", role: .destructive) { model.forgetLegacyS3Storage() }
-          } message: {
-            Text("Recordings whose audio is only in S3 will no longer open on this iPhone.")
-          }
-        }
+        MacLinkSettingsSection()
 
         Section {
           Picker(
@@ -133,25 +87,6 @@ struct SettingsView: View {
           }
         }
 
-        Section {
-          NavigationLink {
-            PlacesView()
-          } label: {
-            LabeledContent {
-              Text("\(model.places.places.count)")
-            } label: {
-              Label("Places", systemImage: "mappin.and.ellipse")
-            }
-          }
-          .accessibilityIdentifier("settings.places")
-        } footer: {
-          Text("Start or finish recording when you arrive at or leave a place.")
-        }
-
-        CalendarSettingsSection()
-
-        MacLinkSettingsSection()
-
         if let message = model.settingsStatusMessage {
           Section {
             Label(
@@ -162,6 +97,31 @@ struct SettingsView: View {
             .font(.footnote)
             .foregroundStyle(model.settingsStatusIsError ? .orange : .green)
           }
+        }
+
+        Section {
+          Picker("App language", selection: $settings.language) {
+            ForEach(AppLanguage.allCases) { language in
+              Text(language.title).tag(language)
+            }
+          }
+        } header: {
+          Text("Language")
+        } footer: {
+          Text("The app follows your iPhone language until you choose a language here.")
+        }
+
+        Section {
+          Picker("Appearance", selection: $settings.appearance) {
+            ForEach(AppAppearance.allCases) { appearance in
+              Text(appearance.title).tag(appearance)
+            }
+          }
+          .accessibilityIdentifier("settings.appearance")
+        } header: {
+          Text("Appearance")
+        } footer: {
+          Text("Follow System updates automatically when your iPhone changes between Light and Dark Mode.")
         }
 
         Section {

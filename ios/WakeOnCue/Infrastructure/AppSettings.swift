@@ -33,15 +33,6 @@ enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 @Observable
 final class AppSettings {
-  private static let endpointKey = "recording-storage.s3.endpoint"
-  private static let regionKey = "recording-storage.s3.region"
-  private static let bucketKey = "recording-storage.s3.bucket"
-  private static let prefixKey = "recording-storage.s3.prefix"
-  private static let forcePathStyleKey = "recording-storage.s3.force-path-style"
-  private static let keychainService = "com.deoooo.WakeOnCue.s3"
-  private static let accessKeyAccount = "access-key-id"
-  private static let secretKeyAccount = "secret-access-key"
-  private static let sessionTokenAccount = "session-token"
   static let spokenLanguageKey = "realtime-processing.spoken-language"
   private static let retiredRealtimeServiceKey = "realtime-processing.retired"
   private static let realtimeKeychainService = "com.deoooo.WakeOnCue.realtime"
@@ -80,8 +71,6 @@ final class AppSettings {
   /// The saved services in use; nil means Apple's on-device frameworks.
   private(set) var activeSpeechEndpoint: ThirdPartyEndpoint?
   private(set) var activeLanguageModelProvider: LanguageModelProvider?
-  /// S3 credentials saved by an older version, kept to reach recordings already backed up.
-  private(set) var hasLegacyS3Credentials = false
   /// Names of people an older version recognized, so old transcripts keep showing them.
   private var rememberedVoiceNames: [String: String] = [:]
 
@@ -269,7 +258,6 @@ final class AppSettings {
   }
 
   func restorePersistedSettings() {
-    hasLegacyS3Credentials = storedCredentials() != nil
     spokenLanguage = SpokenLanguage(
       rawValue: UserDefaults.standard.string(forKey: Self.spokenLanguageKey) ?? ""
     ) ?? .automatic
@@ -277,44 +265,6 @@ final class AppSettings {
       (try? KeychainStore.read(service: Self.realtimeKeychainService, account: Self.voiceNamesAccount))
       .flatMap { try? JSONDecoder().decode([String: String].self, from: Data($0.utf8)) } ?? [:]
     restorePersistedAIProviders()
-  }
-
-  var legacyS3Configuration: S3Configuration? {
-    let defaults = UserDefaults.standard
-    guard let credentials = storedCredentials() else { return nil }
-    let endpoint = (defaults.string(forKey: Self.endpointKey)).flatMap { URL(string: $0) }
-    return S3Configuration(
-      endpointURL: endpoint?.host == nil ? nil : endpoint,
-      region: defaults.string(forKey: Self.regionKey) ?? "us-east-1",
-      bucket: defaults.string(forKey: Self.bucketKey) ?? "",
-      prefix: defaults.string(forKey: Self.prefixKey) ?? "wakeoncue",
-      accessKeyID: credentials.accessKey,
-      secretAccessKey: credentials.secretKey,
-      sessionToken: credentials.sessionToken,
-      forcePathStyle: defaults.bool(forKey: Self.forcePathStyleKey)
-    )
-  }
-
-  func forgetLegacyS3Storage() throws {
-    for account in [Self.accessKeyAccount, Self.secretKeyAccount, Self.sessionTokenAccount] {
-      try KeychainStore.delete(service: Self.keychainService, account: account)
-    }
-    hasLegacyS3Credentials = false
-  }
-
-  private func storedCredentials() -> (accessKey: String, secretKey: String, sessionToken: String?)?
-  {
-    guard
-      let accessKey = try? KeychainStore.read(
-        service: Self.keychainService, account: Self.accessKeyAccount),
-      !accessKey.isEmpty,
-      let secretKey = try? KeychainStore.read(
-        service: Self.keychainService, account: Self.secretKeyAccount),
-      !secretKey.isEmpty
-    else { return nil }
-    let token = try? KeychainStore.read(
-      service: Self.keychainService, account: Self.sessionTokenAccount)
-    return (accessKey, secretKey, token?.isEmpty == false ? token : nil)
   }
 }
 

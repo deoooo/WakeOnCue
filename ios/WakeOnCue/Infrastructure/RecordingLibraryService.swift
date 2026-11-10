@@ -37,6 +37,28 @@ actor RecordingLibraryService {
     try await store.recordings(limit: limit, offset: offset)
   }
 
+  /// Recordings that started within `interval`, newest first. The store lists recordings by when
+  /// they were saved, which is never before they started, so paging stops once a page reaches
+  /// recordings saved before the interval.
+  func recordings(startedIn interval: DateInterval, pageSize: Int = 100) async throws
+    -> [RecordingRecord]
+  {
+    let safePageSize = max(1, pageSize)
+    var result: [RecordingRecord] = []
+    var offset = 0
+    while true {
+      try Task.checkCancellation()
+      let page = try await store.recordings(limit: safePageSize, offset: offset)
+      // The end is exclusive: a recording starting at midnight belongs to the next day only.
+      result.append(
+        contentsOf: page.filter { $0.startedAt >= interval.start && $0.startedAt < interval.end })
+      guard page.count == safePageSize, let last = page.last, last.createdAt >= interval.start
+      else { break }
+      offset += safePageSize
+    }
+    return result.sorted { $0.startedAt > $1.startedAt }
+  }
+
   func count() async throws -> Int {
     try await store.recordingCount()
   }

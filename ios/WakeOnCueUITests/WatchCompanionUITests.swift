@@ -19,6 +19,7 @@ final class WatchCompanionUITests: XCTestCase {
       finish.tap()
       if saveLocally.waitForExistence(timeout: 5) { saveLocally.tap() }
     }
+    app.openTab("Record", timeout: 5)
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 15))
     start.tap()

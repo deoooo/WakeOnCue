@@ -1,6 +1,3 @@
 
 
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "WakeOnCue checks only whether you arrive at or leave the places you set, to start or finish recording there.";
-"NSLocationWhenInUseUsageDescription" = "WakeOnCue uses your location to set up places that start or finish recording.";
-"NSCalendarsFullAccessUsageDescription" = "WakeOnCue reads your calendar to name recordings after the meeting they capture and to remind you when a meeting starts. Calendar data stays on this iPhone.";
 "NSCameraUsageDescription" = "WakeOnCue uses the camera only to scan the pairing code shown on your Mac.";

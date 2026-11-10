@@ -29,9 +29,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testCompleteLibrarySearchFindsOlderTranscript() throws {
     let app = launch()
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
@@ -45,17 +43,16 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testIdleDoesNotClaimAnActiveRecordingWasSaved() throws {
     let app = launch()
+    app.openTab("Record")
     XCTAssertTrue(app.buttons["start-recording"].waitForExistence(timeout: 25))
-    XCTAssertTrue(app.staticTexts["Recordings save on this iPhone"].exists)
+    XCTAssertTrue(app.staticTexts["Tap to start recording"].exists)
     XCTAssertFalse(app.otherElements["capture-feedback"].exists)
   }
 
   @MainActor
   func testRenamePersistsAndSearchFindsNewTitleAfterRelaunch() throws {
     let app = launch()
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
@@ -63,6 +60,9 @@ final class ProductExperienceUITests: XCTestCase {
     let result = app.buttons["library-recording-experience-12"]
     XCTAssertTrue(result.waitForExistence(timeout: 15))
     result.tap()
+    let more = app.buttons["more-recording-actions"]
+    XCTAssertTrue(more.waitForExistence(timeout: 10))
+    more.tap()
     let edit = app.buttons["edit-recording-title"]
     XCTAssertTrue(edit.waitForExistence(timeout: 10))
     edit.tap()
@@ -77,8 +77,7 @@ final class ProductExperienceUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Persistent Orchid notes"].waitForExistence(timeout: 10))
     app.terminate()
     app.launch()
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
     search.typeText("Persistent Orchid notes")
@@ -88,9 +87,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testReadingTranscriptDoesNotSeekPausedAudio() throws {
     let app = launch()
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
@@ -98,6 +95,7 @@ final class ProductExperienceUITests: XCTestCase {
     let result = app.buttons["library-recording-experience-12"]
     XCTAssertTrue(result.waitForExistence(timeout: 15))
     result.tap()
+    app.openTranscriptPage()
     let play = app.buttons["Play recording"]
     XCTAssertTrue(play.waitForExistence(timeout: 10))
     play.tap()
@@ -121,10 +119,15 @@ final class ProductExperienceUITests: XCTestCase {
   func testRecordingCanFinishAndStartAnotherLocally() throws {
     let app = launch()
     addUIInterruptionMonitor(withDescription: "Microphone permission") { alert in
-      if alert.buttons["Allow"].exists { alert.buttons["Allow"].tap(); return true }
+      // The system alert follows the simulator's language, not the app's.
+      for title in ["Allow", "允许"] where alert.buttons[title].exists {
+        alert.buttons[title].tap()
+        return true
+      }
       if alert.buttons["OK"].exists { alert.buttons["OK"].tap(); return true }
       return false
     }
+    app.openTab("Record")
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 25))
     start.tap()
@@ -144,6 +147,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testChineseLargeTextKeepsPrimaryActionAccessible() throws {
     let app = launch(language: "zh-Hans", largeText: true)
+    app.openTab("录音")
     let start = app.buttons["start-recording"]
     XCTAssertTrue(start.waitForExistence(timeout: 25))
     for _ in 0..<5 where !start.isHittable { app.swipeUp() }
@@ -163,10 +167,12 @@ final class ProductExperienceUITests: XCTestCase {
     app.launchArguments += Self.localTranscriptionService
     app.launch()
 
-    let row = app.buttons["recording-details-experience-01"]
+    app.openTab("Search")
+    let row = app.buttons["library-recording-experience-01"]
     XCTAssertTrue(row.waitForExistence(timeout: 25))
-    for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+    for _ in 0..<6 where !row.isHittable { app.swipeUp() }
     row.tap()
+    app.openTranscriptPage()
 
     let retry = app.buttons["Try again"]
     XCTAssertTrue(retry.waitForExistence(timeout: 10), "A read failure must offer a retry")
@@ -181,9 +187,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testRetranscribingLabeledTranscriptAsksFirst() throws {
     let app = launch(arguments: Self.localTranscriptionService)
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()
@@ -191,6 +195,7 @@ final class ProductExperienceUITests: XCTestCase {
     let result = app.buttons["library-recording-experience-12"]
     XCTAssertTrue(result.waitForExistence(timeout: 15))
     result.tap()
+    app.openTranscriptPage()
     let segment = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH 'recording-transcript-segment-'")
     ).firstMatch
@@ -223,9 +228,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testDeletedRecordingCanBeRecoveredFromRecentlyDeleted() throws {
     let app = launch()
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     // The newest row stays clear of the search bar however many recordings the simulator holds.
     let newest = app.buttons
       .matching(NSPredicate(format: "identifier BEGINSWITH %@", "library-recording-")).firstMatch
@@ -257,9 +260,7 @@ final class ProductExperienceUITests: XCTestCase {
   @MainActor
   func testDetailExplainsWhyNoSummaryIsAvailableAndOpensSettings() throws {
     let app = launch()
-    let library = app.buttons["all-recordings"]
-    XCTAssertTrue(library.waitForExistence(timeout: 25))
-    library.tap()
+    app.openTab("Search")
     let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: 10))
     search.tap()

@@ -36,7 +36,7 @@
 "Resume" = "继续";
 "Finish" = "结束";
 "Start meeting recording" = "开始会议录音";
-"Pause recording" = "暂停录音";
+"Pause recording" = "暂停播放";
 "Play recording" = "播放录音";
 "Share audio file" = "分享音频文件";
 "Save to this iPhone" = "仅保存到本机";
@@ -167,7 +167,7 @@
 "Duration" = "时长";
 "Device" = "录音设备";
 "Share" = "分享";
-"Transcript" = "转写内容";
+"Transcript" = "原文";
 "Back 15 seconds" = "后退 15 秒";
 "Forward 15 seconds" = "前进 15 秒";
 "Play from this transcript position" = "从这段文字对应的录音位置开始播放";
@@ -363,7 +363,7 @@
 
 /* On-device intelligence and import */
 "Transcribe on this iPhone" = "在这台 iPhone 上转写";
-"Summary" = "摘要";
+"Summary" = "总结";
 "Summarize" = "生成摘要";
 "Regenerate" = "重新生成";
 "Key points" = "要点";
@@ -548,3 +548,44 @@
 "Not connected" = "未连接";
 "Not nearby" = "不在附近";
 "Connected" = "已连接";
+
+/* iPhone redesign: Review, Record and Search tabs */
+"Record" = "录音";
+"Search" = "搜索";
+"Choose a date, %@" = "选择日期，%@";
+"Today" = "今天";
+"Date" = "日期";
+"Choose a date" = "选择日期";
+"Recording now" = "正在录音";
+"No recordings today yet" = "今天还没有录音";
+"No recordings this day" = "这一天没有录音";
+"Start one in Record, on your Apple Watch, or with the Action Button." = "到「录音」开始，也可以在 Apple Watch 上或按操作按钮开始。";
+"Go to Record" = "去录音";
+"Conversations" = "对话";
+"%lld conversations · %@" = "%lld 段对话 · %@";
+"To-dos %lld" = "待办 %lld";
+"%lld to-dos" = "%lld 件待办";
+"iPhone" = "iPhone";
+"Apple Watch" = "Apple Watch";
+"Imported" = "导入";
+"%lld sec" = "%lld 秒";
+"%lld min" = "%lld 分钟";
+"%lld hr %lld min" = "%lld 小时 %lld 分";
+"Not done" = "未完成";
+"iPhone microphone" = "iPhone 麦克风";
+"Tap to start recording" = "点一下开始录音";
+"When you finish, it is transcribed and gets a title and a summary." = "录完自动转成文字，生成标题和总结。";
+"You can also start on Apple Watch, the Lock Screen or the Action Button." = "也可以在 Apple Watch、锁屏或操作按钮上开始。";
+"Import audio file" = "导入音频文件";
+"Saved on this iPhone as you record. You can lock the screen." = "边录边保存在这台 iPhone 上，可以锁屏。";
+"View" = "查看";
+"Share audio" = "分享音频";
+"Share summary" = "分享总结";
+"Regenerate summary" = "重新总结";
+"To-dos" = "待办";
+"There is no transcript to summarize yet." = "还没有可以总结的文字。";
+"Answer" = "回答";
+"Search or ask a question" = "搜索或提问";
+"Recordings" = "录音";
+"Review tab" = "回顾";
+"Recording at %@" = "%@ 的录音";

@@ -21,7 +21,7 @@ struct RecordingDetailView: View {
   @State private var activeSegmentID: String?
   @State private var transcriptFollowPolicy = TranscriptFollowPolicy()
   @State private var appliedInitialSeek = false
-  @State private var notesDraft: MeetingNotesDraft?
+  @State private var page = DetailPage.summary
   @State private var isSpokenLanguageSupported = true
 
   private let panel = Color(uiColor: .secondarySystemBackground)
@@ -35,52 +35,59 @@ struct RecordingDetailView: View {
   var body: some View {
     ScrollViewReader { proxy in
       ScrollView(showsIndicators: true) {
-        VStack(alignment: .leading, spacing: 18) {
-          titleSection
-          playbackSection
-          retranscriptionProgress
-          if let meetingLink {
-            LinkedMeetingSection(link: meetingLink)
-              .padding(16)
-              .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        VStack(alignment: .leading, spacing: 16) {
+          header
+          Picker("View", selection: $page) {
+            Text("Summary").tag(DetailPage.summary)
+            Text("Transcript").tag(DetailPage.transcript)
           }
-          summarySection
-          transcriptSection(using: proxy)
-          RecordingOrganizationSection(
-            recording: displayedRecording,
-            transcript: transcript,
-            onSeek: { time in seek(to: time) },
-            onShare: { item in model.shareItem = item }
-          )
-          recordingDetails
+          .pickerStyle(.segmented)
+          .accessibilityIdentifier("detail-page-picker")
+          retranscriptionProgress
+          switch page {
+          case .summary:
+            summarySection
+          case .transcript:
+            transcriptSection(using: proxy)
+            RecordingOrganizationSection(
+              recording: displayedRecording,
+              transcript: transcript,
+              onSeek: { time in page = .transcript; seek(to: time) },
+              onShare: { item in model.shareItem = item }
+            )
+            recordingDetails
+          }
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
         .padding(.bottom, 24)
       }
       .accessibilityIdentifier("transcript-scroll-view")
       .safeAreaInset(edge: .bottom, spacing: 0) {
-        if !transcriptFollowPolicy.isFollowingPlayback,
-          model.playingRecordingID == recording.id, !transcript.isEmpty
-        {
-          Button {
-            let action = transcriptFollowPolicy.handle(.returnToPlayback)
-            performTranscriptFollowAction(action, using: proxy)
-          } label: {
-            Label("Return to playback", systemImage: "scope")
-              .font(.headline)
-              .frame(maxWidth: .infinity, minHeight: 48)
+        VStack(spacing: 8) {
+          if page == .transcript, !transcriptFollowPolicy.isFollowingPlayback,
+            model.playingRecordingID == recording.id, !transcript.isEmpty
+          {
+            Button {
+              let action = transcriptFollowPolicy.handle(.returnToPlayback)
+              performTranscriptFollowAction(action, using: proxy)
+            } label: {
+              Label("Return to playback", systemImage: "scope")
+                .font(.subheadline.weight(.semibold))
+                .frame(minHeight: 36)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("transcript-follow-playback")
           }
-          .buttonStyle(.borderedProminent)
-          .padding(.horizontal, 20)
-          .padding(.vertical, 10)
-          .background(.bar)
-          .accessibilityLabel(model.settings.language.localized("Return to playback"))
-          .accessibilityIdentifier("transcript-follow-playback")
+          playbackSection
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
       }
       .onChange(of: transcriptLoaded) {
         guard transcriptLoaded, let initialSeek, !appliedInitialSeek else { return }
         appliedInitialSeek = true
+        page = .transcript
         seek(to: initialSeek)
         if let activeSegmentID { proxy.scrollTo(activeSegmentID, anchor: .center) }
       }
@@ -95,20 +102,17 @@ struct RecordingDetailView: View {
         }
       )
     }
-    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-    .navigationTitle("Recording details")
+    .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+    .navigationTitle("")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar(.visible, for: .navigationBar)
+    .toolbar { toolbarItems }
     .task(id: "\(recording.id)-\(model.transcriptVersion)") {
       await refreshDisplayedRecording()
       await loadTranscript()
     }
     .task(id: "\(model.settings.spokenLanguage)-\(model.settings.activeSpeechEndpoint == nil)") {
       isSpokenLanguageSupported = await model.transcriptionSupportsSpokenLanguage()
-    }
-    .sheet(item: $notesDraft) { draft in
-      MeetingNotesComposer(draft: draft)
-        .ignoresSafeArea()
     }
     .sheet(isPresented: $isEditingTitle) {
       RecordingTitleEditor(recording: displayedRecording) { updated in
@@ -117,6 +121,22 @@ struct RecordingDetailView: View {
       .environment(\.locale, model.settings.language.locale)
       .presentationDetents([.medium])
     }
+    .confirmationDialog(
+      "Replace this transcript?",
+      isPresented: $isRetranscribeConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button("Replace transcript", role: .destructive) {
+        Task { await model.retranscribe(recording: displayedRecording) }
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      if transcriptError != nil {
+        Text("The existing transcript could not be read, so it may still hold content. Try again first if you can.")
+      } else {
+        Text("The speaker labels and names in this transcript will be removed and cannot be recovered.")
+      }
+    }
     .onChange(of: model.playbackPosition) {
       guard model.playingRecordingID == recording.id else { return }
       if !isScrubbing { scrubberPosition = model.playbackPosition }
@@ -124,24 +144,64 @@ struct RecordingDetailView: View {
     }
   }
 
-  private var titleSection: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
-      Text(displayedRecording.libraryDisplayTitle(language: model.settings.language))
+  private var header: some View {
+    let language = model.settings.language
+    return VStack(alignment: .leading, spacing: 6) {
+      Text(conversationTitle(displayedRecording, language: language))
         .font(.title2.weight(.bold))
-        .foregroundStyle(.primary)
         .frame(maxWidth: .infinity, alignment: .leading)
-
-      Button {
-        isEditingTitle = true
-      } label: {
-        Image(systemName: "pencil")
-          .frame(minWidth: 44, minHeight: 44)
+        .accessibilityAddTraits(.isHeader)
+      HStack(spacing: 6) {
+        Text(displayedRecording.startedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(language.locale)))
+        Text(recordingTimeRange(displayedRecording, language: language)).monospacedDigit()
+        Text("·")
+        Text(spokenDuration(displayedRecording.duration, language: language))
+        Text("·")
+        Label(RecordingSource(displayedRecording).title, systemImage: RecordingSource(displayedRecording).symbol)
+          .imageScale(.small)
       }
-      .buttonStyle(.bordered)
-      .accessibilityLabel("Edit recording title")
-      .accessibilityIdentifier("edit-recording-title")
+      .font(.subheadline)
+      .foregroundStyle(.secondary)
+      .lineLimit(1)
+      .minimumScaleFactor(0.8)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var toolbarItems: some ToolbarContent {
+    ToolbarItemGroup(placement: .primaryAction) {
+      Menu {
+        Button {
+          Task { await model.share(recording: displayedRecording) }
+        } label: {
+          Label("Share audio", systemImage: "waveform")
+        }
+        if let summary = model.summary(for: recording.id) {
+          ShareLink(item: summaryText(summary)) {
+            Label("Share summary", systemImage: "text.alignleft")
+          }
+        }
+      } label: {
+        Label("Share", systemImage: "square.and.arrow.up")
+      }
+      .accessibilityIdentifier("share-recording")
 
       Menu {
+        Button {
+          isEditingTitle = true
+        } label: {
+          Label("Rename", systemImage: "pencil")
+        }
+        .accessibilityIdentifier("edit-recording-title")
+
+        Button {
+          Task { await model.processOnDevice(recording: displayedRecording, regenerateSummary: true) }
+        } label: {
+          Label("Regenerate summary", systemImage: "sparkles")
+        }
+        .disabled(!model.canSummarizeRecordings || transcript.isEmpty || isProcessingOnDevice)
+        .accessibilityIdentifier("regenerate-recording-summary")
+
         Button {
           if transcriptError != nil || transcript.contains(where: { $0.speaker != nil }) {
             isRetranscribeConfirmationPresented = true
@@ -149,10 +209,7 @@ struct RecordingDetailView: View {
             Task { await model.retranscribe(recording: displayedRecording) }
           }
         } label: {
-          Label(
-            "Retranscribe",
-            systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
-          )
+          Label("Retranscribe", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
         }
         .disabled(
           !transcriptLoaded || model.retranscribingRecordingID != nil
@@ -171,128 +228,101 @@ struct RecordingDetailView: View {
         .disabled(!displayedRecording.canBeDeleted)
         .accessibilityIdentifier("delete-recording")
       } label: {
-        Image(systemName: "ellipsis.circle")
-          .frame(minWidth: 44, minHeight: 44)
+        Label("More recording actions", systemImage: "ellipsis")
       }
-      .confirmationDialog(
-        "Replace this transcript?",
-        isPresented: $isRetranscribeConfirmationPresented,
-        titleVisibility: .visible
-      ) {
-        Button("Replace transcript", role: .destructive) {
-          Task { await model.retranscribe(recording: displayedRecording) }
-        }
-        Button("Cancel", role: .cancel) {}
-      } message: {
-        if transcriptError != nil {
-          Text("The existing transcript could not be read, so it may still hold content. Try again first if you can.")
-        } else {
-          Text("The speaker labels and names in this transcript will be removed and cannot be recovered.")
-        }
-      }
-      .accessibilityLabel("More recording actions")
       .accessibilityIdentifier("more-recording-actions")
     }
   }
 
+  private func summaryText(_ summary: RecordingSummary) -> String {
+    let language = model.settings.language
+    var lines = [displayedRecording.libraryDisplayTitle(language: language),
+                 formattedStartDate(displayedRecording.startedAt, language: language), "",
+                 summary.overview]
+    if !summary.keyPoints.isEmpty {
+      lines += ["", language.localized("Key points")] + summary.keyPoints.map { "• \($0)" }
+    }
+    if !summary.actionItems.isEmpty {
+      lines += ["", language.localized("To-dos")] + summary.actionItems.map { "☐ \($0)" }
+    }
+    return lines.joined(separator: "\n")
+  }
+
   private var playbackSection: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 12) {
+    VStack(spacing: 4) {
+      Slider(
+        value: $scrubberPosition,
+        in: 0...max(playbackTotalDuration, 0.01),
+        onEditingChanged: { editing in
+          isScrubbing = editing
+          if !editing {
+            Task {
+              await model.seekPlayback(
+                for: displayedRecording,
+                to: scrubberPosition,
+                autoplay: model.playbackIsPlaying
+              )
+            }
+          }
+        }
+      )
+      .accessibilityIdentifier("recording-playback-slider")
+
+      HStack {
+        Text(playbackTimestamp(scrubberPosition))
+          .frame(width: 64, alignment: .leading)
+        Spacer()
+        Button {
+          Task {
+            await model.seekPlayback(
+              for: displayedRecording, to: max(0, scrubberPosition - 15),
+              autoplay: model.playbackIsPlaying)
+          }
+        } label: {
+          Image(systemName: "gobackward.15").font(.title3).frame(width: 44, height: 44)
+        }
+        .accessibilityLabel(model.settings.language.localized("Back 15 seconds"))
+
         Button {
           Task { await model.togglePlayback(for: displayedRecording) }
         } label: {
-          Image(systemName: isPlayingThisRecording ? "pause.fill" : "play.fill")
-            .frame(minWidth: 44, minHeight: 44)
+          Group {
+            if model.isAudioBusy(recording.id) && !isPlayingThisRecording {
+              ProgressView().tint(Color(uiColor: .systemBackground))
+            } else {
+              Image(systemName: isPlayingThisRecording ? "pause.fill" : "play.fill").font(.title3)
+            }
+          }
+          .foregroundStyle(Color(uiColor: .systemBackground))
+          .frame(width: 52, height: 52)
+          .background(Color.primary, in: Circle())
         }
-        .buttonStyle(.borderedProminent)
         .accessibilityLabel(isPlayingThisRecording ? "Pause recording" : "Play recording")
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text(isPlayingThisRecording ? "Playing" : "Playback")
-            .font(.subheadline.weight(.semibold))
-          Text(
-            "\(playbackTimestamp(scrubberPosition)) / \(playbackTimestamp(playbackTotalDuration))"
-          )
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
-        }
-
-        Spacer()
+        .accessibilityIdentifier("recording-play")
 
         Button {
-          Task { await model.share(recording: displayedRecording) }
+          Task {
+            await model.seekPlayback(
+              for: displayedRecording, to: min(playbackTotalDuration, scrubberPosition + 15),
+              autoplay: model.playbackIsPlaying)
+          }
         } label: {
-          Image(systemName: "square.and.arrow.up")
-            .frame(minWidth: 44, minHeight: 44)
+          Image(systemName: "goforward.15").font(.title3).frame(width: 44, height: 44)
         }
-        .buttonStyle(.bordered)
-        .accessibilityLabel("Share")
+        .accessibilityLabel(model.settings.language.localized("Forward 15 seconds"))
+        Spacer()
+        Text("-" + playbackTimestamp(max(0, playbackTotalDuration - scrubberPosition)))
+          .frame(width: 64, alignment: .trailing)
       }
-
-      VStack(spacing: 8) {
-        Slider(
-          value: $scrubberPosition,
-          in: 0...max(playbackTotalDuration, 0.01),
-          onEditingChanged: { editing in
-            isScrubbing = editing
-            if !editing {
-              Task {
-                await model.seekPlayback(
-                  for: displayedRecording,
-                  to: scrubberPosition,
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            }
-          }
-        )
-        .tint(.cyan)
-        .accessibilityIdentifier("recording-playback-slider")
-
-        HStack {
-          Text(playbackTimestamp(scrubberPosition))
-          Spacer()
-          HStack(spacing: 22) {
-            Button {
-              Task {
-                await model.seekPlayback(
-                  for: displayedRecording,
-                  to: max(0, scrubberPosition - 15),
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            } label: {
-              Image(systemName: "gobackward.15")
-                .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel(model.settings.language.localized("Back 15 seconds"))
-
-            Button {
-              Task {
-                await model.seekPlayback(
-                  for: displayedRecording,
-                  to: min(playbackTotalDuration, scrubberPosition + 15),
-                  autoplay: model.playbackIsPlaying
-                )
-              }
-            } label: {
-              Image(systemName: "goforward.15")
-                .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel(model.settings.language.localized("Forward 15 seconds"))
-          }
-          .buttonStyle(.plain)
-          .foregroundStyle(.cyan)
-          Spacer()
-          Text(playbackTimestamp(playbackTotalDuration))
-        }
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
-      }
-
+      .font(.caption.monospacedDigit())
+      .foregroundStyle(.secondary)
+      .buttonStyle(.plain)
     }
-    .padding(16)
-    .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .tint(.primary)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
   }
 
   @ViewBuilder
@@ -332,10 +362,6 @@ struct RecordingDetailView: View {
 
   private func transcriptSection(using proxy: ScrollViewProxy) -> some View {
     VStack(alignment: .leading, spacing: 14) {
-      Label("Transcript", systemImage: "captions.bubble.fill")
-        .font(.headline)
-        .foregroundStyle(.primary)
-
       if !transcriptLoaded {
         ProgressView()
           .frame(maxWidth: .infinity)
@@ -405,7 +431,7 @@ struct RecordingDetailView: View {
                       )
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(.secondary)
                   }
                   Text(segment.text)
                     .font(.body)
@@ -417,7 +443,7 @@ struct RecordingDetailView: View {
               .padding(.vertical, 9)
               .frame(minHeight: 44)
               .background(
-                activeSegmentID == segment.id ? Color.cyan.opacity(0.16) : Color.clear,
+                activeSegmentID == segment.id ? Color.accentColor.opacity(0.14) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
               )
               .contentShape(Rectangle())
@@ -443,7 +469,7 @@ struct RecordingDetailView: View {
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("recording-transcript")
   }
@@ -462,25 +488,6 @@ struct RecordingDetailView: View {
     }
   }
 
-  private var meetingLink: MeetingLink? {
-    MeetingLink(metadata: displayedRecording.metadata)
-  }
-
-  private func makeNotesDraft(summary: RecordingSummary) -> MeetingNotesDraft {
-    let language = model.settings.language
-    let title = displayedRecording.libraryDisplayTitle(language: language)
-    return MeetingNotesDraft(
-      subject: title,
-      body: MeetingNotes.text(
-        title: title,
-        date: meetingLink?.start ?? displayedRecording.startedAt,
-        summary: summary,
-        language: language
-      ),
-      recipients: meetingLink.map(model.meetings.recipients) ?? []
-    )
-  }
-
   private var isProcessingOnDevice: Bool {
     model.onDeviceProcessingRecordingIDs.contains(recording.id)
   }
@@ -488,90 +495,85 @@ struct RecordingDetailView: View {
   @ViewBuilder
   private var summarySection: some View {
     let summary = model.summary(for: recording.id)
-    if summary != nil || isProcessingOnDevice || !transcript.isEmpty {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          Label("Summary", systemImage: "sparkles")
-            .font(.headline)
-          Spacer()
-          if isProcessingOnDevice {
-            ProgressView().controlSize(.small)
-          } else if model.canSummarizeRecordings, !transcript.isEmpty {
-            Button(summary == nil ? "Summarize" : "Regenerate") {
-              Task {
-                await model.processOnDevice(
-                  recording: displayedRecording, regenerateSummary: true)
-              }
+    VStack(alignment: .leading, spacing: 12) {
+      if let summary {
+        VStack(alignment: .leading, spacing: 12) {
+          Text(summary.overview)
+            .font(.body.weight(.semibold))
+            .textSelection(.enabled)
+          if !summary.keyPoints.isEmpty {
+            Text("Key points").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            ForEach(summary.keyPoints, id: \.self) { point in
+              Label(point, systemImage: "circle.fill")
+                .labelStyle(SummaryBulletStyle())
             }
-            .font(.subheadline)
-            .accessibilityIdentifier("regenerate-recording-summary")
           }
         }
-        if let summary {
-          if summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            != displayedRecording.libraryDisplayTitle(language: model.settings.language)
-          {
-            Text(summary.title).font(.subheadline.weight(.semibold))
-          }
-          Text(summary.overview).font(.subheadline)
-          if !summary.keyPoints.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-              Text("Key points").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-              ForEach(summary.keyPoints, id: \.self) { point in
-                Label(point, systemImage: "circle.fill")
-                  .labelStyle(SummaryBulletStyle())
-              }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        if !summary.actionItems.isEmpty {
+          VStack(alignment: .leading, spacing: 4) {
+            Text("To-dos").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            ForEach(summary.actionItems, id: \.self) { item in
+              TodoRow(recordingID: recording.id, item: item)
             }
           }
-          if !summary.actionItems.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-              Text("Follow-ups").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-              ForEach(summary.actionItems, id: \.self) { item in
-                Label(item, systemImage: "checkmark.circle")
-                  .font(.subheadline)
-              }
-            }
+          .padding(16)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+
+        Group {
+          if let generatedBy = summary.generatedBy {
+            Text("Written by \(generatedBy). Check it against the transcript.")
+          } else {
+            Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
           }
-          Group {
-            if let generatedBy = summary.generatedBy {
-              Text("Written by \(generatedBy). Check it against the transcript.")
-            } else {
-              Text("Written on this iPhone by Apple Intelligence. Check it against the transcript.")
-            }
-          }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Button {
-            notesDraft = makeNotesDraft(summary: summary)
-          } label: {
-            Label(
-              meetingLink == nil ? "Share notes" : "Send notes to attendees",
-              systemImage: "paperplane")
-          }
-          .buttonStyle(.bordered)
-          .accessibilityIdentifier("send-meeting-notes")
-        } else if isProcessingOnDevice {
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
+      } else if isProcessingOnDevice {
+        HStack(spacing: 10) {
+          ProgressView().controlSize(.small)
           Text(
             model.settings.activeSpeechEndpoint == nil && model.settings.activeLanguageModelProvider == nil
               ? "Transcribing and summarizing on this iPhone…"
               : "Transcribing and summarizing with your service…"
           )
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .padding(16)
+      } else if !model.canSummarizeRecordings {
+        serviceSetupHint(
+          OnDeviceIntelligence.summaryUnavailableMessage,
+          action: "Set up summaries",
+          identifier: "set-up-summaries"
+        )
+        .padding(16)
+      } else if transcriptLoaded, transcript.isEmpty {
+        VStack(alignment: .leading, spacing: 10) {
+          Text("There is no transcript to summarize yet.")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-        } else if !model.canSummarizeRecordings {
-          serviceSetupHint(
-            OnDeviceIntelligence.summaryUnavailableMessage,
-            action: "Set up summaries",
-            identifier: "set-up-summaries"
-          )
+          transcribeButton
         }
+        .padding(16)
+      } else if !transcript.isEmpty {
+        Button {
+          Task { await model.processOnDevice(recording: displayedRecording, regenerateSummary: true) }
+        } label: {
+          Label("Summarize", systemImage: "sparkles")
+        }
+        .buttonStyle(.bordered)
+        .padding(16)
       }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("recording-summary")
     }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("recording-summary")
   }
 
   private var recordingDetails: some View {
@@ -736,6 +738,11 @@ struct TranscriptFollowPolicy: Equatable, Sendable {
       return .scrollToPlayback
     }
   }
+}
+
+enum DetailPage: Hashable {
+  case summary
+  case transcript
 }
 
 private struct SummaryBulletStyle: LabelStyle {
