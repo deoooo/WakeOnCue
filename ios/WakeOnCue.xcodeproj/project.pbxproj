@@ -73,6 +73,7 @@
 		8AD40F5D04CE05D71749C948 /* RecordingFileLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18FB236FE42EE9F9D267BE3 /* RecordingFileLayout.swift */; };
 		8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */; };
 		8DE4520A18873AB0C2A72A84 /* ReviewDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F766917A2F3F1B772FA5AB79 /* ReviewDataTests.swift */; };
+		911F386B244EE15A0439F255 /* MacLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E04F186F035A516F1B12413 /* MacLibraryTests.swift */; };
 		920E0E8B46A2126A7498B445 /* RecordingCommandObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE48C4D9E639BAEB6D7014FA /* RecordingCommandObserver.swift */; };
 		96DA8366FA8A8C5E63BAD8E5 /* ThirdPartyAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84E710F1E8E75F4010D1A19 /* ThirdPartyAI.swift */; };
 		97E023E5BCAFFAAE3B607C58 /* ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD09F4C2A58B55F8F0C39BB /* ReviewView.swift */; };
@@ -80,6 +81,7 @@
 		9C88985EF3A6F5B0A47C57CC /* WakeOnCueWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B37651C9240A4E735E86C7B /* WakeOnCueWatchApp.swift */; };
 		9D00A3BC83DF947B8C1F1E91 /* DayRecap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B0689E74942C3A6C418D5D /* DayRecap.swift */; };
 		9D9FE1273731021262DAF3D9 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 50E2E8DB3973F50512033610 /* Localizable.strings */; };
+		9EA776005D830ADE5FA8D810 /* MacLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B75DF587E4AFE9647ADB5BE /* MacLibrary.swift */; };
 		A58C99A13BF887A827FDEF83 /* WatchSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C158855675A574042A201393 /* WatchSessionClient.swift */; };
 		B2C88683F77391BBC6E88D9D /* RecordingAudioFileProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0816E89989A87F4C4A7106FC /* RecordingAudioFileProvider.swift */; };
 		B2CA3AB149BE67DE7CA3B031 /* ProductExperienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC66F4DB820A5BEF37B9B2FE /* ProductExperienceUITests.swift */; };
@@ -204,6 +206,7 @@
 		0FB107982BDA9DC3F38164F4 /* WakeOnCueWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WakeOnCueWatch.entitlements; sourceTree = "<group>"; };
 		17B96E27AA3E894679484BCE /* PhoneWatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWatchBridge.swift; sourceTree = "<group>"; };
 		18E19C6AD2EC97CEB554C10D /* WatchSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshotStore.swift; sourceTree = "<group>"; };
+		1B75DF587E4AFE9647ADB5BE /* MacLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLibrary.swift; sourceTree = "<group>"; };
 		1E48A7C0209ABC54B497D569 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		20B4BA04FCB2FE92FEA64330 /* RecordingAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAnnotations.swift; sourceTree = "<group>"; };
 		2198869A431CC51CA96E7F7F /* RecordingRecoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryService.swift; sourceTree = "<group>"; };
@@ -248,6 +251,7 @@
 		7C102EFF941393DDA127B6FE /* RecordingStorageStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageStatus.swift; sourceTree = "<group>"; };
 		8032205621D34BC50FA02B73 /* WakeOnCueWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnCueWidgets.swift; sourceTree = "<group>"; };
 		8C77627077AB827E06931EFF /* ConnectMacView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectMacView.swift; sourceTree = "<group>"; };
+		8E04F186F035A516F1B12413 /* MacLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLibraryTests.swift; sourceTree = "<group>"; };
 		8FDCFE1512A06A5477C3F9B0 /* RecordingShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingShortcuts.swift; sourceTree = "<group>"; };
 		8FF6B6E661C3615689BB3E18 /* RecordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordView.swift; sourceTree = "<group>"; };
 		923E51F0A803E2CB328BB243 /* SharedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedViews.swift; sourceTree = "<group>"; };
@@ -587,6 +591,7 @@
 			isa = PBXGroup;
 			children = (
 				376919AF2F6C0950FFD37186 /* AIProviderSettingsTests.swift */,
+				8E04F186F035A516F1B12413 /* MacLibraryTests.swift */,
 				0AEB268268EFDA120FA66868 /* MacOutboxMarksTests.swift */,
 				FB02FAFF465CEEF843979E52 /* RecordingAnnotationsTests.swift */,
 				925153816EECBA36F8ADDEDB /* RecordingCaptureMeterTests.swift */,
@@ -616,6 +621,7 @@
 			isa = PBXGroup;
 			children = (
 				8C77627077AB827E06931EFF /* ConnectMacView.swift */,
+				1B75DF587E4AFE9647ADB5BE /* MacLibrary.swift */,
 				6A59FB09C5DA2D04DF6AAA12 /* MacLink.swift */,
 				6F2580EF51C855D28DCF031F /* MacLinkSettingsSection.swift */,
 				5CCC73EFDC75C6B7B7DAD211 /* MacPairingFlow.swift */,
@@ -888,6 +894,7 @@
 				4813DFB3F0BB926653FF92C1 /* ContactNamePicker.swift in Sources */,
 				9D00A3BC83DF947B8C1F1E91 /* DayRecap.swift in Sources */,
 				D1B1CC0D2F7682644B6444AD /* ExperienceFixtures.swift in Sources */,
+				9EA776005D830ADE5FA8D810 /* MacLibrary.swift in Sources */,
 				15DABFCCBEA2D664D8135B84 /* MacLink.swift in Sources */,
 				412F44512C0CFB9E5F0B32AD /* MacLinkSettingsSection.swift in Sources */,
 				7E47370C0662D25717B7DBD3 /* MacPairingFlow.swift in Sources */,
@@ -936,6 +943,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				49D23430125DD0262614CD4A /* AIProviderSettingsTests.swift in Sources */,
+				911F386B244EE15A0439F255 /* MacLibraryTests.swift in Sources */,
 				E9355C0DC49CC752DCC62098 /* MacOutboxMarksTests.swift in Sources */,
 				8DA0BE49C96A6BA958EA5B3A /* RecordingAnnotationsTests.swift in Sources */,
 				0D56665FB3DA3EF76C3649C3 /* RecordingCaptureMeterTests.swift in Sources */,

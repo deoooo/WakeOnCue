@@ -62,10 +62,17 @@ enum WakeOnCueColors {
 enum RecordingSource {
   case iPhone
   case watch
+  case mac
   case importedFile
 
   @MainActor init(_ recording: RecordingRecord) {
     switch recording.metadata[WatchRecordingImporter.sourceMetadataKey] {
+    case MacConversation.sourceValue:
+      // Named after where most of it was heard: the Mac, unless only a device recorded it.
+      let sources = recording.metadata[MacConversation.sourcesKey]?.split(separator: ",").map(String.init) ?? []
+      if sources.isEmpty || sources.contains("Mac") { self = .mac }
+      else if sources.contains("Apple Watch") { self = .watch }
+      else { self = .iPhone }
     case WatchRecordingImporter.sourceMetadataValue: self = .watch
     case AudioFileImporter.sourceMetadataValue: self = .importedFile
     default: self = .iPhone
@@ -76,6 +83,7 @@ enum RecordingSource {
     switch self {
     case .iPhone: "iphone"
     case .watch: "applewatch"
+    case .mac: "laptopcomputer"
     case .importedFile: "doc"
     }
   }
@@ -84,6 +92,7 @@ enum RecordingSource {
     switch self {
     case .iPhone: "iPhone"
     case .watch: "Apple Watch"
+    case .mac: "Mac"
     case .importedFile: "Imported"
     }
   }

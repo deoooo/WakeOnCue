@@ -53,6 +53,8 @@ final class SyncServer {
   @ObservationIgnored var onSegment: ((SyncProtocol.SegmentInfo, URL) -> Void)?
   /// Called after Watch or iPhone marks are stored, with where they fall on the Mac's timeline.
   @ObservationIgnored var onMarks: (([DeviceMark]) -> Void)?
+  /// Applies a delete, restore or rename made on the iPhone to one of the Mac's conversations.
+  @ObservationIgnored var onLibraryEdit: ((SyncProtocol.LibraryEdit) -> Void)?
 
   struct PairRequest: Equatable {
     enum State: Equatable { case waiting, paired }
@@ -492,11 +494,82 @@ final class SyncServer {
         Self.logger.notice("Stored \(valid.count) marks from \(deviceName, privacy: .public)")
         if !saved.isEmpty { onMarks?(saved) }
 
+      case .edits(let edits):
+        for edit in edits where Self.isSafe(edit.id) && store.claimEdit(id: edit.id) {
+          onLibraryEdit?(edit)
+        }
+        try await channel.send(.editsStored(ids: edits.map(\.id)))
+        Self.logger.notice("Applied \(edits.count) edits from \(deviceName, privacy: .public)")
+
+      case .libraryPull:
+        let known = (try? JSONDecoder.sync.decode([String: String].self, from: body)) ?? [:]
+        let library = ConversationLibrary(store: store, device: deviceID)
+        let current = library.dayDigests()
+        let (days, more) = library.changedDays(known: known, current: current, limit: SyncProtocol.daysPerPull)
+        for key in days {
+          let day = library.day(key, digest: current[key] ?? "")
+          let data = try SyncProtocol.pack(day)
+          try await channel.send(.libraryDay(day: key, bodyLength: data.count), body: data)
+        }
+        try await channel.send(.libraryEnd(more: more))
+        if !days.isEmpty { Self.logger.notice("Sent \(days.count) days to \(deviceName, privacy: .public)") }
+
+      case .audioFetch(let conversationID, let offset):
+        try await sendAudio(conversationID, from: offset, device: deviceID, over: channel)
+
       case .bye:
         return
       default:
         try await channel.send(.failure(segmentID: nil, reason: "Mac 不处理这条消息", retry: false))
       }
+    }
+  }
+
+  /// Renders the conversation's audio once per digest, then streams it from `offset`.
+  private func sendAudio(_ conversationID: String, from offset: Int64, device: String, over channel: SyncChannel) async throws {
+    let library = ConversationLibrary(store: store, device: device)
+    guard Self.isSafe(conversationID), let conversation = library.conversation(conversationID) else {
+      try await channel.send(.failure(segmentID: conversationID, reason: "Mac 上没有这段对话", retry: false))
+      return
+    }
+    let url = ConversationAudio.cachedURL(id: conversation.id, digest: conversation.digest)
+    if !FileManager.default.fileExists(atPath: url.path) {
+      let range = DateInterval(start: conversation.start, end: max(conversation.end, conversation.start.addingTimeInterval(1)))
+      let pieces = ConversationAudio.plan(
+        range: range, segments: store.segments(overlapping: range), hidden: store.marks(overlapping: range))
+      guard !pieces.isEmpty else {
+        try await channel.send(.failure(segmentID: conversationID, reason: "这段对话没有音频", retry: false))
+        return
+      }
+      let audioDirectory = store.audioDirectory
+      Self.removeOldRenders()
+      try await Task.detached(priority: .utility) {
+        try ConversationAudio.render(pieces, range: range, audioDirectory: audioDirectory, to: url)
+      }.value
+    }
+    let bytes = Self.size(of: url)
+    let digest = try await Task.detached(priority: .utility) { try Self.sha256(of: url) }.value
+    try await channel.send(.audioInfo(conversationID: conversationID, digest: conversation.digest, bytes: bytes, sha256: digest, format: "m4a"))
+    let handle = try FileHandle(forReadingFrom: url)
+    defer { try? handle.close() }
+    var position = min(max(0, offset), bytes)
+    try handle.seek(toOffset: UInt64(position))
+    while position < bytes {
+      let data = try handle.read(upToCount: SyncProtocol.maximumChunk) ?? Data()
+      guard !data.isEmpty else { break }
+      try await channel.send(.audioChunk(conversationID: conversationID, offset: position, bodyLength: data.count), body: data)
+      position += Int64(data.count)
+    }
+    try await channel.send(.audioDone(conversationID: conversationID))
+  }
+
+  /// Rendered audio is only needed while phones download it.
+  private static func removeOldRenders() {
+    let folder = ConversationAudio.cacheDirectory
+    let cutoff = Date().addingTimeInterval(-3 * 86_400)
+    for url in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
+      let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+      if modified < cutoff { try? FileManager.default.removeItem(at: url) }
     }
   }
 

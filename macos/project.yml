@@ -122,6 +122,8 @@ targets:
       - path: WakeOnCue/App/TimeText.swift
       # Store records received segments with the sync protocol's types.
       - path: WakeOnCue/Sync/SyncProtocol.swift
+      # `wakeoncue conversations` shows how the day is cut for the iPhone.
+      - path: WakeOnCue/Sync/Conversations.swift
       # `wakeoncue export` writes the same files as the app's 导出.
       - path: WakeOnCue/Export/Export.swift
       - path: WakeOnCue/Export/ExportSource+Store.swift
@@ -145,6 +147,8 @@ targets:
       - path: WakeOnCue/Export/Export.swift
       - path: WakeOnCue/App/TimeText.swift
       - path: WakeOnCue/Sync/SyncProtocol.swift
+      - path: WakeOnCue/Sync/Conversations.swift
+      - path: WakeOnCue/Sync/ConversationAudio.swift
       - path: WakeOnCue/UI/Main/DayData.swift
       - path: WakeOnCue/Playback/Player.swift
       - path: WakeOnCue/Capture/ChannelPipeline.swift

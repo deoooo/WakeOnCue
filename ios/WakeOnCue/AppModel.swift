@@ -148,6 +148,21 @@ final class AppModel {
     macUploader.disposition = { [library] recordingID in
       await library.macForwardingDisposition(recordingID: recordingID)
     }
+    macUploader.libraryImporter = { [store, fileLayout, library] in
+      MacLibraryImporter(store: store, layout: fileLayout, library: library)
+    }
+    macUploader.onLibraryChanged = { [weak self] changed in
+      guard let self else { return }
+      await self.refresh()
+      self.libraryVersion += 1
+      self.transcriptVersion += 1
+      // One at a time, newest first: summaries share the on-device model.
+      Task {
+        for recording in changed.sorted(by: { $0.startedAt > $1.startedAt }) {
+          await self.processOnDevice(recording: recording, regenerateSummary: true)
+        }
+      }
+    }
     RecordingIntentDispatcher.shared.install { [weak self] command in
       guard let self else { return }
       await self.start()
@@ -612,11 +627,7 @@ final class AppModel {
     beginAudioJob(recording.id)
     defer { endAudioJob(recording.id) }
     do {
-      let chunks = try await store.chunks(recordingID: recording.id)
-      let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-        for: recording,
-        chunks: chunks
-      )
+      let file = try await audioFile(for: recording)
       // Preparing can take a while, and a download can outlast the screen that asked for it.
       guard await !isRecordingDeleted(recording.id) else { return }
       guard capture == nil else { return }
@@ -642,6 +653,18 @@ final class AppModel {
     }
   }
 
+  /// The recording's audio on this iPhone. A Mac conversation whose audio is not here yet is
+  /// fetched from the Mac, when it is on the same network.
+  private func audioFile(for recording: RecordingRecord) async throws -> URL {
+    do {
+      return try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
+        for: recording, chunks: try await store.chunks(recordingID: recording.id))
+    } catch {
+      guard MacConversation.isFromMac(recording) else { throw error }
+      return try await macUploader.downloadAudioNow(for: recording)
+    }
+  }
+
   private func startPlaybackMonitor(for player: AVAudioPlayer) {
     playbackMonitor?.cancel()
     playbackMonitor = Task { @MainActor [weak self, weak player] in
@@ -663,11 +686,7 @@ final class AppModel {
     beginAudioJob(recording.id)
     defer { endAudioJob(recording.id) }
     do {
-      let chunks = try await store.chunks(recordingID: recording.id)
-      let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-        for: recording,
-        chunks: chunks
-      )
+      let file = try await audioFile(for: recording)
       guard await !isRecordingDeleted(recording.id) else { return }
       shareItem = RecordingShareItem(url: file)
     } catch {
@@ -711,10 +730,7 @@ final class AppModel {
     do {
       try await runStoppableByDeletion(recordingID: recording.id) { [self] in
         try await stopIfDeleted(recordingID: recording.id)
-        let file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-          for: recording,
-          chunks: try await store.chunks(recordingID: recording.id)
-        )
+        let file = try await audioFile(for: recording)
         try await stopIfDeleted(recordingID: recording.id)
         let segments = try await processingServices.transcribe(file, recording.id)
         try await stopIfDeleted(recordingID: recording.id)
@@ -831,6 +847,10 @@ final class AppModel {
       )
       return false
     }
+    if MacConversation.isFromMac(recording) {
+      MacLibraryState.enqueue(.delete, recording: recording)
+      Task { await macUploader.sync() }
+    }
     for task in processingTasks[recording.id] ?? [] { task.cancel() }
     if playingRecordingID == recording.id { stopPlayback() }
     if lastFinishedRecording?.id == recording.id { lastFinishedRecording = nil }
@@ -842,6 +862,10 @@ final class AppModel {
   func restore(_ recording: RecordingRecord) async {
     do {
       try await library.restore(recordingID: recording.id)
+      if MacConversation.isFromMac(recording) {
+        MacLibraryState.enqueue(.restore, recording: recording)
+        Task { await macUploader.sync() }
+      }
     } catch {
       errorMessage = deletionFailureReason(error)
     }
@@ -1082,10 +1106,7 @@ final class AppModel {
           if let audioURL {
             file = audioURL
           } else {
-            file = try await RecordingAudioFileProvider(fileLayout: fileLayout).file(
-              for: recording,
-              chunks: try await store.chunks(recordingID: recording.id)
-            )
+            file = try await audioFile(for: recording)
           }
           try await stopIfDeleted(recordingID: recording.id)
           segments = try await processingServices.transcribe(file, recording.id)

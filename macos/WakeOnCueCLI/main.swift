@@ -14,6 +14,7 @@ let usage = """
                                    全文搜索，多个词同时命中的排在前面
     export [日期] [--hour HH] [--format md|txt|srt]
                                    导出成文件内容，输出到标准输出；默认导出整天的 Markdown
+    conversations [日期]            这一天切成的对话（同步给 iPhone 的单位）
     health [--days N]               检查最近 N 天（默认 3）的全天录音：没有原因的空档、
                                    有音频没转录、有转录没总结、回传进度
     help                           显示这段说明
@@ -222,6 +223,33 @@ func run(_ raw: [String]) throws {
       for hour in out.hours { print("\(hour.hour)  \(hour.summary)") }
     }
     if summary == nil && out.hours.isEmpty { print("\n这一天还没有总结。可以用 wakeoncue transcript 查看原文。") }
+
+  case "conversations":
+    let reader = try Reader()
+    let day = try Dates.day(args.positionals.first)
+    let library = ConversationLibrary(store: reader.store, device: "-")
+    let conversations = library.day(ConversationBuilder.dayKey(day), digest: "-").conversations
+    struct ConversationOut: Encodable {
+      let id: String
+      let start: String
+      let end: String
+      let minutes: Int
+      let sentences: Int
+      let sources: [String]
+      let firstLine: String
+    }
+    let out = conversations.map { conversation in
+      ConversationOut(
+        id: conversation.id, start: Dates.iso.string(from: conversation.start), end: Dates.iso.string(from: conversation.end),
+        minutes: Int((conversation.end.timeIntervalSince(conversation.start) / 60).rounded()),
+        sentences: conversation.sentences.count, sources: conversation.sources,
+        firstLine: conversation.sentences.first?.text ?? "")
+    }
+    if args.json { return try printJSON(out) }
+    if out.isEmpty { print("这一天没有对话。") }
+    for (conversation, line) in zip(conversations, out) {
+      print("\(TimeText.clock(conversation.start))–\(TimeText.clock(conversation.end))  \(line.minutes) 分钟 · \(line.sentences) 句 · \(line.sources.joined(separator: "、"))  \(line.firstLine.prefix(30))")
+    }
 
   case "transcript":
     let reader = try Reader()

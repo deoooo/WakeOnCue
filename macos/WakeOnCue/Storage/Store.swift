@@ -113,7 +113,13 @@ final class Store {
     for table in ["hour_summary", "day_summary"] {
       let columns = try db.query("PRAGMA table_info(\(table))") { $0.text(1) }
       if !columns.contains("engine") { try db.execute("ALTER TABLE \(table) ADD COLUMN engine TEXT") }
-    }
+    }    // Titles the user gave conversations on the iPhone, by conversation ID and its day.
+    try db.execute("""
+      CREATE TABLE IF NOT EXISTS conversation_title (
+        id TEXT PRIMARY KEY, day TEXT NOT NULL, title TEXT NOT NULL, updated REAL NOT NULL)
+      """)
+    // Edits already applied, so one resent by a phone is applied once.
+    try db.execute("CREATE TABLE IF NOT EXISTS applied_edit (id TEXT PRIMARY KEY, applied REAL NOT NULL)")
   }
 
   private func changed() { revision += 1 }
@@ -602,6 +608,72 @@ final class Store {
     return fetch(
       "SELECT \(Self.deviceMarkColumns) FROM device_mark WHERE id IN (\(marks)) ORDER BY start + clock_offset",
       ids.map { .text($0) }, map: Self.deviceMark)
+  }
+
+  // MARK: Conversations for the iPhone
+
+  /// A cheap fingerprint of every day with sentences, from aggregates the database keeps an index
+  /// for. It changes when sentences are added, removed, re-transcribed or given a speaker.
+  func sentenceDaySignatures() -> [String: String] {
+    let rows = fetch("""
+      SELECT strftime('%Y-%m-%d', start, 'unixepoch', 'localtime') AS d, COUNT(*), MIN(id), MAX(id),
+        TOTAL(length(text)), TOTAL(end - start), SUM(speaker = 'me'), COUNT(refined_by),
+        COUNT(refine_checked_by), COUNT(speaker_name), GROUP_CONCAT(DISTINCT speaker_name)
+      FROM sentence GROUP BY d
+      """) { row in
+      (row.text(0), (1...10).map { row.isNull(Int32($0)) ? "-" : row.text(Int32($0)) }.joined(separator: "|"))
+    }
+    return Dictionary(rows, uniquingKeysWith: { a, _ in a })
+  }
+
+  /// Per day, the phone's own audio the Mac has merged, so a day changes for that phone when its
+  /// recordings become part of the Mac's conversations.
+  func remoteDaySignatures(device: String) -> [String: String] {
+    let rows = fetch("""
+      SELECT strftime('%Y-%m-%d', start + COALESCE(clock_offset, 0), 'unixepoch', 'localtime') AS d,
+        COUNT(*), TOTAL(COALESCE(clock_offset, 0)), SUM(merged)
+      FROM remote_segment WHERE device = ? GROUP BY d
+      """, [.text(device)]) { row in (row.text(0), "\(row.int(1))|\(row.double(2))|\(row.int(3))") }
+    return Dictionary(rows, uniquingKeysWith: { a, _ in a })
+  }
+
+  /// The phone's recordings whose merged audio touches the interval, on the Mac's timeline.
+  func remoteRecordings(device: String, overlapping interval: DateInterval) -> [(source: String, recordingID: String, start: Date, end: Date)] {
+    fetch("""
+      SELECT source, recording, start + COALESCE(clock_offset, 0), start + COALESCE(clock_offset, 0) + duration
+      FROM remote_segment WHERE device = ? AND merged = 1 AND outcome != 'dropped'
+        AND start + COALESCE(clock_offset, 0) < ? AND start + COALESCE(clock_offset, 0) + duration > ?
+      """, [.text(device), .date(interval.end), .date(interval.start)]
+    ) { row in (row.text(0), row.text(1), row.date(2), row.date(3)) }
+  }
+
+  func conversationTitles(day: String) -> [String: String] {
+    let rows = fetch("SELECT id, title FROM conversation_title WHERE day = ?", [.text(day)]) { ($0.text(0), $0.text(1)) }
+    return Dictionary(rows, uniquingKeysWith: { a, _ in a })
+  }
+
+  func conversationTitleSignatures() -> [String: String] {
+    let rows = fetch("SELECT day, GROUP_CONCAT(id || '=' || title, ';') FROM conversation_title GROUP BY day") {
+      ($0.text(0), $0.text(1))
+    }
+    return Dictionary(rows, uniquingKeysWith: { a, _ in a })
+  }
+
+  func setConversationTitle(id: String, day: String, title: String?) {
+    if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      run("INSERT OR REPLACE INTO conversation_title (id, day, title, updated) VALUES (?, ?, ?, ?)",
+          [.text(id), .text(day), .text(title), .date(.now)])
+    } else {
+      run("DELETE FROM conversation_title WHERE id = ?", [.text(id)])
+    }
+    changed()
+  }
+
+  /// Records an edit as applied; false when it already was.
+  func claimEdit(id: String) -> Bool {
+    guard fetch("SELECT 1 FROM applied_edit WHERE id = ?", [.text(id)], map: { _ in true }).isEmpty else { return false }
+    run("INSERT INTO applied_edit (id, applied) VALUES (?, ?)", [.text(id), .date(.now)])
+    return true
   }
 
   // MARK: Storage use

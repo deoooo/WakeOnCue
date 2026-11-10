@@ -63,7 +63,7 @@ iPhone 上的入口是 设置 › Mac › 连接 Mac：先列出附近的 Mac（
 
 协议版本号仍是 1（老 Mac 只接受 1）。新增的消息靠 `welcome.features` 协商：
 
-- Mac 在 `welcome` 里列出自己认识的扩展，目前只有 `marks`。`features` 是可选字段：老 iPhone 解码时忽略它，新 iPhone 收到老 Mac 的 `welcome` 时它为空。
+- Mac 在 `welcome` 里列出自己认识的扩展，目前有 `marks` 和 `library`。`features` 是可选字段：老 iPhone 解码时忽略它，新 iPhone 收到老 Mac 的 `welcome` 时它为空。
 - iPhone 只发 Mac 列出的扩展消息。老 Mac 解不开新消息会直接断开连接，所以没列出 `marks` 时标记留在 iPhone 上，等 Mac 更新后再发；超过 60 天仍没发出去的标记丢弃。
 - 新版 Mac 收到解不开、但格式正确的 JSON 头时，回 `failure(retry: false)` 并保持连接（只有 `chunk` 带正文，而每个版本都认识 `chunk`）；不是 JSON 才断开。
 
@@ -104,70 +104,68 @@ iPhone 上的入口是 设置 › Mac › 连接 Mac：先列出附近的 Mac（
 - 暂停时段：Mac 暂停时记一条 `paused` 标记，`drop` 里会带上，合并时也会丢弃。
 - 删除同步回 iPhone 和手表：已删除的时段通过 `drop` 让 iPhone 不再发送；iPhone 本地的删除和“最近删除”同步留到 5b。
 
-## Mac → iPhone 的对话库同步（设计中，未实现）
+## Mac → iPhone 的对话库同步（`library`）
 
-> 2026-11-10 定的方向，配合 iPhone 改版（回顾 / 录音 / 搜索）。仍是协议第 1 版，靠 `features` 里的 `library` 协商；老 Mac 不列出它，iPhone 就只回传、不拉取。
+> 2026-11-10 实现第一版，配合 iPhone 改版（回顾 / 录音 / 搜索）。协议版本仍是 1，靠 `features` 里的 `library` 协商；老 Mac 不列出它，iPhone 就只回传、不拉取。代码：Mac 端 `Sync/Conversations.swift`、`Sync/ConversationAudio.swift`、`SyncServer`；iPhone 端 `MacLink/MacLibrary.swift`、`MacUploader`。
 
 ### 已定
 
 | 主题 | 决定 |
 | --- | --- |
-| 方向 | 双向：Mac 的录音、转录、总结同步到 iPhone；两边的修改互相同步 |
-| 以谁为准 | 有 Mac 时，合并后的时间线、切段、最终转录和总结以 Mac 为准；iPhone 本机先出的结果在 Mac 版到达后静默替换。没有 Mac 时 iPhone 自己就是全部 |
+| 方向 | 双向：Mac 的对话（文字和音频）同步到 iPhone；iPhone 上的删除、恢复、改名回到 Mac |
+| 以谁为准 | 有 Mac 时，切段、转录以 Mac 为准；iPhone 自己的录音被 Mac 的对话包含后不再单独列出 |
 | 文字 | 全部同步，iPhone 永久保留 |
-| 音频 | 同步，用 Mac 上的原文件（16 kHz 单声道 AAC 32 kbps，约 14 MB/小时），不另外压缩。默认两边都永久保留，可在 iPhone 设置里改保存位置，见下文 |
-| 归属哪一天 | 按实际时间。对话跨过 0 点时在 0 点切开，前半段归前一天，后半段归后一天 |
-| 补齐 | 配对后从最新往最旧自动补，不设起始范围；新内容优先于补旧 |
-| 网络 | 只走局域网，和回传共用同一个连接。离开 Mac 所在网络时，iPhone 显示上次同步到的内容 |
-| 空间不足 | iPhone 可用空间不足时暂停下载音频，不自动删除；在设置里提示还差多少、已暂停多少，文字照常同步 |
-
-### 录音保存位置
-
-iPhone 设置 › 设备 下的「录音保存在」，只在配对后出现。只管音频；文字总是两边都有。
-
-| 选项 | iPhone | Mac |
-| --- | --- | --- |
-| iPhone 和 Mac（默认） | 自己的录音回传后保留原文件；Mac 的音频全部下载 | 全部保留 |
-| 只在 Mac | 自己的录音回传、Mac 确认后删除（现在的做法）；不下载 Mac 的音频，播放时连上 Mac 临时取，离开局域网不能播放 | 全部保留 |
-| 只在 iPhone | 自己的录音照常回传给 Mac 转录合并；Mac 的音频全部下载 | iPhone 确认收到（`audioDone` 后回 `audioKept`）才删除那段音频，只留文字。之后 Mac 上不能回放、不能重新转录这段 |
-
-- 这个选项存在 Mac 上，按设备记：Mac 在 `welcome` 里带回当前值，iPhone 改了就发 `storagePreference`。多台 iPhone 时，只要有一台选了「只在 iPhone」，Mac 就在那一台确认收到后删除；其他 iPhone 之后也就取不到这段音频。
-- 从「只在 iPhone」改回其他选项时，Mac 已删的音频不会回来；从「只在 Mac」改回默认时，iPhone 开始从新往旧下载。
-- Mac 自己的「音频保留期限」（7 天 / 30 天 / 永久）照旧生效，和这个选项取更早删除的那个。
-- 空间不足的规则对两种需要下载的选项都适用。
+| 音频 | 用 Mac 上的原始音频（16 kHz 单声道 AAC 32 kbps，约 14 MB/小时），每段对话拼成一个 M4A，不另外压缩 |
+| 补齐 | 从最新往最旧，每次连接最多 30 天，`more` 为真就接着拉 |
+| 归属哪一天 | 按实际时间：Mac 按天切，对话不跨 0 点 |
+| 网络 | 只走局域网，和回传共用一个连接；不在 Mac 所在网络时，iPhone 显示上次同步到的内容 |
+| 空间不足 | iPhone 可用空间低于 1 GB 时暂停下载音频，不自动删除，在设置里提示；文字照常同步 |
 
 ### 单位：对话
 
-iPhone 按「一段对话」展示，不按小时。对话由 Mac 切分：同一时间线上连续 3 分钟以上没人说话就断开（阈值待调）。每段有稳定的 `id`、起止时间、来源、标题、摘要、要点（带句子引用）、待办和逐句原文。每小时总结和当天总结仍是 Mac 自己的界面，按需另外下发。
+Mac 把一天的句子按时间排好，去掉私人、已删除和暂停时段里的，再切开（`ConversationRules`）：
 
-切段、每段标题和摘要在 Mac 上都是新功能。
+- 两句之间安静超过 3 分钟就断开。
+- 只有一两句、合计不到 12 个字的碎片（「嗯」「对」）不单独成段：10 分钟内有相邻的对话就并进去（并进更近的那个），否则不列出。
+- 对话 ID 是第一句的句子 ID（`c<id>`），只要第一句还在就不变。
+- 每段对话带 `digest`，包含规则版本、标题、每句的时间 / 说话人 / 文字，以及这台手机被包含进来的录音。
 
-### 消息（草案）
+查看某天怎么切的：`wakeoncue conversations [日期]`。
+
+### 消息
 
 | 方向 | 消息 | 说明 |
 | --- | --- | --- |
-| iPhone → Mac | `libraryPull(cursor, limit)` | 要 `cursor` 之后的变化；`cursor` 为空表示从头开始，Mac 先给最新的 |
-| Mac → iPhone | `libraryChanges(conversations, deleted, cursor, more)` | `conversations` 是新增或改过的对话（完整内容，按 `revision` 覆盖）；`deleted` 是删除或标为私人的对话 ID；`more` 为真时继续拉 |
-| iPhone → Mac | `audioFetch(partID, offset)` | 要一个音频分段，断了从 `offset` 续 |
-| Mac → iPhone | `audioChunk(partID, offset, bodyLength)` + 正文 | 和回传的 `chunk` 对称，每块 ≤ 1 MB |
-| Mac → iPhone | `audioDone(partID, sha256)` | 发完，iPhone 校验后入库 |
-| iPhone → Mac | `audioKept(partIDs)` | 这些分段已存好；保存位置是「只在 iPhone」时 Mac 收到后删除 |
-| iPhone → Mac | `storagePreference(value)` | 改了录音保存位置 |
-| iPhone → Mac | `edits([EditInfo])` | iPhone 上的修改：改标题、说话人命名、勾待办、删除对话 |
-| Mac → iPhone | `editsStored(ids)` | 已应用，iPhone 删掉待发的修改 |
+| iPhone → Mac | `edits([LibraryEdit])` | 待发的修改：`delete`（Mac 把这段时间标为已删除，30 天内可恢复）、`restore`、`rename`（存在 Mac 的 `conversation_title` 表）。每条有 ID，重发只生效一次 |
+| Mac → iPhone | `editsStored(ids)` | 已应用 |
+| iPhone → Mac | `libraryPull(bodyLength)` + 正文 | 正文是 iPhone 已有的 `[日期: digest]` JSON |
+| Mac → iPhone | `libraryDay(day, bodyLength)` + 正文 | 正文是 zlib 压缩的 `LibraryDay` JSON：这一天的全部对话。iPhone 有、但这里没有的对话就删掉（Mac 上删除、标为私人或并进了别的对话） |
+| Mac → iPhone | `libraryEnd(more)` | 这次发完了；`more` 为真表示还有更早的天 |
+| iPhone → Mac | `audioFetch(conversationID, offset)` | 要这段对话的音频，从 `offset` 续传 |
+| Mac → iPhone | `audioInfo(conversationID, digest, bytes, sha256, format)` | 整个文件的大小和 SHA-256；之后是 `audioChunk`（每块 ≤ 1 MB），最后 `audioDone`。没有音频时回 `failure(retry: false)` |
 
-对话里的 `audio` 列出它覆盖的音频分段（`partID`、开始时间、时长、字节数、SHA-256）。私人和已删除时段 Mac 先剪掉再发，不下发原段。来自这台 iPhone 的分段带上原来的 `SegmentInfo.id`，iPhone 本地还有这份音频时就不再下载。
+除 `chunk` 和 `audioChunk` 外，带正文的消息正文最多 16 MB。
 
-### 修改和冲突
+一次连接的顺序：`hello` → `welcome` → 回传录音和标记（Mac 关了自动回传就跳过）→ `edits` → `libraryPull` 直到 `more` 为假 → 下载音频（最新的先，每次最多 30 段）→ `bye`。
 
-- 每个可改字段带修改时间，后改的为准。两边同时改同一字段的情况少，不做合并。
-- 删除用墓碑：`deleted` 里的 ID 保留 60 天，避免删掉的对话被旧数据带回来。现有的 `drop` 时段照旧，防止 iPhone 把已删除时段的音频再传给 Mac。
-- iPhone 离线时的修改放进本地队列，和回传的 `MacOutbox` 一样，连上后先发修改再拉变化。
+### Mac 怎么判断哪天变了
 
-### 顺序
+每次 `libraryPull`，Mac 用 SQL 聚合给每天算一个便宜的摘要值（句子数、最小最大 ID、文字长度、时长、说话人、重转录次数），再加上当天的私人 / 删除 / 暂停时段、标题和这台手机的回传记录，一起算 SHA-256。和 iPhone 给的不同的那天才真正切段、打包。
 
-一次连接里：`hello` → `welcome` → 回传录音和标记 → 发修改 → 拉对话变化 → 下载音频（先新后旧）→ `bye`。音频下载可以随时中断，下次接着来。
+### 音频
 
-### 待定
+`ConversationAudio` 把对话时间段内的音频拼成一个 16 kHz 单声道 M4A，对话开始就是 0 秒：优先用 Mac 麦克风，Mac 没录到的地方用手表或 iPhone 的音频；私人、已删除、暂停时段和没有音频的空档写成同样长的静音，所以文字时间和音频对得上。拼好的文件缓存在 `Cache/ConversationAudio/<对话>-<digest>.m4a`，同一 digest 的文件不变，iPhone 可以续传；3 天没用的自动清掉。
 
-- 切段阈值。
+### iPhone 怎么保存
+
+- 每段对话存成一条普通录音（ID `mac_<对话 ID>`，`source = mac`），转录写进它的 `transcript.json`，音频下载到 `downloadedAudioURL`，所以回顾、搜索、问一问、对话页、播放都不用改。
+- 最近 3 天新来或改过的对话，在 iPhone 上自动生成标题和总结（Apple 智能或设置里的服务）；更早的在打开时生成。
+- 自己录的、已被 Mac 对话包含的录音加上 `included_in_mac_conversation`，不再单独列出，文件保留。
+- 设置 › Mac 里的「Mac 的录音保存在」：「iPhone 和 Mac」（默认）自动下载音频；「只在 Mac」不下载，在 Mac 所在网络里播放时临时取。
+
+### 还没做
+
+- Mac 端给每段对话写标题和总结（现在由 iPhone 自己写）。
+- 「只在 iPhone」：需要 Mac 在 iPhone 确认收到后删掉那段音频，而 Mac 的音频分段跨多段对话，要先能裁剪分段。
+- 待办勾选的同步：现在只存在这台 iPhone 上。
+- 跨好几个小时不停说话的长段落还不会再细分。

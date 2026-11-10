@@ -16,6 +16,8 @@ nonisolated enum SyncProtocol {
   static let serviceType = "_wakeoncue._tcp"
   /// Largest chunk body the Mac accepts.
   static let maximumChunk = 1 << 20
+  /// Largest body of the other messages that carry one (a day of conversations, compressed).
+  static let maximumBody = 16 << 20
   static let maximumHeader = 64 << 10
   /// Marks per `marks` message, so a header stays well under `maximumHeader`.
   static let marksPerMessage = 100
@@ -25,9 +27,13 @@ nonisolated enum SyncProtocol {
   enum Feature {
     /// `marks` / `marksStored`: the Watch and iPhone "记下刚才" marks.
     static let marks = "marks"
+    /// `libraryPull` … `editsStored`: the Mac's conversations, their audio and edits to them.
+    static let library = "library"
   }
   /// Everything this build of the Mac understands.
-  static let features = [Feature.marks]
+  static let features = [Feature.marks, Feature.library]
+  /// Days per `libraryPull` answer, so one connection never holds the Mac for long.
+  static let daysPerPull = 30
 
   // MARK: Pairing with a code
 
@@ -175,6 +181,79 @@ nonisolated enum SyncProtocol {
     var title: String?
   }
 
+  // MARK: The Mac's conversations
+
+  /// One transcribed sentence. `speaker` is "me" or "other"; `name` a person's name when known.
+  struct LibrarySentence: Codable, Equatable {
+    var id: Int64
+    var start: Date
+    var end: Date
+    var speaker: String
+    var name: String?
+    var text: String
+  }
+
+  /// A recording from the phone asking, whose audio is part of a conversation.
+  struct DeviceRecording: Codable, Equatable, Hashable {
+    /// "watch" or "iphone".
+    var source: String
+    /// The `SegmentInfo.recordingID` the phone sent it under.
+    var recordingID: String
+  }
+
+  /// A stretch of talk on the Mac's timeline: sentences with no silence longer than
+  /// `ConversationRules.gap` between them, never across midnight. Private and deleted time is
+  /// already left out.
+  struct LibraryConversation: Codable, Equatable {
+    /// Stable while the conversation keeps its first sentence.
+    var id: String
+    var start: Date
+    var end: Date
+    /// Where the audio came from, e.g. ["Mac", "Apple Watch"].
+    var sources: [String]
+    /// The user's own title for it, if they gave one.
+    var title: String?
+    var overview: String?
+    var keyPoints: [String]
+    var todos: [String]
+    var sentences: [LibrarySentence]
+    /// This phone's recordings that the conversation includes, so the phone can stop showing them
+    /// on their own.
+    var deviceRecordings: [DeviceRecording]
+    /// Changes whenever anything above does.
+    var digest: String
+  }
+
+  /// Everything one day holds. A conversation the phone has for this day but that is not listed
+  /// here was deleted, marked private or merged into another.
+  struct LibraryDay: Codable, Equatable {
+    /// "yyyy-MM-dd" in the Mac's time zone.
+    var day: String
+    var digest: String
+    var conversations: [LibraryConversation]
+  }
+
+  /// A change made on the phone to one of the Mac's conversations.
+  struct LibraryEdit: Codable, Equatable {
+    enum Kind: String, Codable {
+      /// Deletes the conversation's time on the Mac (restorable there for 30 days).
+      case delete
+      /// Undoes `delete`.
+      case restore
+      /// Sets the title; an empty `value` clears it.
+      case rename
+    }
+
+    /// Unique per edit, so a resent one is applied once.
+    var id: String
+    var conversationID: String
+    var start: Date
+    var end: Date
+    var kind: Kind
+    var value: String?
+    var madeAt: Date
+  }
+
   enum Message: Codable, Equatable {
     /// Phone → Mac, first message.
     case hello(deviceID: String, deviceName: String, protocolVersion: Int)
@@ -196,6 +275,27 @@ nonisolated enum SyncProtocol {
     /// Mac → phone: these marks are stored; the phone may forget them.
     case marksStored(ids: [String])
     /// Phone → Mac, on the pair listener: please show a code. `requestID` is fresh per request.
+    /// Phone → Mac, only when `welcome` listed `Feature.library`. Body: JSON `[day: digest]` of
+    /// the days the phone already has. The Mac answers with up to `daysPerPull` `libraryDay`s,
+    /// newest first, for days whose digest differs, then `libraryEnd`.
+    case libraryPull(bodyLength: Int)
+    /// Mac → phone. Body: zlib-compressed JSON `LibraryDay`.
+    case libraryDay(day: String, bodyLength: Int)
+    /// Mac → phone: `more` means another `libraryPull` will bring older days.
+    case libraryEnd(more: Bool)
+    /// Phone → Mac: wants a conversation's audio from `offset`. The Mac answers `audioInfo`, then
+    /// `audioChunk`s, then `audioDone`; or `failure` when there is no audio.
+    case audioFetch(conversationID: String, offset: Int64)
+    /// Mac → phone: the whole file's size and SHA-256. The same conversation with the same digest
+    /// always gives the same file, so an interrupted download resumes.
+    case audioInfo(conversationID: String, digest: String, bytes: Int64, sha256: String, format: String)
+    /// Mac → phone: `bodyLength` bytes at `offset`, in the frame body.
+    case audioChunk(conversationID: String, offset: Int64, bodyLength: Int)
+    case audioDone(conversationID: String)
+    /// Phone → Mac, only with `Feature.library`: edits made on the phone.
+    case edits([LibraryEdit])
+    /// Mac → phone: applied; the phone forgets them.
+    case editsStored(ids: [String])
     case pairRequest(requestID: String, deviceName: String)
     /// Mac → phone: a code is on screen until `expires`; connect to `port` on this host with
     /// `codeKey(code, requestID)` under `codeIdentity(requestID)`.
@@ -210,8 +310,21 @@ nonisolated enum SyncProtocol {
     case bye
 
     var bodyLength: Int {
-      if case .chunk(_, _, let length) = self { return length }
-      return 0
+      switch self {
+      case .chunk(_, _, let length), .audioChunk(_, _, let length), .libraryPull(let length),
+        .libraryDay(_, let length):
+        return length
+      default:
+        return 0
+      }
+    }
+
+    /// Audio travels in chunks of at most `maximumChunk`; a day of text may be larger.
+    var maximumBody: Int {
+      switch self {
+      case .chunk, .audioChunk: SyncProtocol.maximumChunk
+      default: SyncProtocol.maximumBody
+      }
     }
   }
 
@@ -266,7 +379,7 @@ nonisolated final class SyncChannel: @unchecked Sendable {
     guard length > 0, length <= SyncProtocol.maximumHeader else { throw Failure.badFrame }
     let message = try SyncProtocol.decodeHeader(try await read(length))
     let bodyLength = message.bodyLength
-    guard bodyLength >= 0, bodyLength <= SyncProtocol.maximumChunk else { throw Failure.badFrame }
+    guard bodyLength >= 0, bodyLength <= message.maximumBody else { throw Failure.badFrame }
     return (message, bodyLength > 0 ? try await read(bodyLength) : Data())
   }
 
@@ -289,6 +402,22 @@ nonisolated final class SyncChannel: @unchecked Sendable {
       data.append(part)
     }
     return data
+  }
+}
+
+nonisolated extension SyncProtocol {
+  /// A `LibraryDay` as the `libraryDay` body.
+  static func pack(_ day: LibraryDay) throws -> Data {
+    try (JSONEncoder.sync.encode(day) as NSData).compressed(using: .zlib) as Data
+  }
+
+  static func unpackDay(_ body: Data) throws -> LibraryDay {
+    try JSONDecoder.sync.decode(LibraryDay.self, from: (body as NSData).decompressed(using: .zlib) as Data)
+  }
+
+  /// Lowercase hex SHA-256 of text, for digests.
+  static func digest(_ text: String) -> String {
+    SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
   }
 }
 

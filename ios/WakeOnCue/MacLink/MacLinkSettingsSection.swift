@@ -35,8 +35,22 @@ struct MacLinkSettingsSection: View {
           Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         default: EmptyView()
         }
-        Button("Send now") { Task { await uploader.sync() } }
-          .disabled(uploader.pending == 0 || pairing.needsRepair)
+        Picker("Keep the Mac's audio", selection: Binding(
+          get: { MacAudioPlacement.current },
+          set: { MacAudioPlacement.current = $0; if $0 == .both { Task { await uploader.sync() } } }
+        )) {
+          Text("On iPhone and Mac").tag(MacAudioPlacement.both)
+          Text("On the Mac only").tag(MacAudioPlacement.macOnly)
+        }
+        .accessibilityIdentifier("settings.mac.audio-placement")
+        if uploader.audioPausedForSpace {
+          Label("This iPhone is nearly full, so downloading the Mac's audio is paused. Free up space and it continues.",
+                systemImage: "externaldrive.badge.exclamationmark")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        }
+        Button("Sync now") { Task { await uploader.sync() } }
+          .disabled(pairing.needsRepair)
         Button("Change Mac…") { flow.open() }
         Button("Unpair", role: .destructive) { uploader.unpair() }
       } else {
@@ -44,6 +58,10 @@ struct MacLinkSettingsSection: View {
       }
     } header: {
       Text("Mac")
+    } footer: {
+      if uploader.pairing != nil {
+        Text("The Mac's conversations and their text come to this iPhone on the same Wi‑Fi. With “On the Mac only”, audio plays from the Mac while you are on its network.")
+      }
     }
   }
 

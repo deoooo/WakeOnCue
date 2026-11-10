@@ -286,6 +286,16 @@ public actor RecordingStore {
     return try recording(id: recordingID)
   }
 
+  /// Changes how long a finished recording is, e.g. a conversation synced from the Mac that
+  /// grew since it was first received.
+  public func updateDuration(recordingID: String, duration: TimeInterval, now: Date = Date()) throws {
+    _ = try recording(id: recordingID)
+    try run(
+      "UPDATE recordings SET duration = ?, updated_at = ? WHERE id = ?",
+      [.double(max(0, duration)), .double(now.timeIntervalSince1970), .text(recordingID)]
+    )
+  }
+
   /// Searches custom titles across the complete local data set without an implicit result cap.
   public func recordings(matchingTitle query: String) throws -> [RecordingRecord] {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)

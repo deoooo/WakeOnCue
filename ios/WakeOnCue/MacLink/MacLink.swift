@@ -3,6 +3,7 @@ import Foundation
 import Network
 import OSLog
 import Security
+import WakeOnCueCore
 #if canImport(UIKit)
   import UIKit
 #endif
@@ -271,6 +272,14 @@ final class MacUploader {
   private var running = false
   /// Decides, per recording on this iPhone, whether its audio may go to the Mac. Unset, all goes.
   var disposition: (@MainActor @Sendable (String) async -> MacOutbox.Disposition)?
+  /// Applies the Mac's conversations to this iPhone's recordings. Unset, nothing is pulled.
+  var libraryImporter: (@MainActor () -> MacLibraryImporter?)?
+  /// Conversations that arrived or changed, to refresh the screens and summarize them.
+  var onLibraryChanged: (@MainActor ([RecordingRecord]) async -> Void)?
+  /// Audio downloads stopped because this iPhone is nearly full.
+  private(set) var audioPausedForSpace = false
+  /// Mac conversations whose audio is not on this iPhone yet.
+  private(set) var audioWaiting = 0
 
   /// Connecting a Mac: the sheet, nearby Macs, the code and the QR code.
   let flow = MacPairingFlow()
@@ -304,6 +313,7 @@ final class MacUploader {
   func unpair() {
     MacPairing.save(nil)
     MacOutbox.removeAll()
+    MacLibraryState.reset()
     pairing = nil
     pending = 0
     status = .idle
@@ -333,29 +343,35 @@ final class MacUploader {
         MacOutbox.remove(item)
       }
       MacOutbox.dropMarks(in: drop)
-      guard accepting else {
-        status = .failed(AppLanguage.localized("Forwarding is turned off on the Mac."))
-        return
+      if accepting {
+        // Checked again: a recording can be deleted while the connection was being set up.
+        let items = await sendableItems()
+        for (index, item) in items.enumerated() {
+          // Sending can take minutes; a recording deleted meanwhile stops here.
+          guard await disposition?(MacOutbox.appRecordingID(for: item.info)) ?? .send == .send else { continue }
+          status = .sending(done: index, total: items.count)
+          try await send(item, over: channel)
+          pending = items.count - index - 1
+        }
+        // After the audio, so the Mac may already know the clock offset of these recordings. An
+        // older Mac does not list marks and would hang up on them: they wait for an update.
+        if features?.contains(SyncProtocol.Feature.marks) == true {
+          try await sendMarks(over: channel)
+        }
       }
-      // Checked again: a recording can be deleted while the connection was being set up.
-      let items = await sendableItems()
-      for (index, item) in items.enumerated() {
-        // Sending can take minutes; a recording deleted meanwhile stops here.
-        guard await disposition?(MacOutbox.appRecordingID(for: item.info)) ?? .send == .send else { continue }
-        status = .sending(done: index, total: items.count)
-        try await send(item, over: channel)
-        pending = items.count - index - 1
-      }
-      // After the audio, so the Mac may already know the clock offset of these recordings. An
-      // older Mac does not list marks and would hang up on them: they wait for an update.
-      if features?.contains(SyncProtocol.Feature.marks) == true {
-        try await sendMarks(over: channel)
+      // The Mac's conversations come back whether or not it takes this iPhone's audio.
+      if features?.contains(SyncProtocol.Feature.library) == true, let importer = libraryImporter?() {
+        try await sendEdits(over: channel)
+        try await pullLibrary(over: channel, importer: importer)
+        if MacAudioPlacement.current == .both {
+          try await downloadAudio(over: channel, importer: importer)
+        }
       }
       try? await channel.send(.bye)
       pairing.lastSync = .now
       MacPairing.save(pairing)
       self.pairing = pairing
-      status = .idle
+      status = accepting ? .idle : .failed(AppLanguage.localized("Forwarding is turned off on the Mac."))
     } catch MacLinkError.refusedKey {
       pairing.needsRepair = true
       MacPairing.save(pairing)
@@ -422,15 +438,171 @@ final class MacUploader {
     }
   }
 
+  // MARK: The Mac's conversations
+
+  private func sendEdits(over channel: SyncChannel) async throws {
+    let edits = MacLibraryState.pendingEdits
+    guard !edits.isEmpty else { return }
+    try await channel.send(.edits(edits))
+    switch try await channel.receive().0 {
+    case .editsStored(let ids):
+      MacLibraryState.removeEdits(ids: ids)
+      Self.logger.notice("The Mac applied \(ids.count) edits")
+    case .failure(_, let reason, _):
+      throw MacLinkError.refused(reason)
+    default:
+      throw MacLinkError.unexpected
+    }
+  }
+
+  /// Asks for changed days until the Mac has no more, applying each as it arrives.
+  private func pullLibrary(over channel: SyncChannel, importer: MacLibraryImporter) async throws {
+    var changed: [RecordingRecord] = []
+    var received = 0
+    var more = true
+    while more {
+      let known = try JSONEncoder.sync.encode(MacLibraryState.days)
+      try await channel.send(.libraryPull(bodyLength: known.count), body: known)
+      receiving: while true {
+        let (message, body) = try await channel.receive()
+        switch message {
+        case .libraryDay:
+          let day = try SyncProtocol.unpackDay(body)
+          changed += try await importer.apply(day, language: AppLanguage.current)
+          received += 1
+        case .libraryEnd(let hasMore):
+          more = hasMore
+          break receiving
+        case .failure(_, let reason, _):
+          throw MacLinkError.refused(reason)
+        default:
+          throw MacLinkError.unexpected
+        }
+      }
+    }
+    if received > 0 {
+      Self.logger.notice("Received \(received) days, \(changed.count) conversations changed")
+      await onLibraryChanged?(changed)
+    }
+  }
+
+  /// Newest first, while this iPhone has room. Stops, without deleting anything, when it is
+  /// nearly full.
+  private func downloadAudio(over channel: SyncChannel, importer: MacLibraryImporter) async throws {
+    let waiting = try await importer.recordingsNeedingAudio(limit: 30)
+    audioWaiting = waiting.count
+    audioPausedForSpace = false
+    for recording in waiting {
+      guard Self.hasRoomForAudio else {
+        audioPausedForSpace = true
+        Self.logger.notice("Stopped downloading audio: the iPhone is nearly full")
+        return
+      }
+      guard let conversationID = MacConversation.conversationID(of: recording) else { continue }
+      let url = try RecordingFileLayout().downloadedAudioURL(recordingID: recording.id)
+      _ = try await fetchAudio(conversationID, to: url, over: channel)
+      audioWaiting -= 1
+    }
+  }
+
+  /// Downloads one conversation's audio now, for playing it while it is not on this iPhone.
+  func downloadAudioNow(for recording: RecordingRecord) async throws -> URL {
+    guard let pairing, !pairing.needsRepair, let conversationID = MacConversation.conversationID(of: recording) else {
+      throw MacLinkError.notFound
+    }
+    let url = try RecordingFileLayout().downloadedAudioURL(recordingID: recording.id)
+    let channel = try await connect(pairing)
+    defer { channel.connection.cancel() }
+    try await channel.send(.hello(deviceID: pairing.identity, deviceName: Self.deviceName, protocolVersion: SyncProtocol.version))
+    guard case .welcome(_, _, _, let features) = try await channel.receive().0,
+      features?.contains(SyncProtocol.Feature.library) == true
+    else { throw MacLinkError.unexpected }
+    guard try await fetchAudio(conversationID, to: url, over: channel) else { throw MacLinkError.noAudio }
+    try? await channel.send(.bye)
+    return url
+  }
+
+  /// Resumes from what an earlier attempt left. Returns false when the Mac has no audio for it.
+  private func fetchAudio(_ conversationID: String, to url: URL, over channel: SyncChannel) async throws -> Bool {
+    let partial = url.deletingLastPathComponent().appending(path: "." + url.lastPathComponent + ".part")
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let offset = Self.size(of: partial)
+    try await channel.send(.audioFetch(conversationID: conversationID, offset: offset))
+    let bytes: Int64
+    let sha256: String
+    switch try await channel.receive().0 {
+    case .audioInfo(_, _, let size, let digest, _):
+      bytes = size
+      sha256 = digest
+    case .failure(_, _, false):
+      return false
+    case .failure(_, let reason, true):
+      throw MacLinkError.refused(reason)
+    default:
+      throw MacLinkError.unexpected
+    }
+    // The Mac's file changed since the earlier attempt: start over next time.
+    if offset > bytes { try? FileManager.default.removeItem(at: partial) }
+    receiving: while true {
+      let (message, body) = try await channel.receive()
+      switch message {
+      case .audioChunk(_, let at, _):
+        guard at == Self.size(of: partial) else { throw MacLinkError.unexpected }
+        try Self.append(body, to: partial)
+      case .audioDone:
+        break receiving
+      default:
+        throw MacLinkError.unexpected
+      }
+    }
+    guard Self.size(of: partial) == bytes, (try? Self.sha256(of: partial)) == sha256 else {
+      try? FileManager.default.removeItem(at: partial)
+      return false
+    }
+    try? FileManager.default.removeItem(at: url)
+    try FileManager.default.moveItem(at: partial, to: url)
+    try? RecordingFileLayout.protect(url)
+    return true
+  }
+
+  /// Keeps at least 1 GB free for recording.
+  private static var hasRoomForAudio: Bool {
+    let values = try? URL.applicationSupportDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+    guard let free = values?.volumeAvailableCapacityForImportantUsage else { return true }
+    return free > 1 << 30
+  }
+
+  private static func size(of url: URL) -> Int64 {
+    Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+  }
+
+  private static func append(_ data: Data, to url: URL) throws {
+    if !FileManager.default.fileExists(atPath: url.path) { FileManager.default.createFile(atPath: url.path, contents: nil) }
+    let handle = try FileHandle(forWritingTo: url)
+    defer { try? handle.close() }
+    try handle.seekToEnd()
+    try handle.write(contentsOf: data)
+  }
+
+  private static func sha256(of url: URL) throws -> String {
+    let handle = try FileHandle(forReadingFrom: url)
+    defer { try? handle.close() }
+    var hasher = SHA256()
+    while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
   enum MacLinkError: LocalizedError {
     case notFound
     case refusedKey
     case localNetworkDenied
     case refused(String)
     case unexpected
+    case noAudio
 
     var errorDescription: String? {
       switch self {
+      case .noAudio: AppLanguage.localized("The Mac has no audio for this conversation.")
       case .notFound: AppLanguage.localized("The Mac is not on this network.")
       case .localNetworkDenied: AppLanguage.localized("WakeOnCue needs Local Network access to reach the Mac.")
       case .refusedKey: AppLanguage.localized("The Mac no longer accepts this iPhone.")

@@ -127,6 +127,7 @@ final class AppModel {
     sync.onMarks = { [weak summaries] marks in
       for day in Set(marks.map { Calendar.current.startOfDay(for: $0.start) }) { summaries?.redoDay(containing: day) }
     }
+    sync.onLibraryEdit = { [weak self] edit in self?.apply(edit) }
     sync.onPairRequest = { [pairPanel] in pairPanel.update($0) }
     sync.onPaired = { device, byCode in if !byCode { PairRequestPanel.notifyPaired(device) } }
     sync.start()
@@ -223,5 +224,17 @@ final class AppModel {
   func undoDelete(_ interval: DateInterval) {
     store.removeMarks(.deleted, overlapping: interval)
     summaries.invalidate(interval)
+  }
+
+  /// A change made on the iPhone to one of the conversations it got from this Mac.
+  func apply(_ edit: SyncProtocol.LibraryEdit) {
+    guard edit.end > edit.start else { return }
+    let interval = DateInterval(start: edit.start, end: edit.end)
+    switch edit.kind {
+    case .delete: delete(interval)
+    case .restore: undoDelete(interval)
+    case .rename:
+      store.setConversationTitle(id: edit.conversationID, day: ConversationBuilder.dayKey(edit.start), title: edit.value)
+    }
   }
 }

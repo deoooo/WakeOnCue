@@ -404,6 +404,7 @@ struct RecentlyDeletedView: View {
 
 struct RecordingTitleEditor: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(AppModel.self) private var model
   let recording: RecordingRecord
   let onSaved: (RecordingRecord) -> Void
 
@@ -453,6 +454,11 @@ struct RecordingTitleEditor: View {
     do {
       let service = try RecordingLibraryService(layout: RecordingFileLayout())
       let updated = try await service.saveTitle(title, for: recording.id)
+      // A conversation from the Mac keeps its title there too.
+      if MacConversation.isFromMac(updated) {
+        MacLibraryState.enqueue(.rename, recording: updated, value: updated.resolvedTitle ?? "")
+        Task { await model.macUploader.sync() }
+      }
       onSaved(updated)
       dismiss()
     } catch {

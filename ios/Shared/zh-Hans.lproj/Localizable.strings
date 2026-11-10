@@ -589,3 +589,14 @@
 "Recordings" = "录音";
 "Review tab" = "回顾";
 "Recording at %@" = "%@ 的录音";
+
+/* Mac library sync */
+"Someone else" = "他人";
+"Keep the Mac's audio" = "Mac 的录音保存在";
+"On iPhone and Mac" = "iPhone 和 Mac";
+"On the Mac only" = "只在 Mac";
+"This iPhone is nearly full, so downloading the Mac's audio is paused. Free up space and it continues." = "这台 iPhone 空间快满了，已暂停下载 Mac 的音频。腾出空间后会自动继续。";
+"Sync now" = "立即同步";
+"The Mac's conversations and their text come to this iPhone on the same Wi‑Fi. With “On the Mac only”, audio plays from the Mac while you are on its network." = "在同一个 Wi‑Fi 下，Mac 上的对话和文字会同步到这台 iPhone。选「只在 Mac」时，在 Mac 所在的网络里播放会直接从 Mac 取音频。";
+"The Mac has no audio for this conversation." = "Mac 上没有这段对话的音频。";
+"Mac" = "Mac";

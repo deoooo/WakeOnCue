@@ -33,16 +33,18 @@ actor RecordingLibraryService {
     self.watchInboxRoot = watchInboxRoot
   }
 
+  /// A page of the library. This iPhone's recordings that a Mac conversation now includes are
+  /// left out, so the same talk is listed once.
   func page(limit: Int, offset: Int) async throws -> [RecordingRecord] {
-    try await store.recordings(limit: limit, offset: offset)
+    try await store.recordings(limit: limit, offset: offset).filter(MacConversation.isListed)
   }
 
   /// Recordings that started within `interval`, newest first. The store lists recordings by when
   /// they were saved, which is never before they started, so paging stops once a page reaches
   /// recordings saved before the interval.
-  func recordings(startedIn interval: DateInterval, pageSize: Int = 100) async throws
-    -> [RecordingRecord]
-  {
+  func recordings(
+    startedIn interval: DateInterval, pageSize: Int = 100, includingUnlisted: Bool = false
+  ) async throws -> [RecordingRecord] {
     let safePageSize = max(1, pageSize)
     var result: [RecordingRecord] = []
     var offset = 0
@@ -51,7 +53,10 @@ actor RecordingLibraryService {
       let page = try await store.recordings(limit: safePageSize, offset: offset)
       // The end is exclusive: a recording starting at midnight belongs to the next day only.
       result.append(
-        contentsOf: page.filter { $0.startedAt >= interval.start && $0.startedAt < interval.end })
+        contentsOf: page.filter {
+          $0.startedAt >= interval.start && $0.startedAt < interval.end
+            && (includingUnlisted || MacConversation.isListed($0))
+        })
       guard page.count == safePageSize, let last = page.last, last.createdAt >= interval.start
       else { break }
       offset += safePageSize
@@ -264,11 +269,13 @@ actor RecordingLibraryService {
   private func allRecordings(pageSize: Int) async throws -> [RecordingRecord] {
     let safePageSize = max(1, pageSize)
     var result: [RecordingRecord] = []
+    var offset = 0
     while true {
       try Task.checkCancellation()
-      let page = try await store.recordings(limit: safePageSize, offset: result.count)
-      result.append(contentsOf: page)
+      let page = try await store.recordings(limit: safePageSize, offset: offset)
+      result.append(contentsOf: page.filter(MacConversation.isListed))
       if page.count < safePageSize { return result }
+      offset += safePageSize
     }
   }
 }

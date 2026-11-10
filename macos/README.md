@@ -68,6 +68,7 @@ wakeoncue search 告警 灰度 --days 7 --speaker 他人
 wakeoncue export 昨天 > 昨天.md     # 整天：当天总结、每小时总结和全部转录
 wakeoncue export --hour 10 --format srt > 10点.srt   # 字幕时间从 10:00 算起
 wakeoncue health --days 3          # 全天录音体检：没有原因的空档、有转录没总结、回传进度
+wakeoncue conversations 昨天        # 这一天切成的对话（同步给 iPhone 的单位）
 ```
 
 `export` 输出的内容和 App 里「导出…」（工具栏、文件 › 导出这一天… ⌘E、小时的「…」菜单）保存的文件完全一样，格式化代码在 `Export/Export.swift`，单元测试在 `WakeOnCueTests/`（`xcodebuild … test`，不启动 App）。格式：`md`（默认，带总结、时间和说话人）、`txt`（纯转录）、`srt`（时间相对所选范围的起点）。
