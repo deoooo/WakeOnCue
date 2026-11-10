@@ -13,6 +13,9 @@ enum MacConversation {
   static let dayKey = "mac_day"
   static let digestKey = "mac_digest"
   static let sourcesKey = "mac_sources"
+  /// How this iPhone laid out the transcript; a new layout rewrites conversations whose text is unchanged.
+  static let formatKey = "mac_format"
+  static let format = "2"
   /// Set on this iPhone's own recordings once the Mac's conversation includes them: they stop
   /// showing on their own.
   static let includedInKey = "included_in_mac_conversation"
@@ -111,6 +114,14 @@ enum MacLibraryState {
 
   /// After unpairing, a Mac paired later starts from scratch.
   static func reset() { update { $0 = File() } }
+
+  /// When this iPhone lays out transcripts differently, every day is asked for again.
+  static func refetchIfFormatChanged() {
+    let key = "mac.library.format"
+    guard UserDefaults.standard.string(forKey: key) != MacConversation.format else { return }
+    update { $0.days = [:] }
+    UserDefaults.standard.set(MacConversation.format, forKey: key)
+  }
 }
 
 /// Applies days received from the Mac to the recordings on this iPhone.
@@ -171,6 +182,7 @@ struct MacLibraryImporter {
       MacConversation.dayKey: day,
       MacConversation.digestKey: conversation.digest,
       MacConversation.sourcesKey: conversation.sources.joined(separator: ","),
+      MacConversation.formatKey: MacConversation.format,
     ]
     let existing: RecordingRecord?
     do {
@@ -183,7 +195,9 @@ struct MacLibraryImporter {
     if let existing {
       // In Recently Deleted here; the Mac has not applied the delete yet.
       if existing.isDeleted { return nil }
-      guard existing.metadata[MacConversation.digestKey] != conversation.digest else { return nil }
+      guard existing.metadata[MacConversation.digestKey] != conversation.digest
+        || existing.metadata[MacConversation.formatKey] != MacConversation.format
+      else { return nil }
       try await store.updateRecordingMetadata(recordingID: recordingID, values: metadata)
       try await store.updateDuration(recordingID: recordingID, duration: duration)
     } else {
@@ -227,7 +241,8 @@ struct MacLibraryImporter {
 
   /// The Mac cuts speech at every punctuation mark, so "对，对。" is a sentence of its own. Reading
   /// is easier in paragraphs: the same speaker, barely pausing, up to about a minute.
-  static let paragraphPause: TimeInterval = 2.5
+  /// Half the pauses between the Mac's sentences are under 2 s and four in five under 5 s.
+  static let paragraphPause: TimeInterval = 5
   static let paragraphLength: TimeInterval = 60
   static let paragraphCharacters = 160
 

@@ -462,6 +462,7 @@ final class MacUploader {
 
   /// Asks for changed days until the Mac has no more, applying each as it arrives.
   private func pullLibrary(over channel: SyncChannel, importer: MacLibraryImporter) async throws {
+    MacLibraryState.refetchIfFormatChanged()
     var changed: [RecordingRecord] = []
     var received = 0
     var more = true
