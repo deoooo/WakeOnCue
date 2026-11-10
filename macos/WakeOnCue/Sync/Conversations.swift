@@ -11,7 +11,7 @@ nonisolated enum ConversationRules {
   /// …joins the nearest conversation this close, or is left out of the list.
   static let minorReach: TimeInterval = 10 * 60
   /// Bumped when the cutting or the digest changes, so every phone fetches every day again.
-  static let version = "2"
+  static let version = "3"
 }
 
 /// Builds a day's conversations from its sentences. Pure: the same input gives the same

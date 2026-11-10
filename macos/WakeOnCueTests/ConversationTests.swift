@@ -82,6 +82,14 @@ struct ConversationTests {
     #expect(frame.count > 4)
   }
 
+  @Test func sentenceTimesKeepTheirMilliseconds() throws {
+    let precise = Date(timeIntervalSince1970: 1_800_000_000.456)
+    let line = SyncProtocol.LibrarySentence(id: 1, start: precise, end: precise.addingTimeInterval(1.5), speaker: "me", name: nil, text: "话")
+    let decoded = try JSONDecoder.sync.decode(SyncProtocol.LibrarySentence.self, from: JSONEncoder.sync.encode(line))
+    #expect(abs(decoded.start.timeIntervalSince(precise)) < 0.001)
+    #expect(abs(decoded.end.timeIntervalSince(precise) - 1.5) < 0.001)
+  }
+
   // MARK: Audio
 
   private func segment(_ id: Int64, _ channel: AudioChannel, _ from: TimeInterval, _ to: TimeInterval, path: String = "") -> AudioSegment {

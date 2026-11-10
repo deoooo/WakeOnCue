@@ -208,11 +208,13 @@ struct MacLibraryImporter {
   private func writeTranscript(
     _ conversation: SyncProtocol.LibraryConversation, recordingID: String, language: AppLanguage
   ) throws {
+    // The conversation starts with its first sentence; its own `start` is only exact to the second.
+    let origin = conversation.sentences.first?.start ?? conversation.start
     let events = conversation.sentences.map { sentence in
       RealtimeTranscriptEvent(
         recordingID: recordingID, segmentID: "mac_\(sentence.id)", revision: 1,
-        startMilliseconds: max(0, Int(sentence.start.timeIntervalSince(conversation.start) * 1_000)),
-        endMilliseconds: max(0, Int(sentence.end.timeIntervalSince(conversation.start) * 1_000)),
+        startMilliseconds: max(0, Int(sentence.start.timeIntervalSince(origin) * 1_000)),
+        endMilliseconds: max(0, Int(sentence.end.timeIntervalSince(origin) * 1_000)),
         text: sentence.text, isFinal: true, speaker: Self.speaker(sentence, language: language))
     }
     let encoder = JSONEncoder()

@@ -191,6 +191,39 @@ nonisolated enum SyncProtocol {
     var speaker: String
     var name: String?
     var text: String
+
+    init(id: Int64, start: Date, end: Date, speaker: String, name: String?, text: String) {
+      self.id = id
+      self.start = start
+      self.end = end
+      self.speaker = speaker
+      self.name = name
+      self.text = text
+    }
+
+    // Seconds since 1970 rather than ISO 8601, which `JSONEncoder.sync` writes to the second:
+    // sentences a moment apart must keep their order and place in the audio.
+    private enum CodingKeys: String, CodingKey { case id, start, end, speaker, name, text }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      id = try container.decode(Int64.self, forKey: .id)
+      start = Date(timeIntervalSince1970: try container.decode(Double.self, forKey: .start))
+      end = Date(timeIntervalSince1970: try container.decode(Double.self, forKey: .end))
+      speaker = try container.decode(String.self, forKey: .speaker)
+      name = try container.decodeIfPresent(String.self, forKey: .name)
+      text = try container.decode(String.self, forKey: .text)
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      try container.encode(id, forKey: .id)
+      try container.encode(start.timeIntervalSince1970, forKey: .start)
+      try container.encode(end.timeIntervalSince1970, forKey: .end)
+      try container.encode(speaker, forKey: .speaker)
+      try container.encodeIfPresent(name, forKey: .name)
+      try container.encode(text, forKey: .text)
+    }
   }
 
   /// A recording from the phone asking, whose audio is part of a conversation.
