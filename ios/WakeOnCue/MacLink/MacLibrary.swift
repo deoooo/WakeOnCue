@@ -210,12 +210,12 @@ struct MacLibraryImporter {
   ) throws {
     // The conversation starts with its first sentence; its own `start` is only exact to the second.
     let origin = conversation.sentences.first?.start ?? conversation.start
-    let events = conversation.sentences.map { sentence in
+    let events = Self.paragraphs(conversation.sentences).map { paragraph in
       RealtimeTranscriptEvent(
-        recordingID: recordingID, segmentID: "mac_\(sentence.id)", revision: 1,
-        startMilliseconds: max(0, Int(sentence.start.timeIntervalSince(origin) * 1_000)),
-        endMilliseconds: max(0, Int(sentence.end.timeIntervalSince(origin) * 1_000)),
-        text: sentence.text, isFinal: true, speaker: Self.speaker(sentence, language: language))
+        recordingID: recordingID, segmentID: "mac_\(paragraph[0].id)", revision: 1,
+        startMilliseconds: max(0, Int(paragraph[0].start.timeIntervalSince(origin) * 1_000)),
+        endMilliseconds: max(0, Int((paragraph.map(\.end).max() ?? paragraph[0].end).timeIntervalSince(origin) * 1_000)),
+        text: paragraph.map(\.text).joined(), isFinal: true, speaker: Self.speaker(paragraph[0], language: language))
     }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -223,6 +223,30 @@ struct MacLibraryImporter {
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try encoder.encode(events).write(to: url, options: .atomic)
     try RecordingFileLayout.protect(url)
+  }
+
+  /// The Mac cuts speech at every punctuation mark, so "对，对。" is a sentence of its own. Reading
+  /// is easier in paragraphs: the same speaker, barely pausing, up to about a minute.
+  static let paragraphPause: TimeInterval = 2.5
+  static let paragraphLength: TimeInterval = 60
+  static let paragraphCharacters = 160
+
+  static func paragraphs(_ sentences: [SyncProtocol.LibrarySentence]) -> [[SyncProtocol.LibrarySentence]] {
+    var result: [[SyncProtocol.LibrarySentence]] = []
+    for sentence in sentences.sorted(by: { ($0.start, $0.id) < ($1.start, $1.id) }) {
+      if var last = result.last, let previous = last.last,
+        previous.speaker == sentence.speaker, previous.name == sentence.name,
+        sentence.start.timeIntervalSince(max(previous.end, previous.start)) <= paragraphPause,
+        sentence.end.timeIntervalSince(last[0].start) <= paragraphLength,
+        last.reduce(0, { $0 + $1.text.count }) + sentence.text.count <= paragraphCharacters
+      {
+        last.append(sentence)
+        result[result.count - 1] = last
+      } else {
+        result.append([sentence])
+      }
+    }
+    return result
   }
 
   static func speaker(_ sentence: SyncProtocol.LibrarySentence, language: AppLanguage) -> RealtimeSpeaker {

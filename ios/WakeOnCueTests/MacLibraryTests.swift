@@ -65,7 +65,7 @@ final class MacLibraryTests: XCTestCase {
     XCTAssertEqual(listed.map(\.id), ["mac_c9", "mac_c1"], "The iPhone's own copy is no longer listed")
     let transcript = try JSONDecoder().decode(
       [RealtimeTranscriptEvent].self, from: Data(contentsOf: layout.transcriptURL(recordingID: "mac_c1")))
-    XCTAssertEqual(transcript.map(\.text), ["早上好", "好的"])
+    XCTAssertEqual(transcript.map(\.text), ["早上好", "好的"], "Different speakers stay apart")
     XCTAssertEqual(transcript[1].startMilliseconds, 60_000)
     XCTAssertEqual(transcript[0].speaker?.personID, RealtimeSpeaker.selfPersonID)
     XCTAssertEqual(transcript[1].speaker?.displayName, "小林")
@@ -111,6 +111,20 @@ final class MacLibraryTests: XCTestCase {
     MacLibraryState.enqueue(.rename, recording: recording, value: "一")
     MacLibraryState.enqueue(.rename, recording: recording, value: "二")
     XCTAssertEqual(MacLibraryState.pendingEdits.map(\.value), ["二"])
+  }
+
+  func testShortSentencesReadAsParagraphs() {
+    let start = day.addingTimeInterval(9 * 3_600)
+    func line(_ id: Int64, _ from: TimeInterval, _ to: TimeInterval, _ text: String, _ speaker: String = "me") -> SyncProtocol.LibrarySentence {
+      .init(id: id, start: start.addingTimeInterval(from), end: start.addingTimeInterval(to), speaker: speaker, name: nil, text: text)
+    }
+    let groups = MacLibraryImporter.paragraphs([
+      line(1, 0, 2, "你这个。"), line(2, 3, 5, "现在都有个老。"), line(3, 6, 8, "对，对。"),
+      line(4, 20, 22, "年份。"),  // a long pause
+      line(5, 23, 25, "可以。", "other"),  // someone else
+      line(6, 26, 90, "很长很长的一段话"), line(7, 91, 93, "接着说"),  // past a minute
+    ])
+    XCTAssertEqual(groups.map { $0.map(\.id) }, [[1, 2, 3], [4], [5], [6], [7]])
   }
 
   func testWatchRecordingsAreNamedTheWayThisIPhoneImportedThem() {
