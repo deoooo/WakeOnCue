@@ -323,7 +323,12 @@ final class MacUploader {
   func sync() async {
     guard !running else { return }
     running = true
-    defer { running = false }
+    // Locking the iPhone mid-download would suspend the connection; ask for time to finish.
+    let backgroundTime = BackgroundTime.begin(name: "Sync with Mac")
+    defer {
+      running = false
+      backgroundTime.end()
+    }
     pending = await sendableItems().count
     guard var pairing, !pairing.needsRepair else { return }
     do {

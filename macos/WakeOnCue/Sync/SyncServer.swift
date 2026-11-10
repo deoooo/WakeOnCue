@@ -542,7 +542,7 @@ final class SyncServer {
         return
       }
       let audioDirectory = store.audioDirectory
-      Self.removeOldRenders()
+      Self.removeOldRenders(keeping: url)
       try await Task.detached(priority: .utility) {
         try ConversationAudio.render(pieces, range: range, audioDirectory: audioDirectory, to: url)
       }.value
@@ -563,13 +563,16 @@ final class SyncServer {
     try await channel.send(.audioDone(conversationID: conversationID))
   }
 
-  /// Rendered audio is only needed while phones download it.
-  private static func removeOldRenders() {
+  /// Rendered audio is only needed while phones download it: older versions of the same
+  /// conversation go at once, everything else after three days.
+  private static func removeOldRenders(keeping current: URL) {
     let folder = ConversationAudio.cacheDirectory
     let cutoff = Date().addingTimeInterval(-3 * 86_400)
+    let conversation = current.lastPathComponent.split(separator: "-").first.map(String.init) ?? ""
     for url in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
       let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-      if modified < cutoff { try? FileManager.default.removeItem(at: url) }
+      let sameConversation = url.lastPathComponent.split(separator: "-").first.map(String.init) == conversation
+      if modified < cutoff || sameConversation { try? FileManager.default.removeItem(at: url) }
     }
   }
 

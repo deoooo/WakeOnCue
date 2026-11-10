@@ -6,8 +6,9 @@ struct ReviewView: View {
   @Environment(AppModel.self) private var model
   @State private var selectedDay = Calendar.current.startOfDay(for: .now)
   @State private var weekRecordings: [RecordingRecord] = []
-  @State private var loadedWeek: Date?
   @State private var isPickingMonth = false
+  /// The day at the centre of the date strip while it is being scrolled.
+  @State private var stripPosition: Date?
 
   /// The iPhone's own calendar, so the week starts on the day the user's region expects.
   private var calendar: Calendar { Calendar.current }
@@ -15,12 +16,17 @@ struct ReviewView: View {
   private var today: Date { calendar.startOfDay(for: .now) }
   private var isToday: Bool { calendar.isDate(selectedDay, inSameDayAs: today) }
 
-  private var weekStart: Date {
-    calendar.dateInterval(of: .weekOfYear, for: selectedDay)?.start ?? selectedDay
+  /// The strip runs from about four months back, or a little before the chosen day if that is
+  /// older, up to today.
+  private var stripStart: Date {
+    let recent = calendar.date(byAdding: .day, value: -120, to: today) ?? today
+    let beforeSelected = calendar.date(byAdding: .day, value: -30, to: selectedDay) ?? selectedDay
+    return min(recent, beforeSelected)
   }
 
-  private var weekDays: [Date] {
-    (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+  private var stripDays: [Date] {
+    let count = (calendar.dateComponents([.day], from: stripStart, to: today).day ?? 0) + 1
+    return (0..<max(1, count)).compactMap { calendar.date(byAdding: .day, value: $0, to: stripStart) }
   }
 
   private var isCapturing: Bool {
@@ -102,57 +108,71 @@ struct ReviewView: View {
     .padding(.top, 4)
   }
 
-  /// The year appears only when it is not this year.
+  /// The month of the days being looked at; the year appears only when it is not this year.
   private var monthTitle: String {
     let locale = model.settings.language.locale
-    if calendar.isDate(selectedDay, equalTo: today, toGranularity: .year) {
-      return selectedDay.formatted(Date.FormatStyle(locale: locale).month(.abbreviated))
+    let shown = stripPosition ?? selectedDay
+    if calendar.isDate(shown, equalTo: today, toGranularity: .year) {
+      return shown.formatted(Date.FormatStyle(locale: locale).month(.abbreviated))
     }
-    return selectedDay.formatted(Date.FormatStyle(locale: locale).year().month(.abbreviated))
+    return shown.formatted(Date.FormatStyle(locale: locale).year().month(.abbreviated))
   }
 
+  /// Scrolls smoothly through the days, seven at a time on screen, snapping to whole days.
   private var weekStrip: some View {
     let recordedDays = Set(weekRecordings.map { calendar.startOfDay(for: $0.startedAt) })
-    return HStack(spacing: 4) {
-      ForEach(weekDays, id: \.self) { day in
-        let selected = calendar.isDate(day, inSameDayAs: selectedDay)
-        let future = day > today
-        let isTodayCell = calendar.isDate(day, inSameDayAs: today)
-        Button {
-          select(day)
-        } label: {
-          VStack(spacing: 3) {
-            Text(day.formatted(Date.FormatStyle(locale: model.settings.language.locale).weekday(.narrow)))
-              .font(.caption2.weight(.semibold))
-            Text(verbatim: "\(calendar.component(.day, from: day))")
-              .font(.headline)
-            Circle()
-              .fill(recordedDays.contains(day) ? (selected ? Color.white : Color.accentColor) : .clear)
-              .frame(width: 5, height: 5)
-          }
-          .frame(maxWidth: .infinity, minHeight: 60)
-          .foregroundStyle(
-            selected ? Color(uiColor: .systemBackground)
-              : future ? Color.secondary.opacity(0.5)
-              : isTodayCell ? Color.accentColor : Color.primary
-          )
-          .background(
-            selected ? Color.primary : Color.clear,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-          .contentShape(Rectangle())
+    return ScrollView(.horizontal, showsIndicators: false) {
+      LazyHStack(spacing: 4) {
+        ForEach(stripDays, id: \.self) { day in
+          dayCell(day, recorded: recordedDays.contains(day))
+            .containerRelativeFrame(.horizontal, count: 7, spacing: 4)
         }
-        .buttonStyle(.plain)
-        .disabled(future)
-        .accessibilityLabel(day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(model.settings.language.locale)))
-        .accessibilityAddTraits(selected ? .isSelected : [])
       }
+      .scrollTargetLayout()
     }
-    .gesture(
-      DragGesture(minimumDistance: 20).onEnded { value in
-        guard abs(value.translation.width) > abs(value.translation.height) else { return }
-        shiftWeek(value.translation.width < 0 ? 1 : -1)
+    .scrollTargetBehavior(.viewAligned)
+    .scrollPosition(id: $stripPosition, anchor: .center)
+    .onAppear { stripPosition = centred(selectedDay) }
+    .onChange(of: selectedDay) {
+      withAnimation(.easeInOut(duration: 0.25)) { stripPosition = centred(selectedDay) }
+    }
+    .frame(height: 64)
+  }
+
+  /// Today sits at the right edge rather than in the middle, so no empty future is shown.
+  private func centred(_ day: Date) -> Date {
+    let latestCentre = calendar.date(byAdding: .day, value: -3, to: today) ?? today
+    let earliestCentre = calendar.date(byAdding: .day, value: 3, to: stripStart) ?? stripStart
+    return min(max(day, earliestCentre), latestCentre)
+  }
+
+  private func dayCell(_ day: Date, recorded: Bool) -> some View {
+    let selected = calendar.isDate(day, inSameDayAs: selectedDay)
+    let isTodayCell = calendar.isDate(day, inSameDayAs: today)
+    return Button {
+      select(day)
+    } label: {
+      VStack(spacing: 3) {
+        Text(day.formatted(Date.FormatStyle(locale: model.settings.language.locale).weekday(.narrow)))
+          .font(.caption2.weight(.semibold))
+        Text(verbatim: "\(calendar.component(.day, from: day))")
+          .font(.headline)
+        Circle()
+          .fill(recorded ? (selected ? Color.white : Color.accentColor) : .clear)
+          .frame(width: 5, height: 5)
       }
-    )
+      .frame(maxWidth: .infinity, minHeight: 60)
+      .foregroundStyle(
+        selected ? Color(uiColor: .systemBackground) : isTodayCell ? Color.accentColor : Color.primary
+      )
+      .background(
+        selected ? Color.primary : Color.clear,
+        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(model.settings.language.locale)))
+    .accessibilityAddTraits(selected ? .isSelected : [])
   }
 
   private var monthPicker: some View {
@@ -259,15 +279,14 @@ struct ReviewView: View {
 
   private var reloadKey: String {
     let current = model.currentRecording.map { "\($0.id)-\($0.status.rawValue)" } ?? "-"
-    return "\(weekStart.timeIntervalSince1970)-\(model.libraryVersion)-\(model.transcriptVersion)-\(model.recentRecordings.first?.id ?? "")-\(current)"
+    return "\(stripStart.timeIntervalSince1970)-\(model.libraryVersion)-\(model.transcriptVersion)-\(model.recentRecordings.first?.id ?? "")-\(current)"
   }
 
   private func load() async {
     let interval = DateInterval(
-      start: weekStart, end: calendar.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart)
+      start: stripStart, end: calendar.date(byAdding: .day, value: 1, to: today) ?? today)
     do {
       weekRecordings = try await model.recordings(startedIn: interval)
-      loadedWeek = weekStart
     } catch is CancellationError {
       return
     } catch {
@@ -279,11 +298,6 @@ struct ReviewView: View {
     let start = calendar.startOfDay(for: day)
     guard start <= today else { return }
     selectedDay = start
-  }
-
-  private func shiftWeek(_ weeks: Int) {
-    guard let moved = calendar.date(byAdding: .weekOfYear, value: weeks, to: selectedDay) else { return }
-    select(min(moved, today))
   }
 }
 

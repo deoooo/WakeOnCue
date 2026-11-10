@@ -119,6 +119,8 @@ struct MacLibraryImporter {
   private static let logger = Logger(subsystem: "com.deoooo.WakeOnCue", category: "MacLibrary")
   /// Conversations this recent are summarized on this iPhone as soon as they arrive.
   static let summarizeWithin: TimeInterval = 3 * 86_400
+  /// Audio is fetched once a conversation has been quiet this long.
+  static let settleTime: TimeInterval = 10 * 60
 
   let store: RecordingStore
   let layout: RecordingFileLayout
@@ -237,7 +239,11 @@ struct MacLibraryImporter {
     var offset = 0
     while found.count < limit {
       let page = try await store.recordings(limit: 200, offset: offset)
-      for recording in page where MacConversation.isFromMac(recording) {
+      // A conversation that may still be going on would be downloaded again with every sentence.
+      let settled = Date().addingTimeInterval(-Self.settleTime)
+      for recording in page where MacConversation.isFromMac(recording)
+        && recording.startedAt.addingTimeInterval(recording.duration) < settled
+      {
         guard let url = try? layout.downloadedAudioURL(recordingID: recording.id),
           !FileManager.default.fileExists(atPath: url.path)
         else { continue }
