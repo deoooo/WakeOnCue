@@ -384,6 +384,10 @@ final class MacUploader {
       status = .failed(AppLanguage.localized("The Mac no longer accepts this iPhone. Scan its pairing code again."))
     } catch MacLinkError.notFound {
       status = .unreachable
+    } catch SyncChannel.Failure.timedOut {
+      // The next sync starts over; whatever finished is kept.
+      Self.logger.error("Sync timed out")
+      status = .unreachable
     } catch MacLinkError.localNetworkDenied {
       status = .failed(AppLanguage.localized("WakeOnCue needs Local Network access to reach the Mac."))
     } catch {
@@ -620,6 +624,9 @@ final class MacUploader {
 
   /// Finds the Mac by its Bonjour name, falling back to the address in the code, and completes
   /// the TLS handshake with the pairing key.
+  /// Long enough for the Mac to render a long conversation's audio before answering.
+  static let idleTimeout: TimeInterval = 120
+
   private func connect(_ pairing: MacPairing, timeout: TimeInterval = 8) async throws -> SyncChannel {
     let parameters = SyncProtocol.parameters(keys: [(pairing.identity, pairing.key)])
     var endpoints: [NWEndpoint] = [.service(name: pairing.service, type: SyncProtocol.serviceType, domain: "local.", interface: nil)]
@@ -632,7 +639,7 @@ final class MacUploader {
       let outcome = await Self.open(endpoint, using: parameters, timeout: timeout)
       Self.logger.notice("Endpoint \(String(describing: endpoint), privacy: .public) as \(pairing.identity.prefix(14), privacy: .public): \(String(describing: outcome), privacy: .public)")
       switch outcome {
-      case .ready(let connection): return SyncChannel(connection)
+      case .ready(let connection): return SyncChannel(connection, idleTimeout: Self.idleTimeout)
       case .refused: refused = true
       case .denied: denied = true
       case .unreachable: break

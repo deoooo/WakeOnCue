@@ -389,19 +389,59 @@ nonisolated final class SyncChannel: @unchecked Sendable {
     /// A well-formed frame with a message this build does not know, e.g. from a newer phone.
     /// The connection is still usable.
     case unknownMessage
+    /// Nothing came or went for the idle timeout, so the connection was cancelled.
+    case timedOut
   }
 
   let connection: NWConnection
+  private let lock = NSLock()
+  private var lastActivity = Date.now
+  private var timedOut = false
+  private var watchdog: DispatchSourceTimer?
 
-  init(_ connection: NWConnection) {
+  /// With `idleTimeout`, a connection on which nothing is sent or received for that long is
+  /// cancelled, so a send or receive waiting on it throws `timedOut` instead of hanging forever,
+  /// e.g. after the app was suspended mid-sync or the network dropped without a reset.
+  init(_ connection: NWConnection, idleTimeout: TimeInterval? = nil) {
     self.connection = connection
+    guard let idleTimeout else { return }
+    let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+    let check = min(idleTimeout, 5)
+    timer.schedule(deadline: .now() + check, repeating: check)
+    timer.setEventHandler { [weak self] in self?.checkIdle(idleTimeout) }
+    watchdog = timer
+    timer.resume()
+  }
+
+  deinit {
+    watchdog?.cancel()
+  }
+
+  private func touch() {
+    lock.withLock { lastActivity = .now }
+  }
+
+  private func checkIdle(_ timeout: TimeInterval) {
+    let expired = lock.withLock {
+      guard !timedOut, Date.now.timeIntervalSince(lastActivity) > timeout else { return false }
+      timedOut = true
+      return true
+    }
+    guard expired else { return }
+    watchdog?.cancel()
+    connection.cancel()
+  }
+
+  /// A failure caused by the watchdog's cancel reads as `timedOut`.
+  private func failure(_ error: Error) -> Error {
+    lock.withLock { timedOut } ? Failure.timedOut : error
   }
 
   func send(_ message: SyncProtocol.Message, body: Data = Data()) async throws {
     let data = try SyncProtocol.frame(message, body: body)
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      connection.send(content: data, completion: .contentProcessed { error in
-        if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+      connection.send(content: data, completion: .contentProcessed { [self] error in
+        if let error { continuation.resume(throwing: failure(error)) } else { touch(); continuation.resume() }
       })
     }
   }
@@ -420,13 +460,14 @@ nonisolated final class SyncChannel: @unchecked Sendable {
     var data = Data()
     while data.count < count {
       let part: Data = try await withCheckedThrowingContinuation { continuation in
-        connection.receive(minimumIncompleteLength: 1, maximumLength: count - data.count) { content, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: count - data.count) { [self] content, _, isComplete, error in
           if let error {
-            continuation.resume(throwing: error)
+            continuation.resume(throwing: failure(error))
           } else if let content, !content.isEmpty {
+            touch()
             continuation.resume(returning: content)
           } else if isComplete {
-            continuation.resume(throwing: Failure.closed)
+            continuation.resume(throwing: failure(Failure.closed))
           } else {
             continuation.resume(returning: Data())
           }

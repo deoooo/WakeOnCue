@@ -227,6 +227,39 @@ nonisolated final class DeviceMarkTests: XCTestCase {
     XCTAssertEqual(row.deviceMarks.last?.end, nil)
   }
 
+  /// A Mac that goes quiet mid-sync must not hold the phone's sync forever.
+  func testSilentPeerTimesOut() async throws {
+    let key = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+    let parameters = SyncProtocol.parameters(keys: [("phone-test", key)])
+    let listener = try NWListener(using: parameters, on: .any)
+    let queue = DispatchQueue(label: "DeviceMarkTests.silent")
+    let accepted = Box()
+    listener.newConnectionHandler = { connection in
+      accepted.connection = connection  // Kept open, never answered.
+      connection.start(queue: queue)
+    }
+    let port = try await Self.ready(listener, queue: queue)
+    defer {
+      listener.cancel()
+      accepted.connection?.cancel()
+    }
+    let client = NWConnection(host: "127.0.0.1", port: port, using: parameters)
+    try await Self.ready(client, queue: queue)
+    let channel = SyncChannel(client, idleTimeout: 1)
+    try await channel.send(.marks([]))
+    let started = Date.now
+    do {
+      _ = try await channel.receive()
+      XCTFail("expected a timeout")
+    } catch SyncChannel.Failure.timedOut {
+      XCTAssertLessThan(Date.now.timeIntervalSince(started), 5)
+    }
+  }
+
+  private final class Box: @unchecked Sendable {
+    var connection: NWConnection?
+  }
+
   private static func ready(_ listener: NWListener, queue: DispatchQueue) async throws -> NWEndpoint.Port {
     try await withCheckedThrowingContinuation { continuation in
       let once = Once()
