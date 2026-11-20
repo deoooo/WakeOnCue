@@ -167,7 +167,8 @@ struct SegmentWriter {
   /// `index` moves only in `install`, so a failed attempt never leaves a gap in the numbering.
   private func makeNext(format: AVAudioFormat) throws -> NextSegment {
     let metadata = WatchSegmentMetadata(
-      sessionID: sessionID, index: index + 1, startedAt: Date(), duration: 0)
+      sessionID: sessionID, index: file == nil ? completedCount + 1 : index + 1,
+      startedAt: Date(), duration: 0)
     let url = directory.appending(path: metadata.fileName)
     do {
       return NextSegment(
@@ -179,7 +180,7 @@ struct SegmentWriter {
   }
 
   private mutating func install(_ next: NextSegment) {
-    index += 1
+    index = completedCount + 1
     file = next.file
     url = next.url
     startedAt = next.startedAt

@@ -9,7 +9,8 @@ struct WakeOnCueWatchApp: App {
     WindowGroup {
       WatchHomeView()
         .environment(model)
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { _, phase in
+          model.sceneActivityChanged(isActive: phase == .active)
           WatchDiagnostics.logBattery("scene \(phase) watchRecording=\(model.isWatchRecording)")
         }
     }

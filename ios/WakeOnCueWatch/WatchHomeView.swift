@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 extension Color {
@@ -28,6 +29,7 @@ enum WatchDurationText {
 /// One screen, one job: a big number on top, the record button under the thumb.
 struct WatchHomeView: View {
   @Environment(WatchModel.self) private var model
+  @State private var showingRecordingSettings = false
 
   var body: some View {
     NavigationStack {
@@ -41,7 +43,7 @@ struct WatchHomeView: View {
             .minimumScaleFactor(0.6)
             .lineLimit(1)
             .accessibilityIdentifier("watch-clock")
-          if model.isWatchRecording {
+          if model.isWatchRecording && !model.isInterrupted {
             WatchLevelMeter(level: model.inputLevel)
               .padding(.vertical, 2)
           }
@@ -51,6 +53,10 @@ struct WatchHomeView: View {
               .foregroundStyle(.secondary)
               .lineLimit(3)
               .minimumScaleFactor(0.8)
+          } else if model.isInterrupted {
+            Text("Recording paused by the system.")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
           } else {
             WatchSyncLine()
           }
@@ -58,7 +64,8 @@ struct WatchHomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
       .containerBackground(
-        model.isWatchRecording ? Color.cueRecording.gradient : Color.black.gradient,
+        model.isWatchRecording && !model.isInterrupted
+          ? Color.cueRecording.gradient : Color.black.gradient,
         for: .navigation
       )
       .toolbar {
@@ -95,9 +102,30 @@ struct WatchHomeView: View {
           .accessibilityLabel(model.isWatchRecording ? "Stop" : "Record")
           .accessibilityIdentifier("watch-toggle-recording")
 
-          Spacer()
+          if model.isInterrupted {
+            Button {
+              model.resumeWatchRecording()
+            } label: {
+              Image(systemName: "play.fill")
+                .foregroundStyle(Color.cueAccent)
+            }
+            .accessibilityLabel("Resume")
+            .accessibilityIdentifier("watch-resume-recording")
+          } else {
+            Button {
+              showingRecordingSettings = true
+            } label: {
+              Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("watch-recording-settings")
+          }
         }
       }
+    }
+    .sheet(isPresented: $showingRecordingSettings) {
+      WatchRecordingSettingsView()
+        .environment(model)
     }
     .task {
       // Delivery confirmations arrive in the background; refresh the counts while on screen.
@@ -109,10 +137,71 @@ struct WatchHomeView: View {
   }
 
   private func bigNumber(at date: Date) -> String {
-    if let startedAt = model.watchRecordingStartedAt {
-      return WatchDurationText.clock(date.timeIntervalSince(startedAt))
+    if model.isWatchRecording {
+      return WatchDurationText.clock(model.recordedDuration)
     }
     return WatchDurationText.hourMinuteClock(model.todayDuration(at: date))
+  }
+}
+
+private struct WatchRecordingSettingsView: View {
+  @Environment(WatchModel.self) private var model
+  @AppStorage(WatchRecordingPreferences.autoResumeKey) private var autoResume = true
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          Toggle("Auto-resume recording", isOn: $autoResume)
+            .accessibilityIdentifier("watch-auto-resume")
+        } footer: {
+          Text("Recording resumes when the microphone is available. If it stays paused, open WakeOnCue.")
+        }
+        NavigationLink("Background recovery setup") {
+          WatchRecoverySetupView()
+        }
+      }
+      .navigationTitle("Settings")
+      .onChange(of: autoResume) { model.autoResumePreferenceChanged() }
+    }
+  }
+}
+
+private struct WatchRecoverySetupView: View {
+  @Environment(WatchModel.self) private var model
+  @AppStorage(WatchRecordingPreferences.autoResumeKey) private var autoResume = true
+  @AppStorage(WatchRecordingPreferences.backgroundResumeKey) private var backgroundResume = false
+
+  var body: some View {
+    List {
+      Section {
+        Toggle("Background recovery", isOn: $backgroundResume)
+          .disabled(!autoResume)
+      } footer: {
+        if autoResume {
+          Text("Uses location during recording to help resume from the background. This may increase battery use.")
+        } else {
+          Text("Turn on Auto-resume recording in Settings first.")
+        }
+      }
+      Section("Location access") {
+        switch model.locationAuthorization {
+        case .authorizedAlways, .authorizedWhenInUse:
+          Label("Location allowed", systemImage: "checkmark.circle")
+        case .denied, .restricted:
+          Text("Allow location access for WakeOnCue in Watch settings.")
+        default:
+          Text("When prompted, allow WakeOnCue to use your location while in use.")
+        }
+      }
+      Section("Return to App") {
+        Text("On your Watch, go to Settings › General › Return to Clock › WakeOnCue › Custom. Turn on Return to App if available.")
+      }
+    }
+    .navigationTitle("Recovery setup")
+    .onChange(of: backgroundResume) { _, enabled in
+      model.backgroundResumePreferenceChanged(enabled: enabled)
+    }
   }
 }
 
@@ -121,7 +210,10 @@ struct WatchStatusHeader: View {
 
   var body: some View {
     Group {
-      if model.isWatchRecording {
+      if model.isInterrupted {
+        Label("Interrupted", systemImage: "pause.circle.fill")
+          .foregroundStyle(Color.cueAccent)
+      } else if model.isWatchRecording {
         Label("Recording", systemImage: "circle.fill")
           .labelStyle(WatchDotLabelStyle())
           .foregroundStyle(.white)
@@ -133,7 +225,8 @@ struct WatchStatusHeader: View {
     .font(.footnote.weight(.semibold))
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("watch-status")
-    .accessibilityValue(model.isWatchRecording ? "watch-recording" : "idle")
+    .accessibilityValue(model.isInterrupted ? "watch-interrupted"
+      : (model.isWatchRecording ? "watch-recording" : "idle"))
   }
 }
 
@@ -178,8 +271,8 @@ struct WatchSyncLine: View {
     if !isWaiting { return "All sent to iPhone" }
     if model.pendingSegments == 0 { return "Finishing up with iPhone" }
     return model.isReachable
-      ? "\(model.pendingSegments) min waiting for iPhone"
-      : "\(model.pendingSegments) min waiting · iPhone not nearby"
+      ? "\(model.pendingSegments) clips waiting for iPhone"
+      : "\(model.pendingSegments) clips waiting · iPhone not nearby"
   }
 }
 
@@ -238,7 +331,10 @@ struct WatchRecordingsView: View {
 }
 
 struct WatchRecordingRow: View {
+  @Environment(WatchModel.self) private var model
   let recording: WatchRecordingStatus
+
+  private var isCurrent: Bool { recording.id == model.watchRecordingSessionID }
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: recording.isEnded ? 3600 : 1)) { context in
@@ -262,7 +358,11 @@ struct WatchRecordingRow: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    if !recording.isEnded {
+    if isCurrent && model.isInterrupted {
+      Image(systemName: "pause.circle.fill")
+        .foregroundStyle(Color.cueAccent)
+        .accessibilityLabel("Interrupted")
+    } else if !recording.isEnded {
       Image(systemName: "record.circle")
         .foregroundStyle(Color.cueRecording)
         .accessibilityLabel("Recording")
@@ -278,19 +378,20 @@ struct WatchRecordingRow: View {
       Text(verbatim: "\(recording.deliveredSegments)/\(recording.segmentCount)")
         .font(.caption2.weight(.semibold).monospacedDigit())
         .foregroundStyle(Color.cueAccent)
-        .accessibilityLabel("Sent \(recording.deliveredSegments)/\(recording.segmentCount) min")
+        .accessibilityLabel("Sent \(recording.deliveredSegments)/\(recording.segmentCount) clips")
     }
   }
 
   private func timeRange(at now: Date) -> String {
     let start = recording.startedAt.formatted(date: .omitted, time: .shortened)
     guard recording.isEnded else { return "\(start)–" }
-    let end = recording.startedAt.addingTimeInterval(recording.duration(at: now))
+    let end = recording.end(at: now)
     return "\(start)–\(end.formatted(date: .omitted, time: .shortened))"
   }
 
   private func detail(at now: Date) -> String {
-    let duration = WatchDurationText.hoursMinutes(recording.duration(at: now))
+    let duration = WatchDurationText.hoursMinutes(
+      isCurrent ? model.recordedDuration : recording.duration(at: now))
     guard let ending else { return duration }
     return "\(duration) · \(ending)"
   }
@@ -299,7 +400,7 @@ struct WatchRecordingRow: View {
   private var ending: String? {
     guard recording.isEnded else { return nil }
     switch recording.state.summary.endReason {
-    case WatchCaptureStopReason.interruption.rawValue: return String(localized: "Call or Siri")
+    case "interruption": return String(localized: "Call or Siri")
     case WatchCaptureStopReason.writeFailure.rawValue: return String(localized: "Couldn't save")
     case "recovered": return String(localized: "App closed")
     default: return nil

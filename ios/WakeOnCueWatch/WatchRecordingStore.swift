@@ -10,6 +10,7 @@ struct WatchRecordingState: Codable, Equatable {
   var isEnded = false
   var isSummaryQueued = false
   var isSummaryDelivered = false
+  var capturedDuration: TimeInterval?
 }
 
 /// What the Watch shows for one recording: how much it recorded and how much reached the iPhone.
@@ -25,10 +26,12 @@ struct WatchRecordingStatus: Identifiable, Equatable {
   var isEnded: Bool { state.isEnded }
   var isFullyDelivered: Bool { state.isEnded && state.isSummaryDelivered && pendingSegments == 0 }
 
-  /// Recorded length; an open recording counts up to `now`.
+  func end(at now: Date) -> Date {
+    state.isEnded ? state.summary.endedAt : now
+  }
+
   func duration(at now: Date) -> TimeInterval {
-    let end = state.isEnded ? state.summary.endedAt : now
-    return max(0, end.timeIntervalSince(state.summary.startedAt))
+    state.capturedDuration ?? max(0, end(at: now).timeIntervalSince(startedAt))
   }
 }
 
@@ -149,8 +152,10 @@ enum WatchRecordingStore {
       }
       state.isEnded = true
       state.summary.endReason = "recovered"
-      state.summary.endedAt = state.summary.startedAt.addingTimeInterval(
-        Double(completed) * WatchAudioRecorder.segmentDuration)
+      if state.capturedDuration == nil {
+        state.summary.endedAt = state.summary.startedAt.addingTimeInterval(
+          Double(completed) * WatchAudioRecorder.segmentDuration)
+      }
       save(state)
       WatchDiagnostics.log(
         "recovered session=\(state.summary.sessionID.uuidString.prefix(8)) segments=\(completed)")

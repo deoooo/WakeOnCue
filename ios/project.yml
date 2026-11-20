@@ -136,8 +136,10 @@ targets:
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.deoooo.WakeOnCue
         NSMicrophoneUsageDescription: WakeOnCue records on your Watch only after you tap Record, and sends the recording to your iPhone.
+        NSLocationWhenInUseUsageDescription: Location helps WakeOnCue resume interrupted recordings in the background. Your location isn’t saved.
         UIBackgroundModes:
           - audio
+          - location
         CFBundleURLTypes:
           - CFBundleURLName: com.deoooo.WakeOnCue.watch
             CFBundleURLSchemes:

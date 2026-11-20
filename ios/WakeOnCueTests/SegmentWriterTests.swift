@@ -83,6 +83,26 @@ final class SegmentWriterTests: XCTestCase {
     XCTAssertEqual(writer.completedCount, 3)
   }
 
+  func testInterruptedWriterKeepsPartialAudioAndReusesUnwrittenIndex() throws {
+    var writer = try makeWriter()
+    XCTAssertNil(writer.close())
+    try writer.openNext(format: format)
+    XCTAssertTrue(write(seconds: 0.5, to: &writer).isEmpty)
+    let before = try XCTUnwrap(writer.close())
+
+    try writer.openNext(format: format)
+    XCTAssertTrue(write(seconds: 0.5, to: &writer).isEmpty)
+    let after = try XCTUnwrap(writer.close())
+
+    XCTAssertEqual([before.0.index, after.0.index], [1, 2])
+    XCTAssertEqual(before.0.sessionID, after.0.sessionID)
+    XCTAssertEqual(writer.recordedDuration, 1, accuracy: 0.01)
+    for (metadata, url) in [before, after] {
+      XCTAssertEqual(metadata.duration, 0.5, accuracy: 0.01)
+      XCTAssertGreaterThan(try AVAudioFile(forReading: url).length, 0)
+    }
+  }
+
   func testFailedOpenKeepsAudioInCurrentSegmentAndDoesNotSkipAnIndex() throws {
     var writer = try makeWriter()
     faults.failOpens = true

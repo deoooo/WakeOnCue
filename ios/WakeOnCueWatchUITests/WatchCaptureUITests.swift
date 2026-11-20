@@ -10,12 +10,38 @@ final class WatchCaptureUITests: XCTestCase {
     try XCTSkipUnless(environment["WAKEONCUE_WATCH_E2E"] == "1", "Needs microphone access")
   }
 
+  @MainActor
+  func testAutoResumePreferencePersistsOnWatch() throws {
+    let app = XCUIApplication()
+    app.launch()
+
+    let settings = app.buttons["watch-recording-settings"].firstMatch
+    XCTAssertTrue(settings.waitForExistence(timeout: 10))
+    settings.tap()
+    let toggle = app.switches["watch-auto-resume"].firstMatch
+    XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+    let originalValue = try XCTUnwrap(toggle.value as? String)
+    let changedValue = originalValue == "1" ? "0" : "1"
+    toggle.tap()
+    XCTAssertTrue(waitForValue(of: toggle, changedValue, timeout: 5))
+
+    app.terminate()
+    app.launch()
+    XCTAssertTrue(settings.waitForExistence(timeout: 10))
+    settings.tap()
+    XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+    XCTAssertEqual(toggle.value as? String, changedValue)
+    toggle.tap()
+    XCTAssertTrue(waitForValue(of: toggle, originalValue, timeout: 5))
+  }
+
   /// Record for a little over one segment, stop, and find the recording in the list.
   @MainActor
   func testWatchRecordingShowsInRecordings() throws {
     let app = XCUIApplication()
     app.launch()
-    let status = app.descendants(matching: .any)["watch-status"]
+    // SwiftUI can propagate the toolbar item's identifier to its nested accessibility nodes.
+    let status = app.descendants(matching: .any).matching(identifier: "watch-status").firstMatch
     XCTAssertTrue(status.waitForExistence(timeout: 10))
     app.buttons["watch-toggle-recording"].tap()
     XCTAssertTrue(

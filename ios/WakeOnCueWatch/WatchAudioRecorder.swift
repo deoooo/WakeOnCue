@@ -34,8 +34,6 @@ private final class OneShotInput: @unchecked Sendable {
 
 /// Why capture ended without the user asking. `rawValue` becomes the summary's `endReason`.
 enum WatchCaptureStopReason: String, Sendable {
-  /// The system took the audio session (for example a phone call).
-  case interruption
   /// Segments can no longer be opened or written (for example the Watch is out of storage).
   case writeFailure = "write_failure"
 }
@@ -46,7 +44,7 @@ final class WatchAudioRecorder: @unchecked Sendable {
   static let sampleRate = SegmentWriter.sampleRate
   static let segmentDuration = SegmentWriter.segmentDuration
 
-  private let engine = AVAudioEngine()
+  @MainActor private var engine: AVAudioEngine?
   private let lock = NSLock()
   private let outputFormat = AVAudioFormat(
     commonFormat: .pcmFormatInt16,
@@ -55,46 +53,70 @@ final class WatchAudioRecorder: @unchecked Sendable {
     interleaved: true
   )!
   private var converter: AVAudioConverter?
-  private var interruptionObserver: NSObjectProtocol?
+  private var removeInterruptionObservers: (() -> Void)?
   private var level: Float = 0
   private var lastHeartbeat = Date.distantPast
   private var recording: SegmentWriter?
-  private(set) var isRunning = false
   private var isEndingAfterWriteFailure = false
 
   /// Called on the main actor when capture has to end, while the recording is still open, so the
   /// handler's `stopRecording` returns a segment count that includes the last segment.
-  var onStopped: (@MainActor @Sendable (WatchCaptureStopReason) -> Void)?
+  @MainActor var onStopped: (@MainActor @Sendable (WatchCaptureStopReason) -> Void)?
+  @MainActor var onInterruptionBegan: (@MainActor @Sendable () -> Void)?
+  @MainActor var onInterruptionEnded: (@MainActor @Sendable () -> Void)?
   /// Called on the main actor each time a recording segment is complete on disk.
   var onSegmentFinished: (@MainActor @Sendable (WatchSegmentMetadata, URL) -> Void)?
 
-  init() {}
-
   deinit {
-    if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+    removeInterruptionObservers?()
   }
 
   /// A smoothed 0...1 input level for the on-screen meter.
   var inputLevel: Float { lock.withLock { level } }
 
   var isRecording: Bool { lock.withLock { recording != nil } }
+  var recordedDuration: TimeInterval { lock.withLock { recording?.recordedDuration ?? 0 } }
 
   /// Starts writing segments into `directory`. Must be called from a foreground user action:
   /// watchOS lets capture continue in the background but not start there.
+  @MainActor
   func startRecording(sessionID: UUID, directory: URL) async throws {
-    try await startEngineIfNeeded()
-    try lock.withLock {
-      guard recording == nil else { return }
-      isEndingAfterWriteFailure = false
-      var writer = SegmentWriter(
-        sessionID: sessionID, directory: directory, log: { WatchDiagnostics.log($0) })
-      try writer.openNext(format: outputFormat)
-      recording = writer
+    guard await AVAudioApplication.requestRecordPermission() else {
+      throw WatchAudioError.microphoneDenied
+    }
+    observeInterruptions()
+    try startEngine()
+    do {
+      try lock.withLock {
+        isEndingAfterWriteFailure = false
+        var writer = SegmentWriter(
+          sessionID: sessionID, directory: directory, log: { WatchDiagnostics.log($0) })
+        try writer.openNext(format: outputFormat)
+        recording = writer
+      }
+    } catch {
+      stopEngine()
+      throw error
     }
     WatchDiagnostics.log("recording started session=\(sessionID.uuidString.prefix(8))")
   }
 
+  /// Restarts microphone capture into the next segment of the same recording.
+  @MainActor
+  func resumeRecording() throws {
+    guard engine == nil, isRecording else { return }
+    try startEngine()
+    do {
+      try lock.withLock { try recording?.openNext(format: outputFormat) }
+    } catch {
+      end(because: .writeFailure)
+      throw error
+    }
+    WatchDiagnostics.log("recording resumed")
+  }
+
   /// Closes the open segment and returns how many segments the recording has.
+  @MainActor
   @discardableResult
   func stopRecording(reason: String = "user") -> Int {
     let (finished, count) = lock.withLock { () -> ((WatchSegmentMetadata, URL)?, Int) in
@@ -103,23 +125,30 @@ final class WatchAudioRecorder: @unchecked Sendable {
       recording = nil
       return (finished, writer.completedCount)
     }
-    if let finished { deliver(finished) }
+    if let finished { onSegmentFinished?(finished.0, finished.1) }
     WatchDiagnostics.log("recording stopped reason=\(reason) segments=\(count)")
-    stopEngine(reason: reason)
+    stopEngine()
     return count
   }
 
   // MARK: - Engine
 
-  private func startEngineIfNeeded() async throws {
-    guard !isRunning else { return }
-    guard await AVAudioApplication.requestRecordPermission() else {
-      throw WatchAudioError.microphoneDenied
-    }
+  @MainActor
+  private func startEngine() throws {
     let session = AVAudioSession.sharedInstance()
     try session.setCategory(.record, mode: .default)
     try session.setActive(true)
+    do {
+      try startInput()
+    } catch {
+      try? session.setActive(false, options: .notifyOthersOnDeactivation)
+      throw error
+    }
+  }
 
+  @MainActor
+  private func startInput() throws {
+    let engine = AVAudioEngine()
     let input = engine.inputNode
     let inputFormat = input.inputFormat(forBus: 0)
     guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
@@ -132,29 +161,39 @@ final class WatchAudioRecorder: @unchecked Sendable {
       self.converter = converter
       level = 0
     }
-    input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat) { [weak self] pcm, _ in
-      self?.process(pcm)
-    }
+    installTap(on: input, format: inputFormat)
     engine.prepare()
     do {
       try engine.start()
     } catch {
       input.removeTap(onBus: 0)
+      lock.withLock { self.converter = nil }
       throw error
     }
-    isRunning = true
-    observeInterruptions()
+    self.engine = engine
     WatchDiagnostics.log("engine started input=\(inputFormat.sampleRate)Hz")
   }
 
-  private func stopEngine(reason: String) {
-    guard isRunning else { return }
-    WatchDiagnostics.log("engine stopped reason=\(reason)")
+  // The tap runs on an audio thread, independently of main-actor engine control.
+  private func installTap(on input: AVAudioInputNode, format: AVAudioFormat) {
+    input.installTap(onBus: 0, bufferSize: 4_096, format: format) { [weak self] pcm, _ in
+      self?.process(pcm)
+    }
+  }
+
+  @MainActor
+  private func stopEngine(deactivateSession: Bool = true) {
+    guard let engine else { return }
+    self.engine = nil
+    lock.withLock {
+      converter = nil
+      level = 0
+    }
     engine.inputNode.removeTap(onBus: 0)
     engine.stop()
-    isRunning = false
-    lock.withLock { level = 0 }
-    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    if deactivateSession {
+      try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
   }
 
   private func process(_ input: AVAudioPCMBuffer) {
@@ -175,6 +214,7 @@ final class WatchAudioRecorder: @unchecked Sendable {
     for sample in samples where sample.magnitude > peak.magnitude { peak = sample }
     let instant = Float(peak.magnitude) / Float(Int16.max)
     let (heartbeat, finished) = lock.withLock { () -> (String?, (WatchSegmentMetadata, URL)?) in
+      guard self.converter === converter else { return (nil, nil) }
       level = max(instant, level * 0.8)
       var finished: (WatchSegmentMetadata, URL)?
       if var writer = recording {
@@ -213,7 +253,7 @@ final class WatchAudioRecorder: @unchecked Sendable {
   @MainActor
   private func end(because reason: WatchCaptureStopReason) {
     onStopped?(reason)
-    if isRunning { stopRecording(reason: reason.rawValue) }
+    if isRecording { stopRecording(reason: reason.rawValue) }
   }
 
   private func deliver(_ finished: (WatchSegmentMetadata, URL)) {
@@ -221,22 +261,61 @@ final class WatchAudioRecorder: @unchecked Sendable {
     Task { @MainActor in onSegmentFinished(finished.0, finished.1) }
   }
 
+  @MainActor
+  private func pauseForInterruption() {
+    guard engine != nil, isRecording else { return }
+    stopEngine(deactivateSession: false)
+    let (finished, failed) = lock.withLock {
+      (recording?.close(), recording?.hasFailed == true)
+    }
+    // Persist this checkpoint before the OS can suspend the app.
+    if let finished { onSegmentFinished?(finished.0, finished.1) }
+    if failed {
+      end(because: .writeFailure)
+    } else {
+      WatchDiagnostics.log("recording paused for audio interruption")
+      onInterruptionBegan?()
+    }
+  }
+
+  @MainActor
   private func observeInterruptions() {
-    guard interruptionObserver == nil else { return }
-    interruptionObserver = NotificationCenter.default.addObserver(
+    guard removeInterruptionObservers == nil else { return }
+    let center = NotificationCenter.default
+    let session = AVAudioSession.sharedInstance()
+    #if compiler(>=6.4)
+    if #available(watchOS 27, *) {
+      let inactive = center.addObserver(of: session, for: .didBecomeInactive) { [weak self] message in
+        guard case .systemInterruption = message.deactivationResult else { return }
+        self?.pauseForInterruption()
+      }
+      let resume = center.addObserver(of: session, for: .resumptionRecommendation) { [weak self] message in
+        guard message.recommendation == .shouldResume else { return }
+        self?.onInterruptionEnded?()
+      }
+      removeInterruptionObservers = {
+        center.removeObserver(inactive)
+        center.removeObserver(resume)
+      }
+      return
+    }
+    #endif
+    let legacy = center.addObserver(
       forName: AVAudioSession.interruptionNotification,
-      object: AVAudioSession.sharedInstance(),
+      object: session,
       queue: .main
     ) { [weak self] notification in
       guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
         let type = AVAudioSession.InterruptionType(rawValue: raw)
       else { return }
-      WatchDiagnostics.log("audio interruption \(type == .began ? "began" : "ended")")
-      guard type == .began else { return }
       MainActor.assumeIsolated {
-        // watchOS cannot restart capture from the background, so end the recording cleanly.
-        self?.end(because: .interruption)
+        switch type {
+        case .began: self?.pauseForInterruption()
+        case .ended: self?.onInterruptionEnded?()
+        @unknown default: break
+        }
       }
     }
+    removeInterruptionObservers = { center.removeObserver(legacy) }
   }
 }
