@@ -309,6 +309,10 @@ private struct DayRecapCard: View {
 
   var body: some View {
     let language = model.settings.language
+    // Reading this builds the observation dependency: the card re-renders (and re-runs loadRecap)
+    // once background summary reads finish and bump the version.
+    let _ = model.summaryCacheVersion
+    let _ = model.loadSummaries(for: recordings.map(\.id))
     let todos = recordings.reversed().flatMap { recording in
       (model.summary(for: recording.id)?.actionItems ?? []).map { (recording.id, $0) }
     }
@@ -357,7 +361,7 @@ private struct DayRecapCard: View {
   }
 
   private var recapKey: String {
-    "\(day)|\(DayRecap.fingerprint(summarized.map { ($0.recording.id, $0.summary.generatedAt) }))|\(model.settings.language.rawValue)"
+    "\(day)|\(DayRecap.fingerprint(summarized.map { ($0.recording.id, $0.summary.generatedAt) }))|\(model.settings.language.rawValue)|\(model.summaryCacheVersion)"
   }
 
   /// One summarized conversation needs no model: its own overview is the recap.
@@ -402,7 +406,12 @@ struct ConversationCard: View {
   var body: some View {
     let language = model.settings.language
     let source = RecordingSource(recording)
-    let todos = model.summary(for: recording.id)?.actionItems.count ?? 0
+    // Reading this builds the observation dependency: the row re-renders when a background
+    // summary read finishes and bumps the version.
+    let _ = model.summaryCacheVersion
+    let _ = model.loadSummaries(for: [recording.id])
+    let summary = model.summary(for: recording.id)
+    let todos = summary?.actionItems.count ?? 0
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 6) {
         Text(recordingTimeRange(recording, language: language)).monospacedDigit()

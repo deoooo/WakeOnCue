@@ -8,7 +8,10 @@ struct RecordingAudioAssembler: Sendable {
 
   func assemble(recordingID: String, chunks: [ChunkRecord]) async throws -> URL {
     let outputURL = try fileLayout.downloadedAudioURL(recordingID: recordingID)
-    if await Self.isPlayable(outputURL) { return outputURL }
+    // Cheap check first: an existing, non-empty output from a previous run is usually enough,
+    // because an export is only moved into place once it is complete. Only when that fails do we
+    // pay for opening the file to confirm it is playable.
+    if Self.existsAndNonEmpty(outputURL), await Self.isPlayable(outputURL) { return outputURL }
     guard !chunks.isEmpty else { throw RecordingAudioAssemblerError.noAudio }
     // Exporting hours of audio can outlast a background wake (for example a Watch delivery),
     // so ask for time to finish; an export cut short only ever leaves the partial file behind.
@@ -59,10 +62,17 @@ struct RecordingAudioAssembler: Sendable {
 
   /// Files written before exports were made atomic can be empty or truncated.
   static func isPlayable(_ url: URL) async -> Bool {
-    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
+    guard existsAndNonEmpty(url),
       let duration = try? await AVURLAsset(url: url).load(.duration)
     else { return false }
     return duration.seconds.isFinite && duration.seconds > 0
+  }
+
+  /// The common case for recovery: an output already exists from a previous export. Checking the
+  /// file size is a single stat, unlike opening the asset.
+  static func existsAndNonEmpty(_ url: URL) -> Bool {
+    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return false }
+    return size > 0
   }
 }
 

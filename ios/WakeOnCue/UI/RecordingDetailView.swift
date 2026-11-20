@@ -33,6 +33,10 @@ struct RecordingDetailView: View {
   }
 
   var body: some View {
+    // Fill the summary cache off the main thread; the toolbar and summary section refresh when
+    // the background read finishes (version bump).
+    let _ = model.summaryCacheVersion
+    let _ = model.loadSummaries(for: [recording.id])
     ScrollViewReader { proxy in
       ScrollView(showsIndicators: true) {
         VStack(alignment: .leading, spacing: 16) {

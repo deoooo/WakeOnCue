@@ -101,6 +101,13 @@ final class AppModel {
   private(set) var onDeviceProcessingRecordingIDs: Set<String> = []
   /// Changes when recordings leave or return to the library, or their titles change.
   private(set) var libraryVersion = 0
+  /// Summaries read from disk, keyed by recording ID. Populated lazily off the main thread by
+  /// `summaries(for:)`; a nil entry means "no summary", so a miss is cached too.
+  private var summaryCache: [String: RecordingSummary?] = [:]
+  /// Recordings whose summary files are being read right now, so parallel card bodies ask once.
+  private var loadingSummaries: Set<String> = []
+  /// Bumped when a background summary read finishes, so views can refresh their rows.
+  private(set) var summaryCacheVersion = 0
   var errorMessage: String?
   var selectedTab = AppTab.review
   var settingsPresented = false
@@ -199,9 +206,30 @@ final class AppModel {
     commandObserver = RecordingCommandObserver { [weak self] in
       Task { @MainActor in await self?.processPendingCommand() }
     }
+    // Quick path first, so the UI becomes responsive while heavy recovery work still runs.
     do {
       try await store.rebaseLocalFilePaths(to: fileLayout.root)
       await Self.cancelRetiredBackgroundUploads()
+    } catch {
+      errorMessage = String(
+        format: AppLanguage.localized("Recovery failed: %@"), error.localizedDescription)
+    }
+    startTimer()
+    await processPendingCommand()
+    // Recovery, Watch import and Mac sync are heavy with days of recordings; run them on a
+    // background task so a long recovery never blocks the first screen.
+    Task { [weak self] in
+      await self?.runRecoveryAndSync()
+    }
+    // Callers of `start` often have a command of their own, such as a shortcut starting a recording.
+    Task { [weak self] in await self?.runLibraryUpkeep() }
+  }
+
+  /// The heavy part of starting: finishes interrupted recordings, assembles their M4A, imports
+  /// Watch sessions and forwards everything to the Mac. All of it re-runs on the next launch, so
+  /// a failure here must never hold up opening the app.
+  private func runRecoveryAndSync() async {
+    do {
       let interrupted = try await store.recoverAfterProcessTermination()
       let recovery = RecordingRecoveryService(fileLayout: fileLayout)
       let prepareAudio: @Sendable (String) async -> Void = { [weak self] recordingID in
@@ -224,10 +252,6 @@ final class AppModel {
       errorMessage = String(
         format: AppLanguage.localized("Recovery failed: %@"), error.localizedDescription)
     }
-    startTimer()
-    await processPendingCommand()
-    // Callers of `start` often have a command of their own, such as a shortcut starting a recording.
-    Task { [weak self] in await self?.runLibraryUpkeep() }
   }
 
   /// Never holds up a command, because starting a recording comes first. All of it runs again
@@ -854,6 +878,7 @@ final class AppModel {
     for task in processingTasks[recording.id] ?? [] { task.cancel() }
     if playingRecordingID == recording.id { stopPlayback() }
     if lastFinishedRecording?.id == recording.id { lastFinishedRecording = nil }
+    invalidateSummaryCache([recording.id])
     await refresh()
     libraryVersion += 1
     return true
@@ -869,6 +894,7 @@ final class AppModel {
     } catch {
       errorMessage = deletionFailureReason(error)
     }
+    invalidateSummaryCache([recording.id])
     await refresh()
     libraryVersion += 1
   }
@@ -892,6 +918,7 @@ final class AppModel {
       do {
         try await library.deletePermanently(recordingID: recording.id)
         RecordingAnnotationsService.shared.removeCachedAnnotations(recordingID: recording.id)
+        invalidateSummaryCache([recording.id])
       } catch {
         failure = String(
           format: AppLanguage.localized("Could not delete this recording: %@"),
@@ -959,10 +986,10 @@ final class AppModel {
       {
         lastFinishedRecording = refreshedLastFinished
       }
-      var progressByRecording: [String: RecordingSyncProgress] = [:]
-      for recording in recentRecordings {
-        progressByRecording[recording.id] = try await syncProgress(for: recording)
-      }
+      // One aggregate query for the whole page instead of one chunk scan per recording.
+      let progressByRecording = try await store.syncProgress(
+        for: recentRecordings.map(\.id)
+      )
       recentSyncProgress = progressByRecording
       if let lastFinishedRecording,
         let progress = progressByRecording[lastFinishedRecording.id]
@@ -1078,11 +1105,71 @@ final class AppModel {
     #endif
   }
 
+  /// A recording's summary, reading from a cache that `summaries(for:)` fills off the main
+  /// thread. A call for an uncached recording starts the background load and returns nil; the
+  /// view should reload once `summaryCacheVersion` changes.
   func summary(for recordingID: String) -> RecordingSummary? {
-    guard let url = try? fileLayout.summaryURL(recordingID: recordingID),
-      let data = try? Data(contentsOf: url)
-    else { return nil }
-    return try? JSONDecoder().decode(RecordingSummary.self, from: data)
+    if let cached = summaryCache[recordingID] { return cached }
+    loadSummaries(for: [recordingID])
+    return nil
+  }
+
+  /// Loads the summaries of these recordings off the main thread, once per recording, and bumps
+  /// `summaryCacheVersion` so views that showed "no summary yet" can refresh. Cheap to call often:
+  /// recordings already cached or already loading are skipped.
+  func loadSummaries(for recordingIDs: [String]) {
+    let missing = recordingIDs.filter {
+      summaryCache[$0] == nil && !loadingSummaries.contains($0)
+    }
+    guard !missing.isEmpty else { return }
+    loadingSummaries.formUnion(missing)
+    var urls: [String: URL] = [:]
+    for id in missing {
+      if let url = try? fileLayout.summaryURL(recordingID: id) { urls[id] = url }
+    }
+    let decoder = JSONDecoder()
+    Task.detached(priority: .utility) { [weak self] in
+      var loaded: [String: RecordingSummary?] = [:]
+      for (id, url) in urls {
+        if let data = try? Data(contentsOf: url),
+          let summary = try? decoder.decode(RecordingSummary.self, from: data)
+        {
+          loaded[id] = summary
+        } else {
+          loaded[id] = nil
+        }
+      }
+      guard let self else { return }
+      await MainActor.run {
+        for (id, summary) in loaded {
+          self.summaryCache[id] = summary
+          self.loadingSummaries.remove(id)
+        }
+        self.summaryCacheVersion += 1
+      }
+    }
+  }
+
+  /// Whether a summary file exists for the recording, ignoring the cache. Used where a decision
+  /// must reflect what is really on disk, e.g. whether to generate a summary.
+  private func summaryExistsOnDisk(recordingID: String) -> Bool {
+    guard let url = try? fileLayout.summaryURL(recordingID: recordingID) else { return false }
+    return FileManager.default.fileExists(atPath: url.path)
+  }
+
+  /// A summary whose file is being read now, or nil when it is not.
+  func isSummaryLoading(_ recordingID: String) -> Bool {
+    loadingSummaries.contains(recordingID)
+  }
+
+  /// Forgets cached summaries of these recordings, e.g. after a delete or restore.
+  func invalidateSummaryCache(_ recordingIDs: [String]) {
+    guard !recordingIDs.isEmpty else { return }
+    for id in recordingIDs {
+      summaryCache[id] = nil
+      loadingSummaries.remove(id)
+    }
+    summaryCacheVersion += 1
   }
 
   /// Transcribes when no transcript exists, then writes a summary. Uses the services the
@@ -1116,7 +1203,7 @@ final class AppModel {
           transcriptVersion += 1
         }
         guard !segments.isEmpty, canSummarizeRecordings,
-          regenerateSummary || summary(for: recording.id) == nil
+          regenerateSummary || summaryExistsOnDisk(recordingID: recording.id) == false
         else { return }
         try await stopIfDeleted(recordingID: recording.id)
         let summary = try await processingServices.summarize(segments, recording.title)
@@ -1124,6 +1211,10 @@ final class AppModel {
         let summaryURL = try fileLayout.summaryURL(recordingID: recording.id)
         try JSONEncoder().encode(summary).write(to: summaryURL, options: [.atomic])
         try RecordingFileLayout.protect(summaryURL)
+        // The cache holds the old value (or a miss); replace it so the UI shows the new one.
+        summaryCache[recording.id] = summary
+        loadingSummaries.remove(recording.id)
+        summaryCacheVersion += 1
         try await library.saveSummaryDetails(summary, recordingID: recording.id)
         await refresh()
         libraryVersion += 1

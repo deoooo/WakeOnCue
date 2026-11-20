@@ -612,11 +612,34 @@ public actor RecordingStore {
   }
 
   public func syncProgress(recordingID: String) throws -> RecordingSyncProgress {
-    let records = try chunks(recordingID: recordingID)
-    return RecordingSyncProgress(
-      uploadedDuration: records.filter { $0.status == .uploaded }.reduce(0) { $0 + $1.duration },
-      pendingDuration: records.filter { $0.status != .uploaded }.reduce(0) { $0 + $1.duration }
-    )
+    try syncProgress(for: [recordingID])[recordingID] ?? RecordingSyncProgress()
+  }
+
+  /// Uploaded and pending chunk duration per recording, newest first, in one pass. A list screen
+  /// refreshes for every recording in the recent page, so per-recording queries would scan the
+  /// chunks table once each.
+  public func syncProgress(for recordingIDs: [String]) throws -> [String: RecordingSyncProgress] {
+    guard !recordingIDs.isEmpty else { return [:] }
+    let placeholders = [String](repeating: "?", count: recordingIDs.count).joined(separator: ", ")
+    var result: [String: RecordingSyncProgress] = [:]
+    try query(
+      """
+      SELECT recording_id,
+             COALESCE(SUM(CASE WHEN status = 'uploaded' THEN duration ELSE 0 END), 0),
+             COALESCE(SUM(CASE WHEN status != 'uploaded' THEN duration ELSE 0 END), 0)
+      FROM chunks
+      WHERE recording_id IN (\(placeholders))
+      GROUP BY recording_id
+      """,
+      recordingIDs.map(SQLiteValue.text)
+    ) { statement in
+      guard let recordingID = Self.text(statement, 0) else { return () }
+      result[recordingID] = RecordingSyncProgress(
+        uploadedDuration: sqlite3_column_double(statement, 1),
+        pendingDuration: sqlite3_column_double(statement, 2)
+      )
+    }
+    return result
   }
 
   public func uploadTask(id: String) throws -> UploadTaskRecord {

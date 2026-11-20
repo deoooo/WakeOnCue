@@ -449,6 +449,62 @@ import Testing
   #expect(progress.pendingDuration == 4.5)
 }
 
+@Test func aggregatesSyncProgressForManyRecordingsInOneQuery() async throws {
+  let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let store = try RecordingStore(databaseURL: root.appending(path: "recordings.sqlite"))
+  // A chunk becomes "uploaded" through the upload queue, exactly like the existing tests.
+  func makeRecording(_ id: String, chunks: [(index: Int, duration: Double, uploaded: Bool)]) async throws {
+    try await store.createRecording(
+      RecordingRecord(
+        id: id, createdAt: .now, startedAt: .now, status: .recording,
+        localAudioPath: root.appending(path: "\(id).caf").path,
+        deviceModel: "test", appVersion: "1"),
+      createPayloadPath: root.appending(path: "\(id).json").path,
+      enqueueUpload: true
+    )
+    let create = try #require(
+      await store.eligibleUploadTasks().first { $0.recordingID == id && $0.kind == .createRecording })
+    try await store.markUploadTaskUploaded(id: create.id)
+    for chunk in chunks {
+      try await store.insertChunk(
+        ChunkRecord(
+          id: "\(id)_\(chunk.index)", recordingID: id, index: chunk.index,
+          localPath: root.appending(path: "\(id)-\(chunk.index).m4a").path,
+          checksum: String(repeating: "a", count: 64), size: 1,
+          startedAt: .now, duration: chunk.duration),
+        enqueueUpload: true
+      )
+      if chunk.uploaded {
+        let task = try #require(
+          await store.eligibleUploadTasks().first { $0.chunkID == "\(id)_\(chunk.index)" })
+        try await store.claimUploadTask(id: task.id, backgroundTaskIdentifier: 1)
+        try await store.markUploadTaskUploaded(id: task.id)
+      }
+    }
+  }
+
+  try await makeRecording("rec_batch_a", chunks: [(1, 10, true), (2, 5, false)])
+  try await makeRecording("rec_batch_b", chunks: [(1, 3, true)])
+  try await makeRecording("rec_batch_c", chunks: [])
+
+  // One id at a time works exactly like the single-recording query.
+  let single = try await store.syncProgress(for: ["rec_batch_a"])
+  #expect(single["rec_batch_a"]?.uploadedDuration == 10)
+  #expect(single["rec_batch_a"]?.pendingDuration == 5)
+
+  // Several ids are aggregated in one query; recordings without chunks simply have no entry.
+  let batched = try await store.syncProgress(for: ["rec_batch_b", "rec_batch_a", "rec_batch_c"])
+  #expect(batched.count == 2)
+  #expect(batched["rec_batch_b"]?.uploadedDuration == 3)
+  #expect(batched["rec_batch_b"]?.pendingDuration == 0)
+  #expect(batched["rec_batch_a"]?.uploadedDuration == 10)
+  #expect(batched["rec_batch_a"]?.pendingDuration == 5)
+
+  // Empty input is harmless.
+  #expect(try await store.syncProgress(for: []).isEmpty)
+}
+
 @Test func preservesActiveBackgroundUploadAndChunkStateDuringRecovery() async throws {
   let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
   defer { try? FileManager.default.removeItem(at: root) }

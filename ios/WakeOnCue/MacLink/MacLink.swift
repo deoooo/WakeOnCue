@@ -138,8 +138,16 @@ enum MacOutbox {
   static func sendableItems(
     root override: URL? = nil, disposition: @Sendable (String) async -> Disposition
   ) async -> [Item] {
+    await sendableItems(items: items(root: override), disposition: disposition)
+  }
+
+  /// The same, over an already-listed outbox, so a caller can scan the directory off the
+  /// main thread and only apply the per-recording dispositions here.
+  static func sendableItems(
+    items: [Item], disposition: @Sendable (String) async -> Disposition
+  ) async -> [Item] {
     var sendable: [Item] = []
-    for item in items(root: override) {
+    for item in items {
       switch await disposition(appRecordingID(for: item.info)) {
       case .send: sendable.append(item)
       case .hold: continue
@@ -319,6 +327,11 @@ final class MacUploader {
     status = .idle
   }
 
+  /// How many outbox items one sync run sends. With days of Watch recordings the outbox can hold
+  /// hundreds of segments; sending them all in one run would tie up the sync channel for a very
+  /// long time. The rest waits for the next run (app reopen, background refresh, next segment).
+  static let maxSendPerSync = 40
+
   /// Sends everything in the outbox. Safe to call often; one run at a time.
   func sync() async {
     guard !running else { return }
@@ -344,16 +357,20 @@ final class MacUploader {
       Self.logger.notice("Connected to \(macName, privacy: .public), accepting \(accepting), \(self.pending) waiting")
       pairing.macName = macName
       // The Mac deleted or marked these times private: their audio never leaves this iPhone.
-      for item in MacOutbox.items() where drop.contains(where: { $0.start <= item.info.startedAt && item.info.startedAt < $0.end }) {
+      // The outbox scan happens off the main thread; see `sendableItems`.
+      let outboxItems = await Task.detached(priority: .utility) { MacOutbox.items() }.value
+      for item in outboxItems where drop.contains(where: { $0.start <= item.info.startedAt && item.info.startedAt < $0.end }) {
         MacOutbox.remove(item)
       }
       MacOutbox.dropMarks(in: drop)
       if accepting {
         // Checked again: a recording can be deleted while the connection was being set up.
         let items = await sendableItems()
-        for (index, item) in items.enumerated() {
+        for (index, item) in items.prefix(Self.maxSendPerSync).enumerated() {
           // Sending can take minutes; a recording deleted meanwhile stops here.
           guard await disposition?(MacOutbox.appRecordingID(for: item.info)) ?? .send == .send else { continue }
+          // One long loop must not starve the main thread's UI work between chunks.
+          await Task.yield()
           status = .sending(done: index, total: items.count)
           try await send(item, over: channel)
           pending = items.count - index - 1
@@ -397,9 +414,13 @@ final class MacUploader {
     pending = await sendableItems().count
   }
 
+  /// Lists the outbox off the main thread: with days of Watch recordings the directory holds
+  /// hundreds of descriptors and files, and enumerating plus decoding them all on the main actor
+  /// would stall the UI during every sync.
   private func sendableItems() async -> [MacOutbox.Item] {
-    guard let disposition else { return MacOutbox.items() }
-    return await MacOutbox.sendableItems(disposition: disposition)
+    let items = await Task.detached(priority: .utility) { MacOutbox.items() }.value
+    guard let disposition else { return items }
+    return await MacOutbox.sendableItems(items: items, disposition: disposition)
   }
 
   private func send(_ item: MacOutbox.Item, over channel: SyncChannel) async throws {
